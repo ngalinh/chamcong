@@ -13,9 +13,3 @@ export function isAdminEmail(email: string | null | undefined): boolean {
     .filter(Boolean);
   return admins.includes(email.toLowerCase());
 }
-
-export function isAllowedDomain(email: string): boolean {
-  const dom = process.env.NEXT_PUBLIC_ALLOWED_EMAIL_DOMAIN?.trim().toLowerCase();
-  if (!dom) return true;
-  return email.toLowerCase().endsWith("@" + dom);
-}

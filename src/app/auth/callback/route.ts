@@ -33,11 +33,15 @@ export async function GET(request: NextRequest) {
         await admin.from("employees").update({ user_id: user.id }).eq("id", existing.id);
       }
     } else if (isAdminEmail(user.email)) {
-      // Bootstrap admin tự động từ ADMIN_EMAILS env
+      // Bootstrap admin tự động từ ADMIN_EMAILS env — lấy tên từ Google profile
+      const fullName =
+        (user.user_metadata?.full_name as string | undefined) ??
+        (user.user_metadata?.name as string | undefined) ??
+        user.email.split("@")[0];
       await admin.from("employees").insert({
         user_id: user.id,
         email: user.email,
-        name: user.email.split("@")[0],
+        name: fullName,
         is_admin: true,
       });
     }
