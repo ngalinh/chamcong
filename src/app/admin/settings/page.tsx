@@ -1,8 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
-import { Building2, Plus, Trash2, MapPin } from "lucide-react";
+import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { Office } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -22,19 +23,35 @@ async function upsertOffice(formData: FormData) {
     work_end_time: String(formData.get("work_end_time") ?? "18:00"),
     is_active: formData.get("is_active") === "on",
   };
-  if (id) await admin.from("offices").update(payload).eq("id", id);
-  else await admin.from("offices").insert(payload);
+
+  const { error } = id
+    ? await admin.from("offices").update(payload).eq("id", id)
+    : await admin.from("offices").insert(payload);
+
+  if (error) {
+    redirect(`/admin/settings?error=${encodeURIComponent(error.message)}`);
+  }
   revalidatePath("/admin/settings");
+  redirect(`/admin/settings?ok=${encodeURIComponent(id ? "Đã lưu " + payload.name : "Đã thêm " + payload.name)}`);
 }
 
 async function deleteOffice(formData: FormData) {
   "use server";
   const id = formData.get("id") as string;
-  await createAdminClient().from("offices").delete().eq("id", id);
+  const { error } = await createAdminClient().from("offices").delete().eq("id", id);
+  if (error) {
+    redirect(`/admin/settings?error=${encodeURIComponent(error.message)}`);
+  }
   revalidatePath("/admin/settings");
+  redirect(`/admin/settings?ok=${encodeURIComponent("Đã xoá chi nhánh")}`);
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; ok?: string }>;
+}) {
+  const sp = await searchParams;
   const admin = createAdminClient();
   const { data: offices } = await admin
     .from("offices")
@@ -44,6 +61,26 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold tracking-tight">Chi nhánh</h1>
+
+      {sp.error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3 text-sm flex items-start gap-2">
+          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-medium">Không lưu được</div>
+            <div className="text-xs mt-0.5 break-words">{sp.error}</div>
+            {sp.error.includes("work_start_time") || sp.error.includes("work_end_time") ? (
+              <div className="text-xs mt-1.5 text-rose-700">
+                → Migration DB chưa chạy. Chạy SQL <code className="bg-rose-100 px-1 rounded">20260419210000_checkin_checkout_work_hours.sql</code> trong Supabase Editor.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+      {sp.ok && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 p-3 text-sm flex items-center gap-2">
+          <CheckCircle2 size={16} className="shrink-0" /> {sp.ok}
+        </div>
+      )}
 
       {!offices?.length && (
         <Empty icon={Building2} title="Chưa có chi nhánh" description="Thêm chi nhánh đầu tiên bên dưới." />
@@ -75,7 +112,7 @@ function OfficeForm({
 }) {
   const isNew = !office;
   return (
-    <form action={action} className="rounded-2xl border border-neutral-200 bg-white p-4 space-y-3">
+    <form action={action} className="rounded-2xl border border-white/60 glass p-4 space-y-3">
       {office && <input type="hidden" name="id" value={office.id} />}
 
       <div className="flex items-center gap-2">
@@ -99,36 +136,32 @@ function OfficeForm({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Tên chi nhánh" name="name" required defaultValue={office?.name} />
         <Field label="Bán kính (m)" name="radius_m" type="number" defaultValue={office?.radius_m ?? 100} />
       </div>
 
       <Field label="Địa chỉ" name="address" defaultValue={office?.address ?? ""} icon={MapPin} />
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Latitude" name="latitude" type="number" step="any" required defaultValue={office?.latitude} />
         <Field label="Longitude" name="longitude" type="number" step="any" required defaultValue={office?.longitude} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field
+        <TimeField
           label="Giờ bắt đầu làm"
           name="work_start_time"
-          type="time"
-          required
           defaultValue={office?.work_start_time?.slice(0, 5) ?? "09:00"}
         />
-        <Field
+        <TimeField
           label="Giờ tan làm"
           name="work_end_time"
-          type="time"
-          required
           defaultValue={office?.work_end_time?.slice(0, 5) ?? "18:00"}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 items-end">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
         <Field label="Timezone" name="timezone" defaultValue={office?.timezone ?? "Asia/Ho_Chi_Minh"} />
         <label className="flex items-center gap-2 text-sm h-10">
           <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
@@ -176,9 +209,34 @@ function Field({
           step={step}
           required={required}
           defaultValue={defaultValue ?? ""}
-          className={`w-full h-10 rounded-xl border border-neutral-200 ${Icon ? "pl-9" : "pl-3"} pr-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5`}
+          className={`w-full h-11 rounded-xl border border-neutral-200 bg-white ${Icon ? "pl-9" : "pl-3"} pr-3 text-[15px] outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5`}
         />
       </div>
+    </label>
+  );
+}
+
+function TimeField({
+  label,
+  name,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  defaultValue: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <div className="text-xs font-medium text-neutral-600 mb-1.5">{label}</div>
+      <input
+        name={name}
+        type="time"
+        required
+        defaultValue={defaultValue}
+        step={60}
+        className="w-full h-11 rounded-xl border border-neutral-200 bg-white px-3 text-[15px] font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
+        style={{ WebkitAppearance: "none" }}
+      />
     </label>
   );
 }
