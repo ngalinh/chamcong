@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import { BadgeClearer } from "@/components/BadgeClearer";
+import { PushToaster } from "@/components/PushToaster";
 
 export const metadata: Metadata = {
   title: "Chấm công",
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <ServiceWorkerRegister />
         <BadgeClearer />
+        <PushToaster />
       </body>
     </html>
   );

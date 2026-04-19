@@ -1,5 +1,5 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v7";
+const VERSION = "v8";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const BADGE_CACHE = "badge-state";
 const BADGE_KEY = "/__badge_count";
@@ -75,6 +75,7 @@ self.addEventListener("push", (e) => {
     catch { payload.body = e.data.text(); }
   }
   e.waitUntil((async () => {
+    // Luôn show OS notification (banner + tray entry)
     await self.registration.showNotification(payload.title, {
       body: payload.body,
       icon: "/icons/icon-192.png",
@@ -83,6 +84,14 @@ self.addEventListener("push", (e) => {
       data: { url: payload.url || "/" },
       requireInteraction: false,
     });
+
+    // Đồng thời gửi vào mọi client đang mở → show in-app toast
+    // (cần thiết vì iOS PWA foreground thường suppress OS banner)
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of clients) {
+      try { c.postMessage({ type: "PUSH", payload }); } catch {}
+    }
+
     const current = await getBadgeCount();
     await setBadgeCount(current + 1);
   })());
