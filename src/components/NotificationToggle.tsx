@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PUBLIC_VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const AUTO_PROMPT_KEY = "notif-auto-prompted";
 
 function urlBase64ToUint8Array(base64: string) {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
@@ -20,32 +21,9 @@ type State = "unsupported" | "denied" | "subscribed" | "unsubscribed" | "loading
 export function NotificationToggle() {
   const [state, setState] = useState<State>("loading");
   const [busy, setBusy] = useState(false);
+  const autoTried = useRef(false);
 
-  useEffect(() => {
-    (async () => {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-        setState("unsupported");
-        return;
-      }
-      if (!PUBLIC_VAPID_KEY) {
-        setState("unsupported");
-        return;
-      }
-      if (Notification.permission === "denied") {
-        setState("denied");
-        return;
-      }
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        setState(sub ? "subscribed" : "unsubscribed");
-      } catch {
-        setState("unsupported");
-      }
-    })();
-  }, []);
-
-  async function subscribe() {
+  const subscribe = useCallback(async () => {
     setBusy(true);
     try {
       const perm = await Notification.requestPermission();
@@ -70,7 +48,47 @@ export function NotificationToggle() {
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        setState("unsupported");
+        return;
+      }
+      if (!PUBLIC_VAPID_KEY) {
+        setState("unsupported");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setState("denied");
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          setState("subscribed");
+          return;
+        }
+        // Permission đã granted nhưng chưa có subscription → tự subscribe ngay (không cần click)
+        if (Notification.permission === "granted") {
+          await subscribe();
+          return;
+        }
+        // Permission default → tự prompt 1 lần. Nếu trình duyệt yêu cầu user gesture
+        // (Safari iOS), permission sẽ vẫn là default và button sẽ hiện ra để bấm.
+        setState("unsubscribed");
+        if (!autoTried.current && localStorage.getItem(AUTO_PROMPT_KEY) !== "1") {
+          autoTried.current = true;
+          localStorage.setItem(AUTO_PROMPT_KEY, "1");
+          await subscribe();
+        }
+      } catch {
+        setState("unsupported");
+      }
+    })();
+  }, [subscribe]);
 
   async function unsubscribe() {
     setBusy(true);

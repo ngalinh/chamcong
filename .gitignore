@@ -11,3 +11,6 @@ out/
 # Claude Code per-machine settings (có thể chứa secret trong permission history)
 .claude/
 
+# TS incremental build cache
+tsconfig.tsbuildinfo
+

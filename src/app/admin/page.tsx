@@ -215,7 +215,15 @@ export default async function AdminHome() {
         </div>
         <div className="rounded-2xl glass border border-white/60 overflow-hidden divide-y divide-neutral-200/60">
           {notifications.length ? (
-            notifications.map((n) => <NotificationRow key={`${n.kind}:${n.id}`} item={n} />)
+            notifications.map((n) => (
+              <Link
+                key={`${n.kind}:${n.id}`}
+                href="/admin/history"
+                className="block transition hover:bg-white/70 active:bg-white/80"
+              >
+                <NotificationRow item={n} />
+              </Link>
+            ))
           ) : (
             <Empty icon={Inbox} title="Chưa có hoạt động" />
           )}

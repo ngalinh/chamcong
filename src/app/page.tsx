@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatVN } from "@/lib/time";
 import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -131,8 +132,10 @@ export default async function Home() {
   // @ts-expect-error — supabase join
   const lastOfficeName: string | undefined = lastCheckIn?.offices?.name;
 
-  const hour = new Date().getHours();
+  const now = new Date();
+  const hour = parseInt(formatVN(now, "H"), 10);
   const greeting = hour < 12 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
+  const nowLabel = formatVN(now, "HH:mm · EEEE, d 'tháng' M, yyyy");
 
   return (
     <main className="relative min-h-dvh flex flex-col px-safe pt-safe pb-safe overflow-hidden">
@@ -145,6 +148,7 @@ export default async function Home() {
           <h1 className="text-2xl font-semibold tracking-tight">
             {employee?.name ?? user.email?.split("@")[0]}
           </h1>
+          <p className="text-xs text-neutral-500 mt-0.5 first-letter:uppercase tabular-nums">{nowLabel}</p>
         </div>
         <form action="/auth/signout" method="post">
           <button className="h-10 w-10 rounded-full glass border border-white/60 flex items-center justify-center text-neutral-500 hover:text-neutral-900">
@@ -181,16 +185,19 @@ export default async function Home() {
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">
-            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl shadow-indigo-500/40 transition group-active:scale-[0.98]">
+            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl shadow-indigo-500/40 transition group-active:scale-[0.98] animate-breathe">
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-800" />
-              <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-white/15 blur-2xl" />
-              <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl" />
+              <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-white/15 blur-2xl animate-float" />
+              <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl animate-float" style={{ animationDelay: "-9s" }} />
               <div className="absolute inset-8 rounded-full border border-white/20" />
               <div className="absolute inset-16 rounded-full border border-white/10" />
 
               <div className="relative h-full flex flex-col items-center justify-center gap-4 text-white">
-                <div className="h-20 w-20 rounded-full bg-white/15 backdrop-blur ring-1 ring-white/30 flex items-center justify-center">
-                  <Fingerprint size={40} strokeWidth={1.5} />
+                <div className="relative h-20 w-20 flex items-center justify-center">
+                  <span className="absolute inset-0 rounded-full bg-white/30 animate-ping-slow" />
+                  <span className="relative h-20 w-20 rounded-full bg-white/15 backdrop-blur ring-1 ring-white/30 flex items-center justify-center">
+                    <Fingerprint size={40} strokeWidth={1.5} />
+                  </span>
                 </div>
                 <div className="text-center">
                   <p className="text-2xl font-semibold tracking-tight">Chấm công ngay</p>
@@ -236,7 +243,13 @@ export default async function Home() {
           ) : (
             <div className="rounded-2xl glass border border-white/60 overflow-hidden divide-y divide-neutral-200/60">
               {notifications.map((n) => (
-                <NotifRow key={`${n.kind}:${n.id}`} item={n} />
+                <Link
+                  key={`${n.kind}:${n.id}`}
+                  href="/history"
+                  className="block transition hover:bg-white/70 active:bg-white/80"
+                >
+                  <NotifRow item={n} />
+                </Link>
               ))}
             </div>
           )}
