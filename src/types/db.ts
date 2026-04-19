@@ -9,6 +9,8 @@ export type Office = {
   work_start_time: string; // "HH:MM:SS"
   work_end_time: string;   // "HH:MM:SS"
   is_active: boolean;
+  is_remote: boolean;
+  approver_email: string | null;
   created_at: string;
 };
 
@@ -72,7 +74,7 @@ export type CheckIn = {
   office_id: string | null;
   kind: CheckInKind;
   checked_in_at: string;
-  selfie_path: string;
+  selfie_path: string | null;
   latitude: number | null;
   longitude: number | null;
   distance_m: number | null;
@@ -81,5 +83,21 @@ export type CheckIn = {
   late_minutes: number | null;
   early_minutes: number | null;
   user_agent: string | null;
+  created_at: string;
+};
+
+export type OvertimeStatus = "pending" | "approved" | "rejected";
+
+export type OvertimeRequest = {
+  id: string;
+  employee_id: string;
+  ot_date: string;        // YYYY-MM-DD
+  start_time: string;     // "HH:MM:SS"
+  end_time: string;       // "HH:MM:SS"
+  hours: number;
+  reason: string | null;
+  status: OvertimeStatus;
+  approved_at: string | null;
+  approved_by: string | null;
   created_at: string;
 };

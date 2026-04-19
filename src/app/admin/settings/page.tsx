@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
-import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, Wifi, Mail } from "lucide-react";
 import type { Office } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -12,17 +12,21 @@ async function upsertOffice(formData: FormData) {
   "use server";
   const admin = createAdminClient();
   const id = formData.get("id") as string;
+  const is_remote = formData.get("is_remote") === "on";
+  const approverRaw = String(formData.get("approver_email") ?? "").trim();
   // Timezone luôn là VN — không còn field cho từng chi nhánh
   const payload = {
     name: String(formData.get("name") ?? ""),
     address: String(formData.get("address") ?? ""),
-    latitude: Number(formData.get("latitude")),
-    longitude: Number(formData.get("longitude")),
-    radius_m: Number(formData.get("radius_m")),
+    latitude: is_remote ? 0 : Number(formData.get("latitude")),
+    longitude: is_remote ? 0 : Number(formData.get("longitude")),
+    radius_m: is_remote ? 0 : Number(formData.get("radius_m")),
     timezone: "Asia/Ho_Chi_Minh",
     work_start_time: String(formData.get("work_start_time") ?? "09:00"),
     work_end_time: String(formData.get("work_end_time") ?? "18:00"),
     is_active: formData.get("is_active") === "on",
+    is_remote,
+    approver_email: approverRaw ? approverRaw.toLowerCase() : null,
   };
 
   const { error } = id
@@ -126,10 +130,13 @@ function OfficeForm({
           </>
         ) : (
           <>
-            <div className="h-9 w-9 rounded-lg bg-neutral-100 flex items-center justify-center">
-              <Building2 size={16} className="text-neutral-600" />
+            <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${office.is_remote ? "bg-violet-50 text-violet-600" : "bg-neutral-100 text-neutral-600"}`}>
+              {office.is_remote ? <Wifi size={16} /> : <Building2 size={16} />}
             </div>
             <h2 className="font-semibold flex-1 truncate">{office.name}</h2>
+            {office.is_remote && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Remote</span>
+            )}
             {!office.is_active && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">Khoá</span>
             )}
@@ -139,14 +146,26 @@ function OfficeForm({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Tên chi nhánh" name="name" required defaultValue={office?.name} />
-        <Field label="Bán kính (m)" name="radius_m" type="number" defaultValue={office?.radius_m ?? 100} />
+        <Field
+          label="Bán kính (m)"
+          name="radius_m"
+          type="number"
+          defaultValue={office?.radius_m ?? 100}
+          disabled={office?.is_remote}
+        />
       </div>
 
-      <Field label="Địa chỉ" name="address" defaultValue={office?.address ?? ""} icon={MapPin} />
+      <Field
+        label="Địa chỉ"
+        name="address"
+        defaultValue={office?.address ?? ""}
+        icon={MapPin}
+        disabled={office?.is_remote}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="Latitude" name="latitude" type="number" step="any" required defaultValue={office?.latitude} />
-        <Field label="Longitude" name="longitude" type="number" step="any" required defaultValue={office?.longitude} />
+        <Field label="Latitude"  name="latitude"  type="number" step="any" required={!office?.is_remote} defaultValue={office?.latitude}  disabled={office?.is_remote} />
+        <Field label="Longitude" name="longitude" type="number" step="any" required={!office?.is_remote} defaultValue={office?.longitude} disabled={office?.is_remote} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -162,10 +181,25 @@ function OfficeForm({
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm h-10">
-        <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
-        Đang hoạt động
-      </label>
+      <Field
+        label="Email admin duyệt nghỉ"
+        name="approver_email"
+        type="email"
+        defaultValue={office?.approver_email ?? ""}
+        icon={Mail}
+        placeholder="vd: dzuong.bol@gmail.com"
+      />
+
+      <div className="flex items-center gap-6 flex-wrap text-sm h-10">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
+          Đang hoạt động
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" name="is_remote" defaultChecked={office?.is_remote ?? false} className="h-4 w-4 rounded" />
+          Làm online (không cần selfie/định vị)
+        </label>
+      </div>
 
       <div className="flex gap-2 pt-1">
         <Button type="submit" size="sm">{isNew ? "Thêm" : "Lưu"}</Button>
@@ -187,6 +221,8 @@ function Field({
   required,
   defaultValue,
   icon: Icon,
+  disabled,
+  placeholder,
 }: {
   label: string;
   name: string;
@@ -195,6 +231,8 @@ function Field({
   required?: boolean;
   defaultValue?: string | number | null;
   icon?: React.ComponentType<{ size?: number; className?: string }>;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <label className="block text-sm">
@@ -205,9 +243,11 @@ function Field({
           name={name}
           type={type}
           step={step}
-          required={required}
+          required={required && !disabled}
+          disabled={disabled}
+          placeholder={placeholder}
           defaultValue={defaultValue ?? ""}
-          className={`w-full h-11 rounded-xl border border-neutral-200 bg-white ${Icon ? "pl-9" : "pl-3"} pr-3 text-[15px] outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5`}
+          className={`w-full h-11 rounded-xl border border-neutral-200 bg-white ${Icon ? "pl-9" : "pl-3"} pr-3 text-[15px] outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 disabled:bg-neutral-50 disabled:text-neutral-400`}
         />
       </div>
     </label>

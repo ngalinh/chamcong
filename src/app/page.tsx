@@ -18,6 +18,9 @@ import {
   X,
   AlertTriangle,
   Clock,
+  Timer,
+  Wifi,
+  TrendingUp,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -57,11 +60,35 @@ export default async function Home() {
     .eq("email", user.email)
     .maybeSingle();
 
-  if (!employee || !employee.face_descriptor) redirect("/enroll");
+  if (!employee) redirect("/enroll");
+
+  // Nhân viên Làm online (chi nhánh remote) không cần enroll khuôn mặt
+  let isRemoteEmployee = false;
+  if (employee.home_office_id) {
+    const { data: home } = await admin
+      .from("offices")
+      .select("is_remote")
+      .eq("id", employee.home_office_id)
+      .maybeSingle();
+    isRemoteEmployee = !!home?.is_remote;
+  }
+  if (!employee.face_descriptor && !isRemoteEmployee) redirect("/enroll");
 
   const sevenDaysAgo = new Date(Date.now() - 14 * 86400_000).toISOString();
 
-  const [{ data: lastCheckIn }, { data: recentLeaves }, { data: lateEarly }] = await Promise.all([
+  // Phạm vi tháng hiện tại theo giờ VN — dùng cho thống kê
+  const nowForRange = new Date();
+  const monthStartVN = new Date(`${formatVN(nowForRange, "yyyy-MM")}-01T00:00:00+07:00`);
+  const monthStartIso = monthStartVN.toISOString();
+  const monthStartDate = formatVN(monthStartVN, "yyyy-MM-dd");
+
+  const [
+    { data: lastCheckIn },
+    { data: recentLeaves },
+    { data: lateEarly },
+    { count: lateMonthCount },
+    { data: monthLeaves },
+  ] = await Promise.all([
     admin
       .from("check_ins")
       .select("checked_in_at, offices(name)")
@@ -85,7 +112,26 @@ export default async function Home() {
       .or("late_minutes.gt.5,early_minutes.gt.5")
       .order("checked_in_at", { ascending: false })
       .limit(5),
+    admin
+      .from("check_ins")
+      .select("*", { count: "exact", head: true })
+      .eq("employee_id", employee.id)
+      .eq("kind", "in")
+      .gt("late_minutes", 5)
+      .gte("checked_in_at", monthStartIso),
+    admin
+      .from("leave_requests")
+      .select("category")
+      .eq("employee_id", employee.id)
+      .gte("leave_date", monthStartDate),
   ]);
+
+  const onlineMonthCount = (monthLeaves ?? []).filter((l) =>
+    String(l.category).startsWith("online_"),
+  ).length;
+  const offMonthCount = (monthLeaves ?? []).filter((l) =>
+    String(l.category).startsWith("leave_"),
+  ).length;
 
   const notifications: NotifItem[] = [
     ...(recentLeaves ?? []).map((r): NotifItem => ({
@@ -158,28 +204,23 @@ export default async function Home() {
       </header>
 
       <div className="relative flex-1 flex flex-col gap-6 max-w-md w-full mx-auto py-6">
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/leave"
-            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
-          >
-            <div className="h-11 w-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2">
-              <CalendarOff size={20} strokeWidth={1.8} />
-            </div>
-            <p className="font-medium">Xin nghỉ</p>
-            <p className="text-xs text-neutral-500">WFH, trừ phép…</p>
-          </Link>
-          <Link
-            href="/history"
-            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
-          >
-            <div className="h-11 w-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-2">
-              <History size={20} strokeWidth={1.8} />
-            </div>
-            <p className="font-medium">Lịch sử</p>
-            <p className="text-xs text-neutral-500">Chấm công, xin nghỉ</p>
-          </Link>
+        <div className="grid grid-cols-3 gap-2.5">
+          <ActionTile href="/leave"    Icon={CalendarOff} title="Xin nghỉ"    subtitle="WFH, trừ phép" tone="amber" />
+          <ActionTile href="/overtime" Icon={Timer}       title="Làm OT"      subtitle="Ngoài giờ"     tone="violet" />
+          <ActionTile href="/history"  Icon={History}     title="Lịch sử"     subtitle="Chấm công"     tone="sky" />
         </div>
+
+        {/* Thống kê tháng */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500 mb-2 px-1 flex items-center gap-1.5">
+            <TrendingUp size={12} /> Trong tháng {formatVN(nowForRange, "M/yyyy")}
+          </h2>
+          <div className="grid grid-cols-3 gap-2.5">
+            <StatCard Icon={Clock}       label="Đi muộn"   value={lateMonthCount ?? 0} tone="rose" />
+            <StatCard Icon={Wifi}        label="Làm online" value={onlineMonthCount}    tone="indigo" />
+            <StatCard Icon={CalendarOff} label="Xin nghỉ"  value={offMonthCount}        tone="amber" />
+          </div>
+        </section>
 
         <NotificationToggle />
 
@@ -309,6 +350,55 @@ function NotifRow({ item: n }: { item: NotifItem }) {
           {n.office ?? "—"} · {formatDistanceToNow(new Date(n.at), { addSuffix: true, locale: vi })}
         </p>
       </div>
+    </div>
+  );
+}
+
+const TONE: Record<string, { iconBg: string; iconText: string; valueText: string }> = {
+  amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600",  valueText: "text-amber-700"  },
+  sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600",    valueText: "text-sky-700"    },
+  violet: { iconBg: "bg-violet-50", iconText: "text-violet-600", valueText: "text-violet-700" },
+  rose:   { iconBg: "bg-rose-50",   iconText: "text-rose-600",   valueText: "text-rose-700"   },
+  indigo: { iconBg: "bg-indigo-50", iconText: "text-indigo-600", valueText: "text-indigo-700" },
+};
+
+function ActionTile({
+  href, Icon, title, subtitle, tone,
+}: {
+  href: string;
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  title: string;
+  subtitle: string;
+  tone: keyof typeof TONE;
+}) {
+  const t = TONE[tone];
+  return (
+    <Link href={href} className="rounded-2xl glass border border-white/60 p-3 hover:bg-white/80 transition">
+      <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center mb-2", t.iconBg, t.iconText)}>
+        <Icon size={18} strokeWidth={1.8} />
+      </div>
+      <p className="font-medium text-sm leading-tight">{title}</p>
+      <p className="text-[11px] text-neutral-500 leading-tight">{subtitle}</p>
+    </Link>
+  );
+}
+
+function StatCard({
+  Icon, label, value, tone,
+}: {
+  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  label: string;
+  value: number;
+  tone: keyof typeof TONE;
+}) {
+  const t = TONE[tone];
+  return (
+    <div className="rounded-2xl glass border border-white/60 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 mb-1">
+        <Icon size={12} strokeWidth={1.8} />
+        <span className="truncate">{label}</span>
+      </div>
+      <div className={cn("text-2xl font-semibold tabular-nums", t.valueText)}>{value}</div>
     </div>
   );
 }

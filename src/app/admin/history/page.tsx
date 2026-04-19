@@ -4,7 +4,7 @@ import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind } from "@/types/db";
+import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus } from "@/types/db";
 import {
   Inbox,
   Trash2,
@@ -19,6 +19,8 @@ import {
   LogIn,
   LogOut,
   AlertTriangle,
+  Hourglass,
+  Lock,
 } from "lucide-react";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -28,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type RowType = "checkin" | "leave";
+type RowType = "checkin" | "leave" | "overtime";
 
 type CheckInRow = {
   type: "checkin";
@@ -57,9 +59,24 @@ type LeaveRow = {
   duration_unit: "day" | "hour";
   reason: string | null;
   status: LeaveStatus;
+  approver_email: string | null;  // null = chưa gán chi nhánh hoặc chi nhánh không có approver
 };
 
-type Row = CheckInRow | LeaveRow;
+type OvertimeRow = {
+  type: "overtime";
+  id: string;
+  at: string;
+  employee: { name: string; email: string } | null;
+  ot_date: string;
+  start_time: string;
+  end_time: string;
+  hours: number;
+  reason: string | null;
+  status: OvertimeStatus;
+  approver_email: string | null;
+};
+
+type Row = CheckInRow | LeaveRow | OvertimeRow;
 
 const dateInVN = dateVnFn;
 
@@ -120,10 +137,17 @@ async function decideLeave(formData: FormData) {
   const admin = createAdminClient();
   const { data: leave } = await admin
     .from("leave_requests")
-    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, employees(name, email)")
+    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
     .eq("id", id)
     .maybeSingle();
   if (!leave || leave.status !== "pending") return;
+
+  // Branch routing — chỉ admin được gán cho chi nhánh đó mới duyệt được
+  // @ts-expect-error — supabase nested join
+  const approver: string | null = leave.employees?.offices?.approver_email ?? null;
+  if (approver && approver.toLowerCase() !== user.email.toLowerCase()) {
+    throw new Error("Đơn này thuộc chi nhánh khác — bạn không có quyền duyệt");
+  }
 
   await admin
     .from("leave_requests")
@@ -183,6 +207,75 @@ async function decideLeave(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function deleteOvertime(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  await createAdminClient().from("overtime_requests").delete().eq("id", String(formData.get("id")));
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+}
+
+async function decideOvertime(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin, name, email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision"));
+  if (decision !== "approved" && decision !== "rejected") throw new Error("Decision không hợp lệ");
+
+  const admin = createAdminClient();
+  const { data: ot } = await admin
+    .from("overtime_requests")
+    .select("id, employee_id, status, ot_date, hours, employees(home_office_id, offices:home_office_id(approver_email))")
+    .eq("id", id)
+    .maybeSingle();
+  if (!ot || ot.status !== "pending") return;
+
+  // @ts-expect-error — supabase nested join
+  const approver: string | null = ot.employees?.offices?.approver_email ?? null;
+  if (approver && approver.toLowerCase() !== user.email.toLowerCase()) {
+    throw new Error("Đơn này thuộc chi nhánh khác — bạn không có quyền duyệt");
+  }
+
+  await admin
+    .from("overtime_requests")
+    .update({
+      status: decision,
+      approved_at: new Date().toISOString(),
+      approved_by: me?.name ?? user.email,
+    })
+    .eq("id", id);
+
+  // Push notify employee
+  const { sendPushToEmployee } = await import("@/lib/push");
+  sendPushToEmployee(String(ot.employee_id), {
+    title: decision === "approved" ? "✅ Đơn OT đã được duyệt" : "❌ Đơn OT bị từ chối",
+    body: `Ngày ${ot.ot_date} · ${ot.hours} giờ`,
+    url: "/overtime",
+    tag: `ot-${id}`,
+  }).catch((e) => console.error("[push] employee notify failed", e));
+
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+}
+
 export default async function HistoryPage({
   searchParams,
 }: {
@@ -190,6 +283,9 @@ export default async function HistoryPage({
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
+  const supabase = await createClient();
+  const { data: { user: viewer } } = await supabase.auth.getUser();
+  const viewerEmail = viewer?.email?.toLowerCase() ?? "";
   const admin = createAdminClient();
 
   const from = sp.from ? new Date(sp.from) : new Date(Date.now() - 7 * 86400_000);
@@ -235,15 +331,17 @@ export default async function HistoryPage({
 
   // Leave requests — filter theo ngày TẠO đơn (created_at), không phải leave_date
   const leaveRows: LeaveRow[] = [];
-  if (type !== "checkin") {
+  if (type === "leave" || type === "all") {
     const { data } = await admin
       .from("leave_requests")
-      .select("id, created_at, leave_date, category, duration, duration_unit, reason, status, employees(name, email)")
+      .select("id, created_at, leave_date, category, duration, duration_unit, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(300);
     for (const r of data ?? []) {
+      // @ts-expect-error — supabase nested join
+      const approver: string | null = r.employees?.offices?.approver_email ?? null;
       leaveRows.push({
         type: "leave",
         id: r.id,
@@ -256,6 +354,37 @@ export default async function HistoryPage({
         duration_unit: r.duration_unit,
         reason: r.reason,
         status: (r.status ?? "pending") as LeaveStatus,
+        approver_email: approver,
+      });
+    }
+  }
+
+  // Overtime requests
+  const overtimeRows: OvertimeRow[] = [];
+  if (type === "overtime" || type === "all") {
+    const { data } = await admin
+      .from("overtime_requests")
+      .select("id, created_at, ot_date, start_time, end_time, hours, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(300);
+    for (const r of data ?? []) {
+      // @ts-expect-error — supabase nested join
+      const approver: string | null = r.employees?.offices?.approver_email ?? null;
+      overtimeRows.push({
+        type: "overtime",
+        id: r.id,
+        at: r.created_at as string,
+        // @ts-expect-error — join
+        employee: r.employees,
+        ot_date: r.ot_date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        hours: Number(r.hours),
+        reason: r.reason,
+        status: (r.status ?? "pending") as OvertimeStatus,
+        approver_email: approver,
       });
     }
   }
@@ -279,7 +408,7 @@ export default async function HistoryPage({
     }
   }
 
-  const rows: Row[] = [...checkInsRows, ...leaveRows].sort(
+  const rows: Row[] = [...checkInsRows, ...leaveRows, ...overtimeRows].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
 
@@ -304,7 +433,7 @@ export default async function HistoryPage({
         <input type="hidden" name="type" value={type} />
         <FilterInput icon={Calendar} name="from" type="date" defaultValue={from.toISOString().slice(0, 10)} />
         <FilterInput icon={Calendar} name="to" type="date" defaultValue={to.toISOString().slice(0, 10)} />
-        {type !== "leave" && (
+        {(type === "checkin" || type === "all") && (
           <div className="relative flex-1 min-w-[140px]">
             <MapPin size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
             <select
@@ -324,11 +453,22 @@ export default async function HistoryPage({
         <Empty icon={Inbox} title="Không có dữ liệu" description="Điều chỉnh bộ lọc hoặc thời gian." />
       ) : (
         <div className="space-y-2">
-          {rows.map((r) =>
-            r.type === "checkin"
-              ? <CheckInCard key={`c:${r.id}`} row={r} onDelete={deleteCheckIn} hasLeave={!!r.employee && leaveCoverSet.has(`${r.employee.id}|${r.dateVN}`)} />
-              : <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} onDecide={decideLeave} />,
-          )}
+          {rows.map((r) => {
+            if (r.type === "checkin") {
+              return (
+                <CheckInCard
+                  key={`c:${r.id}`}
+                  row={r}
+                  onDelete={deleteCheckIn}
+                  hasLeave={!!r.employee && leaveCoverSet.has(`${r.employee.id}|${r.dateVN}`)}
+                />
+              );
+            }
+            if (r.type === "leave") {
+              return <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} onDecide={decideLeave} viewerEmail={viewerEmail} />;
+            }
+            return <OvertimeCard key={`o:${r.id}`} row={r} onDelete={deleteOvertime} onDecide={decideOvertime} viewerEmail={viewerEmail} />;
+          })}
         </div>
       )}
     </div>
@@ -346,13 +486,14 @@ function TypeTabs({
     { key: "all", label: "Tất cả", icon: Inbox },
     { key: "checkin", label: "Chấm công", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
+    { key: "overtime", label: "Overtime", icon: Hourglass },
   ];
   const make = (k: string) => {
     const p = new URLSearchParams();
     if (k !== "all") p.set("type", k);
     if (sp.from) p.set("from", sp.from);
     if (sp.to) p.set("to", sp.to);
-    if (sp.office && k !== "leave") p.set("office", sp.office);
+    if (sp.office && (k === "checkin" || k === "all")) p.set("office", sp.office);
     return `/admin/history${p.toString() ? "?" + p.toString() : ""}`;
   };
   return (
@@ -449,11 +590,14 @@ function LeaveCard({
   row: r,
   onDelete,
   onDecide,
+  viewerEmail,
 }: {
   row: LeaveRow;
   onDelete: (fd: FormData) => void;
   onDecide: (fd: FormData) => void;
+  viewerEmail: string;
 }) {
+  const canDecide = !r.approver_email || r.approver_email.toLowerCase() === viewerEmail;
   return (
     <div className="rounded-2xl border border-white/60 glass p-3">
       <div className="flex gap-3">
@@ -461,11 +605,16 @@ function LeaveCard({
           <CalendarOff size={22} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
               <CalendarOff size={10} /> Xin nghỉ
             </span>
             <LeaveStatusBadge status={r.status} />
+            {r.status === "pending" && r.approver_email && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                Duyệt: {r.approver_email}
+              </span>
+            )}
           </div>
           <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
           <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
@@ -483,30 +632,117 @@ function LeaveCard({
       </div>
 
       {r.status === "pending" && (
-        <div className="flex gap-2 pt-3 mt-3 border-t border-neutral-200/60">
-          <form action={onDecide} className="flex-1">
-            <input type="hidden" name="id" value={r.id} />
-            <input type="hidden" name="decision" value="approved" />
-            <button
-              type="submit"
-              className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition"
-            >
-              <Check size={14} /> Duyệt
-            </button>
-          </form>
-          <form action={onDecide} className="flex-1">
-            <input type="hidden" name="id" value={r.id} />
-            <input type="hidden" name="decision" value="rejected" />
-            <button
-              type="submit"
-              className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition"
-            >
-              <X size={14} /> Từ chối
-            </button>
-          </form>
-        </div>
+        canDecide ? (
+          <div className="flex gap-2 pt-3 mt-3 border-t border-neutral-200/60">
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="approved" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <Check size={14} /> Duyệt
+              </button>
+            </form>
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="rejected" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <X size={14} /> Từ chối
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-neutral-200/60 text-xs text-neutral-500">
+            <Lock size={12} /> Chỉ admin được gán cho chi nhánh này mới duyệt được.
+          </div>
+        )
       )}
     </div>
+  );
+}
+
+function OvertimeCard({
+  row: r,
+  onDelete,
+  onDecide,
+  viewerEmail,
+}: {
+  row: OvertimeRow;
+  onDelete: (fd: FormData) => void;
+  onDecide: (fd: FormData) => void;
+  viewerEmail: string;
+}) {
+  const canDecide = !r.approver_email || r.approver_email.toLowerCase() === viewerEmail;
+  return (
+    <div className="rounded-2xl border border-white/60 glass p-3">
+      <div className="flex gap-3">
+        <div className="h-16 w-16 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+          <Hourglass size={22} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
+              <Hourglass size={10} /> Overtime
+            </span>
+            <OvertimeStatusBadge status={r.status} />
+            {r.status === "pending" && r.approver_email && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                Duyệt: {r.approver_email}
+              </span>
+            )}
+          </div>
+          <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
+          <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
+          <div className="mt-1 text-xs text-neutral-700 tabular-nums">
+            <span className="font-medium">{formatVN(r.ot_date + "T00:00:00+07:00", "d/M")}</span>
+            <span className="text-neutral-500"> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {r.hours} giờ</span>
+          </div>
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
+        </div>
+        <form action={onDelete} className="self-start">
+          <input type="hidden" name="id" value={r.id} />
+          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+        </form>
+      </div>
+
+      {r.status === "pending" && (
+        canDecide ? (
+          <div className="flex gap-2 pt-3 mt-3 border-t border-neutral-200/60">
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="approved" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <Check size={14} /> Duyệt
+              </button>
+            </form>
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="rejected" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <X size={14} /> Từ chối
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-neutral-200/60 text-xs text-neutral-500">
+            <Lock size={12} /> Chỉ admin được gán cho chi nhánh này mới duyệt được.
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function OvertimeStatusBadge({ status }: { status: OvertimeStatus }) {
+  const map = {
+    pending:  { label: "Chờ duyệt", cls: "bg-neutral-100 text-neutral-600", Icon: Clock },
+    approved: { label: "Đã duyệt",  cls: "bg-emerald-50 text-emerald-700", Icon: Check },
+    rejected: { label: "Từ chối",    cls: "bg-rose-50 text-rose-700",       Icon: X },
+  }[status];
+  const { Icon } = map;
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded", map.cls)}>
+      <Icon size={10} /> {map.label}
+    </span>
   );
 }
 
