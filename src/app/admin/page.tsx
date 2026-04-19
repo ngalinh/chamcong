@@ -10,7 +10,12 @@ import {
   Bell,
   CalendarOff,
   CheckCircle2,
+  LogIn,
+  LogOut,
+  Wifi,
 } from "lucide-react";
+import type { CheckInKind } from "@/types/db";
+import { cn } from "@/lib/utils";
 import { Empty } from "@/components/ui/Empty";
 import { RunAuditButton } from "@/components/RunAuditButton";
 import { LEAVE_CATEGORIES } from "@/types/db";
@@ -28,6 +33,8 @@ type ActivityItem =
       employee: { name: string; email: string } | null;
       office: string | null;
       score: number | null;
+      checkKind: CheckInKind;
+      isRemote: boolean;
     }
   | {
       kind: "leave";
@@ -60,7 +67,7 @@ export default async function AdminHome() {
     admin.from("offices").select("id, name").eq("is_active", true).order("name"),
     admin
       .from("check_ins")
-      .select("id, checked_in_at, face_match_score, employees(name, email), offices(name)")
+      .select("id, kind, checked_in_at, face_match_score, employees(name, email), offices(name, is_remote)")
       .order("checked_in_at", { ascending: false })
       .limit(8),
     admin
@@ -97,6 +104,9 @@ export default async function AdminHome() {
       // @ts-expect-error — supabase join
       office: r.offices?.name ?? null,
       score: r.face_match_score,
+      checkKind: ((r as { kind?: CheckInKind }).kind ?? "in") as CheckInKind,
+      // @ts-expect-error — supabase join
+      isRemote: !!r.offices?.is_remote,
     })),
     ...(recentLeaves ?? []).map((r): ActivityItem => ({
       kind: "leave",
@@ -236,17 +246,24 @@ export default async function AdminHome() {
 function NotificationRow({ item }: { item: ActivityItem }) {
   const emp = item.employee;
   if (item.kind === "checkin") {
+    const isIn = item.checkKind === "in";
     return (
       <div className="p-3 flex items-center gap-3">
-        <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-          <Fingerprint size={16} />
+        <div
+          className={cn(
+            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+            item.isRemote ? "bg-violet-50 text-violet-600" : isIn ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-600",
+          )}
+        >
+          {item.isRemote ? <Wifi size={16} /> : isIn ? <LogIn size={16} /> : <LogOut size={16} />}
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-sm truncate">
-            {emp?.name ?? "?"} <span className="text-neutral-500 font-normal">đã chấm công</span>
+            {emp?.name ?? "?"} <span className="text-neutral-500 font-normal">đã {isIn ? "check-in" : "check-out"}</span>
           </div>
-          <div className="text-xs text-neutral-500 truncate">
-            {item.office ?? "—"} · {formatDistanceToNow(new Date(item.at), { addSuffix: true, locale: vi })}
+          <div className="text-xs text-neutral-500 truncate flex items-center gap-1">
+            {item.isRemote && <span className="text-[10px] font-medium px-1 py-0.5 rounded bg-violet-50 text-violet-700">Online</span>}
+            <span>{item.office ?? "—"} · {formatDistanceToNow(new Date(item.at), { addSuffix: true, locale: vi })}</span>
           </div>
         </div>
         {item.score != null && (

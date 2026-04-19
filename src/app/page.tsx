@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { NotificationToggle } from "@/components/NotificationToggle";
+import { MonthlyStatsCards } from "@/components/MonthlyStatsCards";
 import {
   Fingerprint,
   LogOut,
@@ -86,7 +87,7 @@ export default async function Home() {
     { data: lastCheckIn },
     { data: recentLeaves },
     { data: lateEarly },
-    { count: lateMonthCount },
+    { data: lateMonthList },
     { data: monthLeaves },
   ] = await Promise.all([
     admin
@@ -114,24 +115,51 @@ export default async function Home() {
       .limit(5),
     admin
       .from("check_ins")
-      .select("*", { count: "exact", head: true })
+      .select("id, checked_in_at, late_minutes, offices(name)")
       .eq("employee_id", employee.id)
       .eq("kind", "in")
       .gt("late_minutes", 5)
-      .gte("checked_in_at", monthStartIso),
+      .gte("checked_in_at", monthStartIso)
+      .order("checked_in_at", { ascending: false }),
     admin
       .from("leave_requests")
-      .select("category")
+      .select("id, leave_date, category, duration, duration_unit, status")
       .eq("employee_id", employee.id)
-      .gte("leave_date", monthStartDate),
+      .gte("leave_date", monthStartDate)
+      .order("leave_date", { ascending: false }),
   ]);
 
-  const onlineMonthCount = (monthLeaves ?? []).filter((l) =>
-    String(l.category).startsWith("online_"),
-  ).length;
-  const offMonthCount = (monthLeaves ?? []).filter((l) =>
-    String(l.category).startsWith("leave_"),
-  ).length;
+  const lateMonthCount = lateMonthList?.length ?? 0;
+  const lateItems = (lateMonthList ?? []).map((r) => ({
+    id: r.id,
+    at: r.checked_in_at as string,
+    // @ts-expect-error — supabase join
+    office: (r.offices?.name ?? null) as string | null,
+    minutes: r.late_minutes ?? 0,
+  }));
+
+  const onlineItems = (monthLeaves ?? [])
+    .filter((l) => String(l.category).startsWith("online_"))
+    .map((l) => ({
+      id: l.id,
+      leave_date: l.leave_date as string,
+      category: l.category as LeaveCategory,
+      duration: l.duration as number,
+      duration_unit: l.duration_unit as "day" | "hour",
+      status: l.status as LeaveStatus,
+    }));
+  const offItems = (monthLeaves ?? [])
+    .filter((l) => String(l.category).startsWith("leave_"))
+    .map((l) => ({
+      id: l.id,
+      leave_date: l.leave_date as string,
+      category: l.category as LeaveCategory,
+      duration: l.duration as number,
+      duration_unit: l.duration_unit as "day" | "hour",
+      status: l.status as LeaveStatus,
+    }));
+  const onlineMonthCount = onlineItems.length;
+  const offMonthCount = offItems.length;
 
   const notifications: NotifItem[] = [
     ...(recentLeaves ?? []).map((r): NotifItem => ({
@@ -210,16 +238,19 @@ export default async function Home() {
           <ActionTile href="/history"  Icon={History}     title="Lịch sử"     subtitle="Chấm công"     tone="sky" />
         </div>
 
-        {/* Thống kê tháng */}
+        {/* Thống kê tháng — bấm vào card xem chi tiết */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-500 mb-2 px-1 flex items-center gap-1.5">
             <TrendingUp size={12} /> Trong tháng {formatVN(nowForRange, "M/yyyy")}
           </h2>
-          <div className="grid grid-cols-3 gap-2.5">
-            <StatCard Icon={Clock}       label="Đi muộn"   value={lateMonthCount ?? 0} tone="rose" />
-            <StatCard Icon={Wifi}        label="Làm online" value={onlineMonthCount}    tone="indigo" />
-            <StatCard Icon={CalendarOff} label="Xin nghỉ"  value={offMonthCount}        tone="amber" />
-          </div>
+          <MonthlyStatsCards
+            lateCount={lateMonthCount}
+            onlineCount={onlineMonthCount}
+            offCount={offMonthCount}
+            lateItems={lateItems}
+            onlineItems={onlineItems}
+            offItems={offItems}
+          />
         </section>
 
         <NotificationToggle />
@@ -354,13 +385,11 @@ function NotifRow({ item: n }: { item: NotifItem }) {
   );
 }
 
-const TONE: Record<string, { iconBg: string; iconText: string; valueText: string }> = {
-  amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600",  valueText: "text-amber-700"  },
-  sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600",    valueText: "text-sky-700"    },
-  violet: { iconBg: "bg-violet-50", iconText: "text-violet-600", valueText: "text-violet-700" },
-  rose:   { iconBg: "bg-rose-50",   iconText: "text-rose-600",   valueText: "text-rose-700"   },
-  indigo: { iconBg: "bg-indigo-50", iconText: "text-indigo-600", valueText: "text-indigo-700" },
-};
+const TILE_TONE = {
+  amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600"  },
+  sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600"    },
+  violet: { iconBg: "bg-violet-50", iconText: "text-violet-600" },
+} as const;
 
 function ActionTile({
   href, Icon, title, subtitle, tone,
@@ -369,9 +398,9 @@ function ActionTile({
   Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
   title: string;
   subtitle: string;
-  tone: keyof typeof TONE;
+  tone: keyof typeof TILE_TONE;
 }) {
-  const t = TONE[tone];
+  const t = TILE_TONE[tone];
   return (
     <Link href={href} className="rounded-2xl glass border border-white/60 p-3 hover:bg-white/80 transition">
       <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center mb-2", t.iconBg, t.iconText)}>
@@ -380,25 +409,5 @@ function ActionTile({
       <p className="font-medium text-sm leading-tight">{title}</p>
       <p className="text-[11px] text-neutral-500 leading-tight">{subtitle}</p>
     </Link>
-  );
-}
-
-function StatCard({
-  Icon, label, value, tone,
-}: {
-  Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-  label: string;
-  value: number;
-  tone: keyof typeof TONE;
-}) {
-  const t = TONE[tone];
-  return (
-    <div className="rounded-2xl glass border border-white/60 p-3">
-      <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 mb-1">
-        <Icon size={12} strokeWidth={1.8} />
-        <span className="truncate">{label}</span>
-      </div>
-      <div className={cn("text-2xl font-semibold tabular-nums", t.valueText)}>{value}</div>
-    </div>
   );
 }

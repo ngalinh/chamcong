@@ -66,38 +66,41 @@ export default function OvertimeRequestForm() {
   return (
     <form onSubmit={submit} className="rounded-2xl glass border border-white/60 p-5 space-y-4">
       <Row icon={Calendar} label="Ngày tháng">
-        <input
-          type="date"
-          required
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
-          style={{ WebkitAppearance: "none" }}
-        />
+        <DateTimeBox>
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm"
+          />
+        </DateTimeBox>
       </Row>
 
       <Row icon={Clock} label="Thời gian bắt đầu">
-        <input
-          type="time"
-          required
-          value={start}
-          step={300}
-          onChange={(e) => setStart(e.target.value)}
-          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-base font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
-          style={{ WebkitAppearance: "none" }}
-        />
+        <DateTimeBox>
+          <input
+            type="time"
+            required
+            value={start}
+            step={300}
+            onChange={(e) => setStart(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
+          />
+        </DateTimeBox>
       </Row>
 
       <Row icon={Clock} label="Thời gian kết thúc">
-        <input
-          type="time"
-          required
-          value={end}
-          step={300}
-          onChange={(e) => setEnd(e.target.value)}
-          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-base font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
-          style={{ WebkitAppearance: "none" }}
-        />
+        <DateTimeBox>
+          <input
+            type="time"
+            required
+            value={end}
+            step={300}
+            onChange={(e) => setEnd(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
+          />
+        </DateTimeBox>
       </Row>
 
       <Row icon={Hourglass} label="Tổng thời gian">
@@ -148,5 +151,19 @@ function Row({
       </div>
       {children}
     </label>
+  );
+}
+
+/**
+ * Wrapper cố định 44px chiều cao cho native date/time input.
+ * iOS Safari render input type="date"/"time" với chiều cao tự ý
+ * (thường > 80px) → đặt input bên trong 1 box flex-center, input bg
+ * trong suốt + border 0 để box điều khiển look & feel.
+ */
+function DateTimeBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 flex items-center focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/5 transition">
+      {children}
+    </div>
   );
 }

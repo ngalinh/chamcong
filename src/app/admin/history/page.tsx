@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Hourglass,
   Lock,
+  Wifi,
 } from "lucide-react";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -46,6 +47,7 @@ type CheckInRow = {
   selfie_path: string;
   signedUrl: string;
   dateVN: string;
+  isRemote: boolean;
 };
 
 type LeaveRow = {
@@ -299,7 +301,7 @@ export default async function HistoryPage({
   if (type !== "leave") {
     let q = admin
       .from("check_ins")
-      .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name)")
+      .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name, is_remote)")
       .gte("checked_in_at", from.toISOString())
       .lte("checked_in_at", to.toISOString())
       .order("checked_in_at", { ascending: false })
@@ -329,6 +331,8 @@ export default async function HistoryPage({
         selfie_path: r.selfie_path ?? "",
         signedUrl,
         dateVN: dateInVN(at),
+        // @ts-expect-error — join
+        isRemote: !!r.offices?.is_remote,
       });
     }
   }
@@ -543,13 +547,27 @@ function CheckInCard({
     )}>
       {r.signedUrl ? (
         <Image src={r.signedUrl} width={64} height={64} alt="" className="rounded-xl object-cover h-16 w-16 shrink-0" unoptimized />
-      ) : <div className="h-16 w-16 rounded-xl bg-neutral-100 shrink-0" />}
+      ) : r.isRemote ? (
+        <div className="h-16 w-16 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+          <Wifi size={26} />
+        </div>
+      ) : (
+        <div className="h-16 w-16 rounded-xl bg-neutral-100 shrink-0" />
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <KindBadge kind={r.kind} />
-          <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", matchOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
-            khớp {r.face_match_score?.toFixed(2) ?? "-"}
-          </span>
+          {r.isRemote ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
+              <Wifi size={10} /> Online
+            </span>
+          ) : (
+            r.face_match_score != null && (
+              <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", matchOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
+                khớp {r.face_match_score.toFixed(2)}
+              </span>
+            )
+          )}
           {r.kind === "in" && (r.late_minutes ?? 0) > 0 && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
               Muộn {r.late_minutes}p

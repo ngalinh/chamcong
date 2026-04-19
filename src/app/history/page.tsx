@@ -13,7 +13,11 @@ import {
   Clock,
   X,
   MapPin,
+  LogIn,
+  LogOut,
+  Wifi,
 } from "lucide-react";
+import type { CheckInKind } from "@/types/db";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -28,10 +32,12 @@ type CheckInRow = {
   type: "checkin";
   id: string;
   at: string;
+  kind: CheckInKind;
   office: string | null;
   distance_m: number | null;
   face_match_score: number | null;
   signedUrl: string;
+  isRemote: boolean;
 };
 
 type LeaveRow = {
@@ -76,7 +82,7 @@ export default async function MyHistoryPage({
   if (type !== "leave") {
     const { data } = await admin
       .from("check_ins")
-      .select("id, checked_in_at, distance_m, face_match_score, selfie_path, offices(name)")
+      .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, offices(name, is_remote)")
       .eq("employee_id", employee.id)
       .gte("checked_in_at", from.toISOString())
       .order("checked_in_at", { ascending: false })
@@ -91,11 +97,14 @@ export default async function MyHistoryPage({
         type: "checkin",
         id: r.id,
         at: r.checked_in_at as string,
+        kind: (r.kind ?? "in") as CheckInKind,
         // @ts-expect-error — join
         office: r.offices?.name ?? null,
         distance_m: r.distance_m,
         face_match_score: r.face_match_score,
         signedUrl,
+        // @ts-expect-error — join
+        isRemote: !!r.offices?.is_remote,
       });
     }
   }
@@ -185,20 +194,36 @@ function TypeTabs({ current }: { current: string }) {
 }
 
 function CheckInCard({ row: r }: { row: CheckInRow }) {
+  const isIn = r.kind === "in";
   return (
     <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
       {r.signedUrl ? (
         <Image src={r.signedUrl} width={56} height={56} alt="" className="rounded-xl object-cover h-14 w-14 shrink-0" unoptimized />
+      ) : r.isRemote ? (
+        <div className="h-14 w-14 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+          <Wifi size={20} />
+        </div>
       ) : (
         <div className="h-14 w-14 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
           <Fingerprint size={18} />
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-            <Fingerprint size={10} /> Chấm công
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
+              isIn ? "bg-emerald-50 text-emerald-700" : "bg-indigo-50 text-indigo-700",
+            )}
+          >
+            {isIn ? <LogIn size={10} /> : <LogOut size={10} />}
+            {isIn ? "Check-in" : "Check-out"}
           </span>
+          {r.isRemote && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
+              <Wifi size={10} /> Online
+            </span>
+          )}
         </div>
         <div className="mt-0.5 text-sm font-medium truncate flex items-center gap-1">
           <MapPin size={12} className="text-neutral-400" />
