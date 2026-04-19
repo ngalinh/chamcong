@@ -101,6 +101,76 @@ async function deleteLeave(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function decideLeave(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin, name, email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision")); // 'approved' | 'rejected'
+  if (decision !== "approved" && decision !== "rejected") throw new Error("Decision không hợp lệ");
+
+  const admin = createAdminClient();
+  const { data: leave } = await admin
+    .from("leave_requests")
+    .select("id, status, leave_date, category, duration, duration_unit, reason, employees(name, email)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!leave || leave.status !== "pending") return;
+
+  await admin
+    .from("leave_requests")
+    .update({
+      status: decision,
+      approved_at: new Date().toISOString(),
+      approved_by: me?.name ?? user.email,
+    })
+    .eq("id", id);
+
+  // Gửi email nếu duyệt
+  if (decision === "approved") {
+    // @ts-expect-error — supabase join
+    const emp = leave.employees as { name: string; email: string } | null;
+    if (emp?.email) {
+      const { sendMail } = await import("@/lib/email");
+      const { LEAVE_CATEGORIES } = await import("@/types/db");
+      const { formatVN } = await import("@/lib/time");
+      const htmlEscape = (s: string) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const dateStr = formatVN(leave.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy");
+      const html = `
+        <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+          <h2 style="margin: 0 0 8px; font-size: 20px;">Đơn xin nghỉ của bạn đã được duyệt ✅</h2>
+          <p style="color: #555; margin: 0 0 16px;">Xin chào <b>${htmlEscape(emp.name)}</b>,</p>
+          <p style="color: #555; margin: 0 0 20px;">Đơn xin nghỉ của bạn vừa được quản lý duyệt. Chi tiết bên dưới:</p>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #fafafa; border-radius: 8px; overflow: hidden;">
+            <tr><td style="padding: 12px 16px; color: #666; width: 120px;">Ngày nghỉ</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(dateStr)}</td></tr>
+            <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Loại</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(LEAVE_CATEGORIES[leave.category as keyof typeof LEAVE_CATEGORIES])}</td></tr>
+            <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Thời gian</td><td style="padding: 12px 16px; font-weight: 500;">${leave.duration} ${leave.duration_unit === "day" ? "ngày" : "giờ"}</td></tr>
+            ${leave.reason ? `<tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Lý do</td><td style="padding: 12px 16px;">${htmlEscape(leave.reason)}</td></tr>` : ""}
+          </table>
+          <p style="color: #999; font-size: 13px; margin: 24px 0 0;">Email tự động — vui lòng không reply.<br/>Chấm công Basso</p>
+        </div>
+      `;
+      await sendMail({
+        to: emp.email,
+        subject: "✅ Đơn xin nghỉ đã được duyệt",
+        html,
+      }).catch((e) => console.error("[email] failed", e));
+    }
+  }
+
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+}
+
 export default async function HistoryPage({
   searchParams,
 }: {
@@ -245,7 +315,7 @@ export default async function HistoryPage({
           {rows.map((r) =>
             r.type === "checkin"
               ? <CheckInCard key={`c:${r.id}`} row={r} onDelete={deleteCheckIn} hasLeave={!!r.employee && leaveCoverSet.has(`${r.employee.id}|${r.dateVN}`)} />
-              : <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} />,
+              : <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} onDecide={decideLeave} />,
           )}
         </div>
       )}
@@ -363,32 +433,67 @@ function CheckInCard({
   );
 }
 
-function LeaveCard({ row: r, onDelete }: { row: LeaveRow; onDelete: (fd: FormData) => void }) {
+function LeaveCard({
+  row: r,
+  onDelete,
+  onDecide,
+}: {
+  row: LeaveRow;
+  onDelete: (fd: FormData) => void;
+  onDecide: (fd: FormData) => void;
+}) {
   return (
-    <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
-      <div className="h-16 w-16 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-        <CalendarOff size={22} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-            <CalendarOff size={10} /> Xin nghỉ
-          </span>
-          <LeaveStatusBadge status={r.status} />
+    <div className="rounded-2xl border border-white/60 glass p-3">
+      <div className="flex gap-3">
+        <div className="h-16 w-16 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <CalendarOff size={22} />
         </div>
-        <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
-        <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
-        <div className="mt-1 text-xs text-neutral-700">
-          <span className="font-medium">{LEAVE_CATEGORIES[r.category]}</span>
-          <span className="text-neutral-500"> · ngày {formatVN(r.leave_date + "T00:00:00+07:00", "d/M")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+              <CalendarOff size={10} /> Xin nghỉ
+            </span>
+            <LeaveStatusBadge status={r.status} />
+          </div>
+          <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
+          <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
+          <div className="mt-1 text-xs text-neutral-700">
+            <span className="font-medium">{LEAVE_CATEGORIES[r.category]}</span>
+            <span className="text-neutral-500"> · ngày {formatVN(r.leave_date + "T00:00:00+07:00", "d/M")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
+          </div>
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
         </div>
-        {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
-        <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
+        <form action={onDelete} className="self-start">
+          <input type="hidden" name="id" value={r.id} />
+          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+        </form>
       </div>
-      <form action={onDelete} className="self-start">
-        <input type="hidden" name="id" value={r.id} />
-        <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
-      </form>
+
+      {r.status === "pending" && (
+        <div className="flex gap-2 pt-3 mt-3 border-t border-neutral-200/60">
+          <form action={onDecide} className="flex-1">
+            <input type="hidden" name="id" value={r.id} />
+            <input type="hidden" name="decision" value="approved" />
+            <button
+              type="submit"
+              className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition"
+            >
+              <Check size={14} /> Duyệt
+            </button>
+          </form>
+          <form action={onDecide} className="flex-1">
+            <input type="hidden" name="id" value={r.id} />
+            <input type="hidden" name="decision" value="rejected" />
+            <button
+              type="submit"
+              className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition"
+            >
+              <X size={14} /> Từ chối
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

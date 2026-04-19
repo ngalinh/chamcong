@@ -2,8 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendTelegram, htmlEscape } from "@/lib/telegram";
-import { LEAVE_CATEGORIES } from "@/types/db";
 
 export const runtime = "nodejs";
 
@@ -42,58 +40,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const data = parsed.data;
 
-  const { data: inserted, error } = await admin
-    .from("leave_requests")
-    .insert({
-      employee_id: emp.id,
-      leave_date: data.leave_date,
-      category: data.category,
-      duration: data.duration,
-      duration_unit: data.duration_unit,
-      reason: data.reason ?? null,
-    })
-    .select("id")
-    .single();
-  if (error || !inserted) return NextResponse.json({ error: error?.message ?? "Lỗi DB" }, { status: 500 });
+  const { error } = await admin.from("leave_requests").insert({
+    employee_id: emp.id,
+    leave_date: data.leave_date,
+    category: data.category,
+    duration: data.duration,
+    duration_unit: data.duration_unit,
+    reason: data.reason ?? null,
+  });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Auto-resolve alert missing_checkin nếu có
+  // Tự resolve alert missing_checkin nếu có
   await admin
     .from("alerts")
     .update({ resolved: true })
     .eq("employee_id", emp.id)
     .eq("alert_date", data.leave_date)
     .eq("kind", "missing_checkin");
-
-  // Gửi Telegram với nút Xác nhận
-  const lines = [
-    "🗓 <b>Đơn xin nghỉ mới</b>",
-    `👤 ${htmlEscape(emp.name)} (${htmlEscape(emp.email)})`,
-    `📅 Ngày: <b>${htmlEscape(data.leave_date)}</b>`,
-    `🏷 Loại: ${htmlEscape(LEAVE_CATEGORIES[data.category])}`,
-    `⏱ Thời gian: <b>${data.duration} ${data.duration_unit === "day" ? "ngày" : "giờ"}</b>`,
-  ];
-  if (data.reason) lines.push(`💬 Lý do: ${htmlEscape(data.reason)}`);
-
-  const result = await sendTelegram(lines.join("\n"), {
-    replyMarkup: {
-      inline_keyboard: [[
-        { text: "✅ Xác nhận duyệt", callback_data: `approve:${inserted.id}` },
-        { text: "❌ Từ chối",         callback_data: `reject:${inserted.id}` },
-      ]],
-    },
-  });
-
-  // Lưu message_id để webhook update lại tin nhắn sau khi admin click
-  if ("messages" in result && result.messages.length > 0) {
-    const first = result.messages[0];
-    await admin
-      .from("leave_requests")
-      .update({
-        telegram_message_id: first.message_id,
-        telegram_chat_id: Number(first.chat_id),
-      })
-      .eq("id", inserted.id);
-  }
 
   return NextResponse.json({ ok: true });
 }

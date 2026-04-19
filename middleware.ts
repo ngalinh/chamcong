@@ -12,7 +12,6 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/models") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/icons") ||
-    pathname === "/api/telegram/webhook" ||
     pathname === "/api/admin/audit-absences";
   if (isPublic) return NextResponse.next();
 
