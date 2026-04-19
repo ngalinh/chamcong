@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { BadgeClearer } from "@/components/BadgeClearer";
 
 export const metadata: Metadata = {
   title: "Chấm công",
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <ServiceWorkerRegister />
+        <BadgeClearer />
       </body>
     </html>
   );
