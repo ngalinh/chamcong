@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPushToAdmins } from "@/lib/push";
+import { LEAVE_CATEGORIES } from "@/types/db";
 
 export const runtime = "nodejs";
 
@@ -57,6 +59,14 @@ export async function POST(request: NextRequest) {
     .eq("employee_id", emp.id)
     .eq("alert_date", data.leave_date)
     .eq("kind", "missing_checkin");
+
+  // Push notification tới admin (fire-and-forget)
+  sendPushToAdmins({
+    title: "📋 Đơn xin nghỉ mới",
+    body: `${emp.name}: ${LEAVE_CATEGORIES[data.category]} — ngày ${data.leave_date} (${data.duration} ${data.duration_unit === "day" ? "ngày" : "giờ"})`,
+    url: "/admin/history?type=leave",
+    tag: `leave-new-${emp.id}`,
+  }).catch((e) => console.error("[push] admin notify failed", e));
 
   return NextResponse.json({ ok: true });
 }

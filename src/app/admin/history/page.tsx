@@ -120,7 +120,7 @@ async function decideLeave(formData: FormData) {
   const admin = createAdminClient();
   const { data: leave } = await admin
     .from("leave_requests")
-    .select("id, status, leave_date, category, duration, duration_unit, reason, employees(name, email)")
+    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, employees(name, email)")
     .eq("id", id)
     .maybeSingle();
   if (!leave || leave.status !== "pending") return;
@@ -133,6 +133,18 @@ async function decideLeave(formData: FormData) {
       approved_by: me?.name ?? user.email,
     })
     .eq("id", id);
+
+  // Push notification cho nhân viên (fire-and-forget)
+  {
+    const { sendPushToEmployee } = await import("@/lib/push");
+    const { formatVN: fmt } = await import("@/lib/time");
+    sendPushToEmployee(String(leave.employee_id), {
+      title: decision === "approved" ? "✅ Đơn xin nghỉ đã được duyệt" : "❌ Đơn xin nghỉ bị từ chối",
+      body: `Ngày ${fmt(leave.leave_date + "T00:00:00+07:00", "d/M/yyyy")} · ${leave.duration} ${leave.duration_unit === "day" ? "ngày" : "giờ"}`,
+      url: "/history",
+      tag: `leave-${id}`,
+    }).catch((e) => console.error("[push] employee notify failed", e));
+  }
 
   // Gửi email nếu duyệt
   if (decision === "approved") {

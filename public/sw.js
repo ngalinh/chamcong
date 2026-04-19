@@ -1,16 +1,14 @@
-// Service worker tối giản. Cache-bust khi bump VERSION — user tự động dùng bản mới.
-const VERSION = "v5";
+// Service worker — PWA asset cache + Web Push notifications.
+const VERSION = "v6";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 
-self.addEventListener("install", (e) => {
-  // Active ngay, không đợi tab cũ đóng
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     (async () => {
-      // Xoá tất cả cache cũ (version khác) — giải phóng 404 cache
       const names = await caches.keys();
       await Promise.all(
         names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)),
@@ -22,8 +20,6 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  // Chỉ cache static assets nặng (face-api models + icons) để bật lại offline nhanh.
-  // Các request khác → network-first, không cache (để HTML/JS luôn mới nhất).
   if (url.pathname.startsWith("/models/") || url.pathname.startsWith("/icons/")) {
     e.respondWith(
       (async () => {
@@ -32,10 +28,7 @@ self.addEventListener("fetch", (e) => {
         if (hit) return hit;
         try {
           const res = await fetch(e.request);
-          // CHỈ cache response thành công — KHÔNG cache 404/500/opaque
-          if (res.ok && res.status === 200) {
-            cache.put(e.request, res.clone());
-          }
+          if (res.ok && res.status === 200) cache.put(e.request, res.clone());
           return res;
         } catch {
           return hit ?? Response.error();
@@ -45,7 +38,47 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
-// Cho phép client trigger update ngay (dùng cho nút Làm mới nếu có)
 self.addEventListener("message", (e) => {
   if (e.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+// ---- Web Push ---------------------------------------------------
+self.addEventListener("push", (e) => {
+  let payload = { title: "Chấm công", body: "Bạn có thông báo mới" };
+  if (e.data) {
+    try {
+      payload = { ...payload, ...e.data.json() };
+    } catch {
+      payload.body = e.data.text();
+    }
+  }
+  e.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      tag: payload.tag,
+      data: { url: payload.url || "/" },
+      requireInteraction: false,
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const targetUrl = e.notification.data?.url || "/";
+  e.waitUntil(
+    (async () => {
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // Nếu đã có tab/PWA đang mở → focus + navigate
+      for (const c of all) {
+        try {
+          await c.focus();
+          if ("navigate" in c) await c.navigate(targetUrl);
+          return;
+        } catch {}
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+    })(),
+  );
 });

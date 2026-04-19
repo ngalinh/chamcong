@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
+import { NotificationToggle } from "@/components/NotificationToggle";
 import { Fingerprint, LogOut, Shield, CheckCircle2, ArrowRight, CalendarOff, History } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -86,6 +87,8 @@ export default async function Home() {
             <p className="text-xs text-neutral-500">Chấm công, xin nghỉ</p>
           </Link>
         </div>
+
+        <NotificationToggle />
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">
