@@ -2,8 +2,24 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
 
+  // Skip auth hoàn toàn cho các static/public paths — không gọi Supabase
+  const isPublic =
+    pathname === "/manifest.json" ||
+    pathname === "/sw.js" ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/models") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/icons") ||
+    pathname === "/api/telegram/webhook" ||
+    pathname === "/api/admin/audit-absences";
+  if (isPublic) return NextResponse.next();
+
+  const isAuthRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/auth");
+
+  let response = NextResponse.next({ request });
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -23,25 +39,11 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Dùng getUser() nhưng Supabase SSR cache phiên trong cookies — chỉ network call
+  // khi token gần hết hạn. Page sẽ tự getUser() lại để verify bảo mật.
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-  const isAuthRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/auth");
-  const isPublic =
-    pathname === "/manifest.json" ||
-    pathname === "/sw.js" ||
-    pathname === "/favicon.ico" ||
-    pathname.startsWith("/models") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/icons") ||
-    // Webhook/cron endpoints xác thực bằng secret header, không cần session
-    pathname === "/api/telegram/webhook" ||
-    pathname === "/api/admin/audit-absences";
-
-  if (!user && !isAuthRoute && !isPublic) {
+  if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
