@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
-import { Fingerprint, LogOut, Shield, CheckCircle2, ArrowRight, CalendarOff } from "lucide-react";
+import { Fingerprint, LogOut, Shield, CheckCircle2, ArrowRight, CalendarOff, History } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -64,19 +64,28 @@ export default async function Home() {
       </header>
 
       <div className="relative flex-1 flex flex-col justify-center gap-6 max-w-md w-full mx-auto py-8">
-        <Link
-          href="/leave"
-          className="flex items-center gap-3 rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
-        >
-          <div className="h-11 w-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-            <CalendarOff size={20} strokeWidth={1.8} />
-          </div>
-          <div className="flex-1 min-w-0">
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/leave"
+            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
+          >
+            <div className="h-11 w-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-2">
+              <CalendarOff size={20} strokeWidth={1.8} />
+            </div>
             <p className="font-medium">Xin nghỉ</p>
-            <p className="text-xs text-neutral-500">Nghỉ phép, WFH, nghỉ giờ…</p>
-          </div>
-          <ArrowRight size={16} className="text-neutral-400" />
-        </Link>
+            <p className="text-xs text-neutral-500">WFH, trừ phép…</p>
+          </Link>
+          <Link
+            href="/history"
+            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
+          >
+            <div className="h-11 w-11 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center mb-2">
+              <History size={20} strokeWidth={1.8} />
+            </div>
+            <p className="font-medium">Lịch sử</p>
+            <p className="text-xs text-neutral-500">Chấm công, xin nghỉ</p>
+          </Link>
+        </div>
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">

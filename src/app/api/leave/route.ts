@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTelegram, htmlEscape } from "@/lib/telegram";
 import { LEAVE_CATEGORIES } from "@/types/db";
 
+export const runtime = "nodejs";
+
 const Schema = z.object({
   leave_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ"),
   category: z.enum([
@@ -22,9 +24,7 @@ const Schema = z.object({
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const admin = createAdminClient();
@@ -42,17 +42,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const data = parsed.data;
 
-  const { error } = await admin.from("leave_requests").insert({
-    employee_id: emp.id,
-    leave_date: data.leave_date,
-    category: data.category,
-    duration: data.duration,
-    duration_unit: data.duration_unit,
-    reason: data.reason ?? null,
-  });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data: inserted, error } = await admin
+    .from("leave_requests")
+    .insert({
+      employee_id: emp.id,
+      leave_date: data.leave_date,
+      category: data.category,
+      duration: data.duration,
+      duration_unit: data.duration_unit,
+      reason: data.reason ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !inserted) return NextResponse.json({ error: error?.message ?? "Lỗi DB" }, { status: 500 });
 
-  // Nếu có alert missing_checkin cho ngày này → auto resolve
+  // Auto-resolve alert missing_checkin nếu có
   await admin
     .from("alerts")
     .update({ resolved: true })
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
     .eq("alert_date", data.leave_date)
     .eq("kind", "missing_checkin");
 
-  // Bắn Telegram (fail silent — không block response)
+  // Gửi Telegram với nút Xác nhận
   const lines = [
     "🗓 <b>Đơn xin nghỉ mới</b>",
     `👤 ${htmlEscape(emp.name)} (${htmlEscape(emp.email)})`,
@@ -69,7 +73,27 @@ export async function POST(request: NextRequest) {
     `⏱ Thời gian: <b>${data.duration} ${data.duration_unit === "day" ? "ngày" : "giờ"}</b>`,
   ];
   if (data.reason) lines.push(`💬 Lý do: ${htmlEscape(data.reason)}`);
-  sendTelegram(lines.join("\n")).catch(() => {});
+
+  const result = await sendTelegram(lines.join("\n"), {
+    replyMarkup: {
+      inline_keyboard: [[
+        { text: "✅ Xác nhận duyệt", callback_data: `approve:${inserted.id}` },
+        { text: "❌ Từ chối",         callback_data: `reject:${inserted.id}` },
+      ]],
+    },
+  });
+
+  // Lưu message_id để webhook update lại tin nhắn sau khi admin click
+  if ("messages" in result && result.messages.length > 0) {
+    const first = result.messages[0];
+    await admin
+      .from("leave_requests")
+      .update({
+        telegram_message_id: first.message_id,
+        telegram_chat_id: Number(first.chat_id),
+      })
+      .eq("id", inserted.id);
+  }
 
   return NextResponse.json({ ok: true });
 }

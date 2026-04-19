@@ -208,7 +208,7 @@ export default async function AdminHome() {
             <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">Notification</h2>
             <Bell size={12} className="text-neutral-400" />
           </div>
-          <Link href="/admin/check-ins" className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-0.5">
+          <Link href="/admin/history" className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-0.5">
             Xem tất cả <ArrowRight size={12} />
           </Link>
         </div>

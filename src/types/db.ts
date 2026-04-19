@@ -36,6 +36,8 @@ export type LeaveCategory = keyof typeof LEAVE_CATEGORIES;
 
 export type DurationUnit = "day" | "hour";
 
+export type LeaveStatus = "pending" | "approved" | "rejected";
+
 export type LeaveRequest = {
   id: string;
   employee_id: string;
@@ -44,6 +46,11 @@ export type LeaveRequest = {
   duration: number;
   duration_unit: DurationUnit;
   reason: string | null;
+  status: LeaveStatus;
+  approved_at: string | null;
+  approved_by: string | null;
+  telegram_message_id: number | null;
+  telegram_chat_id: number | null;
   created_at: string;
 };
 

@@ -9,7 +9,7 @@ const items = [
   { href: "/admin",           label: "Tổng quan", icon: LayoutDashboard, match: (p: string) => p === "/admin" },
   { href: "/admin/employees", label: "Nhân viên", icon: Users,           match: (p: string) => p.startsWith("/admin/employees") },
   { href: "/checkin",         label: "Chấm công", icon: Fingerprint,     match: (p: string) => p.startsWith("/checkin"), highlight: true },
-  { href: "/admin/check-ins", label: "Lịch sử",   icon: ListChecks,      match: (p: string) => p.startsWith("/admin/check-ins") },
+  { href: "/admin/history",   label: "Lịch sử",   icon: ListChecks,      match: (p: string) => p.startsWith("/admin/history") },
   { href: "/admin/settings",  label: "Chi nhánh", icon: Building2,       match: (p: string) => p.startsWith("/admin/settings") },
 ];
 
