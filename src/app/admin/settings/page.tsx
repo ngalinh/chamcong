@@ -18,6 +18,8 @@ async function upsertOffice(formData: FormData) {
     longitude: Number(formData.get("longitude")),
     radius_m: Number(formData.get("radius_m")),
     timezone: String(formData.get("timezone") ?? "Asia/Ho_Chi_Minh"),
+    work_start_time: String(formData.get("work_start_time") ?? "09:00"),
+    work_end_time: String(formData.get("work_end_time") ?? "18:00"),
     is_active: formData.get("is_active") === "on",
   };
   if (id) await admin.from("offices").update(payload).eq("id", id);
@@ -107,6 +109,23 @@ function OfficeForm({
       <div className="grid grid-cols-2 gap-3">
         <Field label="Latitude" name="latitude" type="number" step="any" required defaultValue={office?.latitude} />
         <Field label="Longitude" name="longitude" type="number" step="any" required defaultValue={office?.longitude} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field
+          label="Giờ bắt đầu làm"
+          name="work_start_time"
+          type="time"
+          required
+          defaultValue={office?.work_start_time?.slice(0, 5) ?? "09:00"}
+        />
+        <Field
+          label="Giờ tan làm"
+          name="work_end_time"
+          type="time"
+          required
+          defaultValue={office?.work_end_time?.slice(0, 5) ?? "18:00"}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 items-end">

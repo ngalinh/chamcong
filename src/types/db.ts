@@ -6,6 +6,8 @@ export type Office = {
   longitude: number;
   radius_m: number;
   timezone: string;
+  work_start_time: string; // "HH:MM:SS"
+  work_end_time: string;   // "HH:MM:SS"
   is_active: boolean;
   created_at: string;
 };
@@ -64,10 +66,13 @@ export type Alert = {
   created_at: string;
 };
 
+export type CheckInKind = "in" | "out";
+
 export type CheckIn = {
   id: string;
   employee_id: string;
   office_id: string | null;
+  kind: CheckInKind;
   checked_in_at: string;
   selfie_path: string;
   latitude: number | null;
@@ -75,6 +80,8 @@ export type CheckIn = {
   distance_m: number | null;
   face_match_score: number | null;
   liveness_passed: boolean | null;
+  late_minutes: number | null;
+  early_minutes: number | null;
   user_agent: string | null;
   created_at: string;
 };

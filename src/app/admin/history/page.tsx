@@ -4,7 +4,7 @@ import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus } from "@/types/db";
+import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind } from "@/types/db";
 import {
   Inbox,
   Trash2,
@@ -16,6 +16,9 @@ import {
   Check,
   X,
   Clock,
+  LogIn,
+  LogOut,
+  AlertTriangle,
 } from "lucide-react";
 import Image from "next/image";
 import { format, formatDistanceToNow } from "date-fns";
@@ -30,12 +33,16 @@ type CheckInRow = {
   type: "checkin";
   id: string;
   at: string;
-  employee: { name: string; email: string } | null;
+  kind: CheckInKind;
+  employee: { id: string; name: string; email: string } | null;
   office: string | null;
   distance_m: number | null;
   face_match_score: number | null;
+  late_minutes: number | null;
+  early_minutes: number | null;
   selfie_path: string;
   signedUrl: string;
+  dateVN: string;
 };
 
 type LeaveRow = {
@@ -52,6 +59,13 @@ type LeaveRow = {
 };
 
 type Row = CheckInRow | LeaveRow;
+
+function dateInVN(iso: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date(iso));
+}
 
 async function deleteCheckIn(formData: FormData) {
   "use server";
@@ -111,7 +125,7 @@ export default async function HistoryPage({
   if (type !== "leave") {
     let q = admin
       .from("check_ins")
-      .select("id, checked_in_at, distance_m, face_match_score, selfie_path, office_id, employees(name, email), offices(name)")
+      .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name)")
       .gte("checked_in_at", from.toISOString())
       .lte("checked_in_at", to.toISOString())
       .order("checked_in_at", { ascending: false })
@@ -120,32 +134,35 @@ export default async function HistoryPage({
     const { data } = await q;
     for (const r of data ?? []) {
       const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
+      const at = r.checked_in_at as string;
       checkInsRows.push({
         type: "checkin",
         id: r.id,
-        at: r.checked_in_at as string,
+        at,
+        kind: (r.kind ?? "in") as CheckInKind,
         // @ts-expect-error — join
         employee: r.employees,
         // @ts-expect-error — join
         office: r.offices?.name ?? null,
         distance_m: r.distance_m,
         face_match_score: r.face_match_score,
+        late_minutes: r.late_minutes,
+        early_minutes: r.early_minutes,
         selfie_path: r.selfie_path,
         signedUrl: signed?.signedUrl ?? "",
+        dateVN: dateInVN(at),
       });
     }
   }
 
-  // Leave requests
+  // Leave requests — filter theo ngày TẠO đơn (created_at), không phải leave_date
   const leaveRows: LeaveRow[] = [];
   if (type !== "checkin") {
-    const fromDate = from.toISOString().slice(0, 10);
-    const toDate = to.toISOString().slice(0, 10);
     const { data } = await admin
       .from("leave_requests")
       .select("id, created_at, leave_date, category, duration, duration_unit, reason, status, employees(name, email)")
-      .gte("leave_date", fromDate)
-      .lte("leave_date", toDate)
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(300);
     for (const r of data ?? []) {
@@ -162,6 +179,24 @@ export default async function HistoryPage({
         reason: r.reason,
         status: (r.status ?? "pending") as LeaveStatus,
       });
+    }
+  }
+
+  // Build Set<employee_id|leave_date> để tra cứu Vi phạm (cần toàn bộ leave trong khoảng check-in date)
+  const leaveCoverSet = new Set<string>();
+  if (checkInsRows.length > 0) {
+    const dates = Array.from(new Set(checkInsRows.map((c) => c.dateVN))).sort();
+    const empIds = Array.from(new Set(checkInsRows.map((c) => c.employee?.id).filter(Boolean))) as string[];
+    if (dates.length > 0 && empIds.length > 0) {
+      const { data: covers } = await admin
+        .from("leave_requests")
+        .select("employee_id, leave_date")
+        .in("employee_id", empIds)
+        .gte("leave_date", dates[0])
+        .lte("leave_date", dates[dates.length - 1]);
+      for (const c of covers ?? []) {
+        leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
+      }
     }
   }
 
@@ -184,7 +219,6 @@ export default async function HistoryPage({
         </a>
       </div>
 
-      {/* Type filter tabs */}
       <TypeTabs current={type} sp={sp} />
 
       <form action="/admin/history" className="flex flex-wrap gap-2 rounded-2xl border border-white/60 glass p-3">
@@ -213,7 +247,7 @@ export default async function HistoryPage({
         <div className="space-y-2">
           {rows.map((r) =>
             r.type === "checkin"
-              ? <CheckInCard key={`c:${r.id}`} row={r} onDelete={deleteCheckIn} />
+              ? <CheckInCard key={`c:${r.id}`} row={r} onDelete={deleteCheckIn} hasLeave={!!r.employee && leaveCoverSet.has(`${r.employee.id}|${r.dateVN}`)} />
               : <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} />,
           )}
         </div>
@@ -265,28 +299,62 @@ function TypeTabs({
   );
 }
 
-function CheckInCard({ row: r, onDelete }: { row: CheckInRow; onDelete: (fd: FormData) => void }) {
+function CheckInCard({
+  row: r,
+  onDelete,
+  hasLeave,
+}: {
+  row: CheckInRow;
+  onDelete: (fd: FormData) => void;
+  hasLeave: boolean;
+}) {
   const matchOk = r.face_match_score != null && r.face_match_score < 0.5;
+  const isViolation =
+    !hasLeave &&
+    ((r.kind === "in" && (r.late_minutes ?? 0) > 5) ||
+      (r.kind === "out" && (r.early_minutes ?? 0) > 5));
   return (
-    <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
+    <div className={cn(
+      "rounded-2xl border p-3 flex gap-3",
+      isViolation ? "border-rose-300 bg-rose-50/60" : "border-white/60 glass",
+    )}>
       {r.signedUrl ? (
         <Image src={r.signedUrl} width={64} height={64} alt="" className="rounded-xl object-cover h-16 w-16 shrink-0" unoptimized />
       ) : <div className="h-16 w-16 rounded-xl bg-neutral-100 shrink-0" />}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <TypeBadge kind="checkin" />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <KindBadge kind={r.kind} />
           <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", matchOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
             khớp {r.face_match_score?.toFixed(2) ?? "-"}
           </span>
+          {r.kind === "in" && (r.late_minutes ?? 0) > 0 && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+              Muộn {r.late_minutes}p
+            </span>
+          )}
+          {r.kind === "out" && (r.early_minutes ?? 0) > 0 && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+              Về sớm {r.early_minutes}p
+            </span>
+          )}
+          {isViolation && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-500 text-white">
+              <AlertTriangle size={10} /> Vi phạm
+            </span>
+          )}
+          {!isViolation && hasLeave && ((r.late_minutes ?? 0) > 5 || (r.early_minutes ?? 0) > 5) && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">
+              Có đơn nghỉ
+            </span>
+          )}
         </div>
         <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
         <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-neutral-600">
+        <div className="mt-1 flex items-center gap-2 text-xs text-neutral-600 flex-wrap">
           <span className="truncate">{r.office ?? "—"}</span>
           <span>·</span>
           <span className="whitespace-nowrap">{format(new Date(r.at), "dd/MM HH:mm", { locale: vi })}</span>
-          <span>·</span>
-          <span>{Math.round(r.distance_m ?? 0)}m</span>
+          {r.distance_m != null && <><span>·</span><span>{Math.round(r.distance_m)}m</span></>}
         </div>
       </div>
       <form action={onDelete} className="self-start">
@@ -306,14 +374,16 @@ function LeaveCard({ row: r, onDelete }: { row: LeaveRow; onDelete: (fd: FormDat
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <TypeBadge kind="leave" />
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+            <CalendarOff size={10} /> Xin nghỉ
+          </span>
           <LeaveStatusBadge status={r.status} />
         </div>
         <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
         <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
         <div className="mt-1 text-xs text-neutral-700">
           <span className="font-medium">{LEAVE_CATEGORIES[r.category]}</span>
-          <span className="text-neutral-500"> · {format(new Date(r.leave_date), "d/M", { locale: vi })} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
+          <span className="text-neutral-500"> · ngày {format(new Date(r.leave_date), "d/M", { locale: vi })} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
         </div>
         {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
         <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
@@ -326,17 +396,17 @@ function LeaveCard({ row: r, onDelete }: { row: LeaveRow; onDelete: (fd: FormDat
   );
 }
 
-function TypeBadge({ kind }: { kind: "checkin" | "leave" }) {
-  if (kind === "checkin") {
+function KindBadge({ kind }: { kind: CheckInKind }) {
+  if (kind === "in") {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-        <Fingerprint size={10} /> Chấm công
+        <LogIn size={10} /> Check-in
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-      <CalendarOff size={10} /> Xin nghỉ
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
+      <LogOut size={10} /> Check-out
     </span>
   );
 }

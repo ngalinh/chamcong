@@ -50,6 +50,7 @@ export default function CheckInFlow({
   const [error, setError] = useState<string | null>(null);
   const [matchedOffice, setMatchedOffice] = useState<{ name: string; distM: number } | null>(null);
   const [score, setScore] = useState<number | null>(null);
+  const [lateEarly, setLateEarly] = useState<string | null>(null);
 
   const stopCamera = () => {
     const v = videoRef.current;
@@ -148,14 +149,21 @@ export default function CheckInFlow({
       form.append("liveness_passed", "false");
 
       const res = await fetch("/api/checkin", { method: "POST", body: form });
+      const respData: { ok?: boolean; error?: string; kind?: "in" | "out"; late_minutes?: number; early_minutes?: number } =
+        await res.json().catch(() => ({}));
       if (!res.ok) {
-        const { error: msg } = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
-        throw new Error(msg ?? "Server từ chối");
+        throw new Error(respData.error ?? "Server từ chối");
       }
 
       setStep("done");
-      setMessage(`Đã chấm công tại ${nearest.office.name}`);
-      setTimeout(() => router.push("/"), 1800);
+      if (respData.kind === "in" && respData.late_minutes) {
+        setLateEarly(`⚠️ Bạn đã đi làm muộn ${respData.late_minutes} phút`);
+      } else if (respData.kind === "out" && respData.early_minutes) {
+        setLateEarly(`⚠️ Bạn đã về sớm ${respData.early_minutes} phút`);
+      }
+      const label = respData.kind === "out" ? "Check-out" : "Check-in";
+      setMessage(`Đã ${label} tại ${nearest.office.name}`);
+      setTimeout(() => router.push("/"), respData.late_minutes || respData.early_minutes ? 3500 : 1800);
     } catch (e: unknown) {
       stopCamera();
       setError(e instanceof Error ? e.message : String(e));
@@ -219,6 +227,11 @@ export default function CheckInFlow({
               value={`${score.toFixed(3)} / ${threshold}`}
               tone={score < threshold ? "ok" : "warn"}
             />
+          )}
+          {lateEarly && (
+            <div className="rounded-2xl bg-amber-500/20 backdrop-blur border border-amber-400/40 p-4 text-sm text-amber-100 mb-4 font-medium">
+              {lateEarly}
+            </div>
           )}
           {error && (
             <div className="rounded-2xl bg-rose-500/15 backdrop-blur border border-rose-400/30 p-4 text-sm text-rose-100 mb-4">
