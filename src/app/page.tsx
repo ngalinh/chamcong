@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -62,6 +63,22 @@ export default async function Home() {
     .maybeSingle();
 
   if (!employee) redirect("/enroll");
+
+  // Admin: PWA launch / direct visit / từ login → /admin.
+  // Nếu click logo từ trong app (referer same-origin) → cho xem home nhân viên.
+  if (employee.is_admin || isAdminEmail(user.email)) {
+    const h = await headers();
+    const referer = h.get("referer") ?? "";
+    const host = h.get("host") ?? "";
+    let fromInsideApp = false;
+    try {
+      const refUrl = new URL(referer);
+      if (refUrl.host === host) fromInsideApp = true;
+    } catch {
+      // referer rỗng hoặc không parse được → entrypoint
+    }
+    if (!fromInsideApp) redirect("/admin");
+  }
 
   // Nhân viên Làm online (chi nhánh remote) không cần enroll khuôn mặt
   let isRemoteEmployee = false;
