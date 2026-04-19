@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import Link from "next/link";
 import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, Wifi, Mail } from "lucide-react";
 import type { Office } from "@/types/db";
 
@@ -54,9 +55,10 @@ async function deleteOffice(formData: FormData) {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; ok?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; new?: string }>;
 }) {
   const sp = await searchParams;
+  const showNew = sp.new === "1";
   const admin = createAdminClient();
   const { data: offices } = await admin
     .from("offices")
@@ -65,7 +67,17 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold tracking-tight">Chi nhánh</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Chi nhánh</h1>
+        {!showNew && (
+          <Link
+            href="/admin/settings?new=1"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 text-white text-sm font-medium h-9 px-3 hover:bg-neutral-800"
+          >
+            <Plus size={14} /> Thêm chi nhánh
+          </Link>
+        )}
+      </div>
 
       {sp.error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3 text-sm flex items-start gap-2">
@@ -95,7 +107,7 @@ export default async function SettingsPage({
         {(offices as Office[] | null)?.map((o) => (
           <OfficeForm key={o.id} office={o} action={upsertOffice} onDelete={deleteOffice} />
         ))}
-        <OfficeForm action={upsertOffice} />
+        {showNew && <OfficeForm action={upsertOffice} />}
       </div>
 
       <p className="text-xs text-neutral-500 max-w-2xl leading-relaxed">
@@ -195,10 +207,17 @@ function OfficeForm({
           <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
           Đang hoạt động
         </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" name="is_remote" defaultChecked={office?.is_remote ?? false} className="h-4 w-4 rounded" />
-          Làm online (không cần selfie/định vị)
-        </label>
+        {/* Checkbox "Làm online" chỉ hiện cho office mới (chưa lưu) hoặc office hiện đã là remote.
+            Office văn phòng thật không nên đổi qua remote sau khi đã có check-in. */}
+        {(isNew || office?.is_remote) && (
+          <label className="flex items-center gap-2">
+            <input type="checkbox" name="is_remote" defaultChecked={office?.is_remote ?? false} className="h-4 w-4 rounded" />
+            Làm online (không cần selfie/định vị)
+          </label>
+        )}
+        {!isNew && !office?.is_remote && (
+          <input type="hidden" name="is_remote" value="" />
+        )}
       </div>
 
       <div className="flex gap-2 pt-1">

@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type RowType = "checkin" | "leave" | "overtime";
+type RowType = "checkin" | "leave";
 
 type CheckInRow = {
   type: "checkin";
@@ -307,7 +307,11 @@ export default async function HistoryPage({
     if (sp.office) q = q.eq("office_id", sp.office);
     const { data } = await q;
     for (const r of data ?? []) {
-      const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
+      let signedUrl = "";
+      if (r.selfie_path) {
+        const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
+        signedUrl = signed?.signedUrl ?? "";
+      }
       const at = r.checked_in_at as string;
       checkInsRows.push({
         type: "checkin",
@@ -322,8 +326,8 @@ export default async function HistoryPage({
         face_match_score: r.face_match_score,
         late_minutes: r.late_minutes,
         early_minutes: r.early_minutes,
-        selfie_path: r.selfie_path,
-        signedUrl: signed?.signedUrl ?? "",
+        selfie_path: r.selfie_path ?? "",
+        signedUrl,
         dateVN: dateInVN(at),
       });
     }
@@ -359,9 +363,9 @@ export default async function HistoryPage({
     }
   }
 
-  // Overtime requests
+  // Overtime requests — gộp chung với tab Chấm công + All
   const overtimeRows: OvertimeRow[] = [];
-  if (type === "overtime" || type === "all") {
+  if (type === "checkin" || type === "all") {
     const { data } = await admin
       .from("overtime_requests")
       .select("id, created_at, ot_date, start_time, end_time, hours, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
@@ -484,9 +488,8 @@ function TypeTabs({
 }) {
   const tabs = [
     { key: "all", label: "Tất cả", icon: Inbox },
-    { key: "checkin", label: "Chấm công", icon: Fingerprint },
+    { key: "checkin", label: "Chấm công · OT", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
-    { key: "overtime", label: "Overtime", icon: Hourglass },
   ];
   const make = (k: string) => {
     const p = new URLSearchParams();

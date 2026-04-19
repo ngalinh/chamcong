@@ -71,35 +71,37 @@ export default function OvertimeRequestForm() {
           required
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
+          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
+          style={{ WebkitAppearance: "none" }}
         />
       </Row>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Row icon={Clock} label="Bắt đầu">
-          <input
-            type="time"
-            required
-            value={start}
-            step={300}
-            onChange={(e) => setStart(e.target.value)}
-            className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-          />
-        </Row>
-        <Row icon={Clock} label="Kết thúc">
-          <input
-            type="time"
-            required
-            value={end}
-            step={300}
-            onChange={(e) => setEnd(e.target.value)}
-            className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-          />
-        </Row>
-      </div>
+      <Row icon={Clock} label="Thời gian bắt đầu">
+        <input
+          type="time"
+          required
+          value={start}
+          step={300}
+          onChange={(e) => setStart(e.target.value)}
+          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-base font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
+          style={{ WebkitAppearance: "none" }}
+        />
+      </Row>
+
+      <Row icon={Clock} label="Thời gian kết thúc">
+        <input
+          type="time"
+          required
+          value={end}
+          step={300}
+          onChange={(e) => setEnd(e.target.value)}
+          className="block h-11 w-full min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-base font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
+          style={{ WebkitAppearance: "none" }}
+        />
+      </Row>
 
       <Row icon={Hourglass} label="Tổng thời gian">
-        <div className="h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 flex items-center text-sm font-medium tabular-nums">
+        <div className="h-11 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 flex items-center text-sm font-medium tabular-nums">
           {hours > 0 ? `${hours} giờ` : "—"}
         </div>
       </Row>

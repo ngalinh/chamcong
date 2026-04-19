@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   sendPushToAdmins({
     title: "⏱️ Đơn làm overtime mới",
     body: `${emp.name}: ${data.ot_date} · ${data.start_time}–${data.end_time} (${data.hours}h)`,
-    url: "/admin/history?type=overtime",
+    url: "/admin/history?type=checkin",
     tag: `overtime-new-${emp.id}`,
   }).catch((e) => console.error("[push] admin notify failed", e));
 

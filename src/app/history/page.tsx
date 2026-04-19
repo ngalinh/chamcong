@@ -82,7 +82,11 @@ export default async function MyHistoryPage({
       .order("checked_in_at", { ascending: false })
       .limit(100);
     for (const r of data ?? []) {
-      const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
+      let signedUrl = "";
+      if (r.selfie_path) {
+        const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
+        signedUrl = signed?.signedUrl ?? "";
+      }
       rows.push({
         type: "checkin",
         id: r.id,
@@ -91,7 +95,7 @@ export default async function MyHistoryPage({
         office: r.offices?.name ?? null,
         distance_m: r.distance_m,
         face_match_score: r.face_match_score,
-        signedUrl: signed?.signedUrl ?? "",
+        signedUrl,
       });
     }
   }
