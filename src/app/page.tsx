@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
-import { Fingerprint, LogOut, Shield, CheckCircle2, AlertTriangle, ArrowRight, CalendarOff } from "lucide-react";
+import { Fingerprint, LogOut, Shield, CheckCircle2, ArrowRight, CalendarOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -15,27 +15,28 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: employee } = await supabase
-    .from("employees")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  if (!user?.email) redirect("/login");
 
   const admin = createAdminClient();
-  const { data: lastCheckIn } = employee
-    ? await admin
-        .from("check_ins")
-        .select("checked_in_at, offices(name)")
-        .eq("employee_id", employee.id)
-        .order("checked_in_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    : { data: null };
+  const { data: employee } = await admin
+    .from("employees")
+    .select("*")
+    .eq("email", user.email)
+    .maybeSingle();
+
+  // Chưa enroll (hoặc chưa có ảnh) → ép qua /enroll
+  if (!employee || !employee.face_descriptor) redirect("/enroll");
+
+  const { data: lastCheckIn } = await admin
+    .from("check_ins")
+    .select("checked_in_at, offices(name)")
+    .eq("employee_id", employee.id)
+    .order("checked_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   const isAdmin = isAdminEmail(user.email) || employee?.is_admin;
-  const canCheckIn = !!employee?.face_descriptor;
+  const canCheckIn = true;
   // @ts-expect-error — supabase join
   const lastOfficeName: string | undefined = lastCheckIn?.offices?.name;
 
@@ -63,33 +64,19 @@ export default async function Home() {
       </header>
 
       <div className="relative flex-1 flex flex-col justify-center gap-6 max-w-md w-full mx-auto py-8">
-        {!employee && (
-          <Banner icon={AlertTriangle} tone="warn">
-            Tài khoản chưa có trong hệ thống. Liên hệ admin để được thêm vào.
-          </Banner>
-        )}
-
-        {employee && !canCheckIn && (
-          <Banner icon={AlertTriangle} tone="warn">
-            Bạn chưa enroll khuôn mặt. Liên hệ admin để chụp ảnh tham chiếu.
-          </Banner>
-        )}
-
-        {employee && (
-          <Link
-            href="/leave"
-            className="flex items-center gap-3 rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
-          >
-            <div className="h-11 w-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <CalendarOff size={20} strokeWidth={1.8} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium">Xin nghỉ</p>
-              <p className="text-xs text-neutral-500">Nghỉ phép, WFH, nghỉ giờ…</p>
-            </div>
-            <ArrowRight size={16} className="text-neutral-400" />
-          </Link>
-        )}
+        <Link
+          href="/leave"
+          className="flex items-center gap-3 rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition"
+        >
+          <div className="h-11 w-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <CalendarOff size={20} strokeWidth={1.8} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium">Xin nghỉ</p>
+            <p className="text-xs text-neutral-500">Nghỉ phép, WFH, nghỉ giờ…</p>
+          </div>
+          <ArrowRight size={16} className="text-neutral-400" />
+        </Link>
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">
@@ -149,23 +136,3 @@ export default async function Home() {
   );
 }
 
-function Banner({
-  icon: Icon,
-  tone,
-  children,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  tone: "warn" | "info";
-  children: React.ReactNode;
-}) {
-  const toneCls =
-    tone === "warn"
-      ? "bg-amber-50/80 border-amber-200 text-amber-900"
-      : "bg-sky-50/80 border-sky-200 text-sky-900";
-  return (
-    <div className={`rounded-2xl border backdrop-blur p-4 text-sm flex items-start gap-3 ${toneCls}`}>
-      <Icon size={18} className="shrink-0 mt-0.5" />
-      <div>{children}</div>
-    </div>
-  );
-}

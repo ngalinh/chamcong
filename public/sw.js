@@ -1,5 +1,5 @@
 // Service worker tối giản. Cache-bust khi bump VERSION — user tự động dùng bản mới.
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 
 self.addEventListener("install", (e) => {
