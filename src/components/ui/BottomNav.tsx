@@ -16,7 +16,7 @@ const items = [
 export function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav className="md:hidden sticky bottom-0 glass border-t border-white/40 pb-safe z-10">
+    <nav className="md:hidden fixed bottom-0 inset-x-0 glass border-t border-white/40 pb-safe z-30">
       <ul className="grid grid-cols-5 px-1">
         {items.map((item) => {
           const active = item.match(pathname);

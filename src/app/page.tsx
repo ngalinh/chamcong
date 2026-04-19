@@ -63,9 +63,6 @@ export default async function Home() {
 
   if (!employee) redirect("/enroll");
 
-  // Admin → vào thẳng trang quản trị
-  if (employee.is_admin || isAdminEmail(user.email)) redirect("/admin");
-
   // Nhân viên Làm online (chi nhánh remote) không cần enroll khuôn mặt
   let isRemoteEmployee = false;
   if (employee.home_office_id) {
