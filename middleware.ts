@@ -36,7 +36,10 @@ export async function middleware(request: NextRequest) {
     pathname === "/favicon.ico" ||
     pathname.startsWith("/models") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/icons");
+    pathname.startsWith("/icons") ||
+    // Webhook/cron endpoints xác thực bằng secret header, không cần session
+    pathname === "/api/telegram/webhook" ||
+    pathname === "/api/admin/audit-absences";
 
   if (!user && !isAuthRoute && !isPublic) {
     const url = request.nextUrl.clone();
