@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env*.local
+.DS_Store
+*.log
+public/models/*.bin
+public/models/*.json
+!public/models/.gitkeep
+.vercel
+
+# Claude Code per-machine settings (có thể chứa secret trong permission history)
+.claude/
+

@@ -1,0 +1,19 @@
+{
+  "name": "Chấm công",
+  "short_name": "Chấm công",
+  "description": "Chấm công nhân viên bằng vị trí + nhận diện khuôn mặt",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#f5f5f5",
+  "theme_color": "#4f46e5",
+  "lang": "vi",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon.svg",     "sizes": "any",     "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png",     "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png",     "purpose": "any maskable" }
+  ]
+}
