@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
 import { isAdminEmail } from "@/lib/utils";
+import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
 
 const Schema = z.object({
   office_id: z.string().uuid(),
@@ -13,30 +14,6 @@ const Schema = z.object({
   face_match_score: z.coerce.number(),
   liveness_passed: z.enum(["true", "false"]).transform((v) => v === "true"),
 });
-
-function timeToMinutes(hhmmss: string) {
-  const [h, m] = hhmmss.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-function currentMinutesInTz(tz: string) {
-  const str = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date());
-  return timeToMinutes(str);
-}
-
-function todayDateInTz(tz: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -71,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   const { data: office } = await admin
     .from("offices")
-    .select("id, latitude, longitude, radius_m, is_active, timezone, work_start_time, work_end_time")
+    .select("id, latitude, longitude, radius_m, is_active, work_start_time, work_end_time")
     .eq("id", data.office_id)
     .maybeSingle();
   if (!office || !office.is_active)
@@ -86,8 +63,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Đếm số lần chấm công hôm nay để auto-infer kind
-  const dayStr = todayDateInTz(office.timezone);
+  // Đếm số lần chấm công hôm nay (theo giờ VN) để auto-infer kind
+  const dayStr = dateVN(new Date());
   const dayStart = new Date(`${dayStr}T00:00:00+07:00`).toISOString();
   const dayEnd = new Date(`${dayStr}T23:59:59.999+07:00`).toISOString();
   const { data: todayCheckIns } = await admin
@@ -108,11 +85,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Alternate in/out theo thứ tự: chẵn (0, 2, 4…) = 'in', lẻ (1, 3…) = 'out'
+  // Alternate in/out: chẵn (0, 2, 4…) = 'in', lẻ (1, 3…) = 'out'
   const kind: "in" | "out" = count % 2 === 0 ? "in" : "out";
 
-  // Tính late/early theo giờ làm của chi nhánh
-  const nowMin = currentMinutesInTz(office.timezone);
+  // Tính late/early theo giờ làm của chi nhánh (giờ VN)
+  const nowMin = timeToMinutes(currentTimeVN());
   let late_minutes: number | null = null;
   let early_minutes: number | null = null;
   if (kind === "in") {

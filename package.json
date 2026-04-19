@@ -16,6 +16,7 @@
     "@vladmandic/face-api": "^1.7.14",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "lucide-react": "^0.460.0",
     "next": "^16.2.4",
     "nodemailer": "^8.0.5",

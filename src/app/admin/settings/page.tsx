@@ -12,13 +12,14 @@ async function upsertOffice(formData: FormData) {
   "use server";
   const admin = createAdminClient();
   const id = formData.get("id") as string;
+  // Timezone luôn là VN — không còn field cho từng chi nhánh
   const payload = {
     name: String(formData.get("name") ?? ""),
     address: String(formData.get("address") ?? ""),
     latitude: Number(formData.get("latitude")),
     longitude: Number(formData.get("longitude")),
     radius_m: Number(formData.get("radius_m")),
-    timezone: String(formData.get("timezone") ?? "Asia/Ho_Chi_Minh"),
+    timezone: "Asia/Ho_Chi_Minh",
     work_start_time: String(formData.get("work_start_time") ?? "09:00"),
     work_end_time: String(formData.get("work_end_time") ?? "18:00"),
     is_active: formData.get("is_active") === "on",
@@ -161,13 +162,10 @@ function OfficeForm({
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-        <Field label="Timezone" name="timezone" defaultValue={office?.timezone ?? "Asia/Ho_Chi_Minh"} />
-        <label className="flex items-center gap-2 text-sm h-10">
-          <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
-          Đang hoạt động
-        </label>
-      </div>
+      <label className="flex items-center gap-2 text-sm h-10">
+        <input type="checkbox" name="is_active" defaultChecked={office ? office.is_active : true} className="h-4 w-4 rounded" />
+        Đang hoạt động
+      </label>
 
       <div className="flex gap-2 pt-1">
         <Button type="submit" size="sm">{isNew ? "Thêm" : "Lưu"}</Button>

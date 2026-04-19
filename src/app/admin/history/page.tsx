@@ -21,8 +21,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import Image from "next/image";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatVN, dateVN as dateVnFn } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -60,12 +61,7 @@ type LeaveRow = {
 
 type Row = CheckInRow | LeaveRow;
 
-function dateInVN(iso: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date(iso));
-}
+const dateInVN = dateVnFn;
 
 async function deleteCheckIn(formData: FormData) {
   "use server";
@@ -190,10 +186,11 @@ export default async function HistoryPage({
     if (dates.length > 0 && empIds.length > 0) {
       const { data: covers } = await admin
         .from("leave_requests")
-        .select("employee_id, leave_date")
+        .select("employee_id, leave_date, status")
         .in("employee_id", empIds)
         .gte("leave_date", dates[0])
-        .lte("leave_date", dates[dates.length - 1]);
+        .lte("leave_date", dates[dates.length - 1])
+        .eq("status", "approved"); // CHỈ đơn đã duyệt mới excuse vi phạm
       for (const c of covers ?? []) {
         leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
       }
@@ -353,7 +350,7 @@ function CheckInCard({
         <div className="mt-1 flex items-center gap-2 text-xs text-neutral-600 flex-wrap">
           <span className="truncate">{r.office ?? "—"}</span>
           <span>·</span>
-          <span className="whitespace-nowrap">{format(new Date(r.at), "dd/MM HH:mm", { locale: vi })}</span>
+          <span className="whitespace-nowrap">{formatVN(r.at, "dd/MM HH:mm")}</span>
           {r.distance_m != null && <><span>·</span><span>{Math.round(r.distance_m)}m</span></>}
         </div>
       </div>
@@ -383,7 +380,7 @@ function LeaveCard({ row: r, onDelete }: { row: LeaveRow; onDelete: (fd: FormDat
         <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
         <div className="mt-1 text-xs text-neutral-700">
           <span className="font-medium">{LEAVE_CATEGORIES[r.category]}</span>
-          <span className="text-neutral-500"> · ngày {format(new Date(r.leave_date), "d/M", { locale: vi })} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
+          <span className="text-neutral-500"> · ngày {formatVN(r.leave_date + "T00:00:00+07:00", "d/M")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
         </div>
         {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
         <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>

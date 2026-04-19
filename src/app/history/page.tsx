@@ -15,8 +15,9 @@ import {
   MapPin,
 } from "lucide-react";
 import Image from "next/image";
-import { format, formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatVN } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -200,7 +201,7 @@ function CheckInCard({ row: r }: { row: CheckInRow }) {
           {r.office ?? "—"}
         </div>
         <div className="text-xs text-neutral-500 mt-0.5">
-          {format(new Date(r.at), "EEEE, HH:mm '—' d/M/yyyy", { locale: vi })}
+          {formatVN(r.at, "EEEE, HH:mm '—' d/M/yyyy")}
           {r.distance_m != null && <> · cách {Math.round(r.distance_m)}m</>}
         </div>
       </div>
@@ -223,7 +224,7 @@ function LeaveCard({ row: r }: { row: LeaveRow }) {
         </div>
         <div className="mt-0.5 text-sm font-medium truncate">{LEAVE_CATEGORIES[r.category]}</div>
         <div className="text-xs text-neutral-500">
-          {format(new Date(r.leave_date), "d/M/yyyy", { locale: vi })} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}
+          {formatVN(r.leave_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}
           <span className="text-neutral-400"> · nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</span>
         </div>
         {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}

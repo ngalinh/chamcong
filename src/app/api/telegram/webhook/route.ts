@@ -3,8 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { answerCallbackQuery, editTelegramMessage, htmlEscape } from "@/lib/telegram";
 import { sendMail } from "@/lib/email";
 import { LEAVE_CATEGORIES, type LeaveStatus } from "@/types/db";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+import { formatVN } from "@/lib/time";
 
 export const runtime = "nodejs";
 
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
 
   // Gửi email cho nhân viên nếu đã duyệt
   if (newStatus === "approved") {
-    const dateStr = format(new Date(leave.leave_date), "EEEE, d 'tháng' M yyyy", { locale: vi });
+    const dateStr = formatVN(leave.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy");
     const html = `
       <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
         <h2 style="margin: 0 0 8px; font-size: 20px;">Đơn xin nghỉ của bạn đã được duyệt ✅</h2>

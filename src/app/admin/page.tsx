@@ -14,8 +14,9 @@ import {
 import { Empty } from "@/components/ui/Empty";
 import { RunAuditButton } from "@/components/RunAuditButton";
 import { LEAVE_CATEGORIES } from "@/types/db";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
+import { formatVN } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -185,7 +186,7 @@ export default async function AdminHome() {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-sm truncate">{emp?.name ?? "?"}</div>
                     <div className="text-xs text-neutral-600">
-                      Vắng ngày {format(new Date(a.alert_date), "EEEE, d 'tháng' M", { locale: vi })} —{" "}
+                      Vắng ngày {formatVN(a.alert_date + "T00:00:00+07:00", "EEEE, d 'tháng' M")} —{" "}
                       không chấm công, không có đơn xin nghỉ
                     </div>
                   </div>
@@ -259,7 +260,7 @@ function NotificationRow({ item }: { item: ActivityItem }) {
           <span className="text-neutral-700">{LEAVE_CATEGORIES[item.category]}</span>
         </div>
         <div className="text-xs text-neutral-500 truncate">
-          {format(new Date(item.leave_date), "d/M", { locale: vi })} · {item.duration}{" "}
+          {formatVN(item.leave_date + "T00:00:00+07:00", "d/M")} · {item.duration}{" "}
           {item.duration_unit === "day" ? "ngày" : "giờ"} ·{" "}
           {formatDistanceToNow(new Date(item.at), { addSuffix: true, locale: vi })}
         </div>

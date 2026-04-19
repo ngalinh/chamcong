@@ -6,8 +6,7 @@ import LeaveRequestForm from "@/components/LeaveRequestForm";
 import { Empty } from "@/components/ui/Empty";
 import { LEAVE_CATEGORIES, type LeaveRequest } from "@/types/db";
 import { ArrowLeft, Calendar, Inbox } from "lucide-react";
-import { format } from "date-fns";
-import { vi } from "date-fns/locale";
+import { formatVN } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +68,7 @@ export default async function LeavePage() {
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-sm truncate">{LEAVE_CATEGORIES[r.category]}</div>
                   <div className="text-xs text-neutral-500 mt-0.5">
-                    {format(new Date(r.leave_date), "EEEE, d 'tháng' M yyyy", { locale: vi })} · {r.duration}{" "}
+                    {formatVN(r.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy")} · {r.duration}{" "}
                     {r.duration_unit === "day" ? "ngày" : "giờ"}
                   </div>
                   {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
