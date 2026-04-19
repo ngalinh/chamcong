@@ -51,8 +51,6 @@ export type LeaveRequest = {
   status: LeaveStatus;
   approved_at: string | null;
   approved_by: string | null;
-  telegram_message_id: number | null;
-  telegram_chat_id: number | null;
   created_at: string;
 };
 
