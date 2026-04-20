@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Tạo standalone bundle để Docker image gọn (~150 MB thay vì ~1 GB)
+  output: "standalone",
   allowedDevOrigins: ["*.trycloudflare.com", "*.loca.lt"],
   images: {
     remotePatterns: [

@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env*.local
+.vercel
+.DS_Store
+*.log
+.claude
+README.md
+.gitignore
+tsconfig.tsbuildinfo
