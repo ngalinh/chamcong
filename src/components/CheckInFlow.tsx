@@ -82,9 +82,7 @@ export default function CheckInFlow({
 
       const nearest = ranked[0];
       if (nearest.distM > nearest.office.radius_m) {
-        throw new Error(
-          `Cách ${nearest.office.name} ${Math.round(nearest.distM)}m, vượt quá bán kính ${nearest.office.radius_m}m.`,
-        );
+        throw new Error("Bạn đang không ở văn phòng");
       }
       setMatchedOffice({ name: nearest.office.name, distM: nearest.distM });
 

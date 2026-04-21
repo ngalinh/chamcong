@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     serverDist = haversine(data.latitude, data.longitude, office.latitude, office.longitude);
     if (serverDist > office.radius_m + 20) {
       return NextResponse.json(
-        { error: `Ngoài vùng chi nhánh (~${Math.round(serverDist)}m)` },
+        { error: "Bạn đang không ở văn phòng" },
         { status: 403 },
       );
     }
