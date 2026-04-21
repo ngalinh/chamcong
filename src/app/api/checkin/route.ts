@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
 import { isAdminEmail } from "@/lib/utils";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
+import { effectiveWorkHours } from "@/lib/workHours";
 
 const Schema = z.object({
   office_id: z.string().uuid(),
@@ -120,13 +121,15 @@ export async function POST(request: NextRequest) {
     .eq("status", "approved")
     .maybeSingle();
 
-  let effectiveStart = office.work_start_time;
-  let effectiveEnd   = office.work_end_time;
+  // Apply per-employee override trước (vd NV ca chiều)
+  const base = effectiveWorkHours(emp.email, office.work_start_time, office.work_end_time);
+  let effectiveStart = base.start;
+  let effectiveEnd   = base.end;
   if (hourlyLeave?.start_time && hourlyLeave?.end_time) {
     const lStart = timeToMinutes(hourlyLeave.start_time);
     const lEnd   = timeToMinutes(hourlyLeave.end_time);
-    const wStart = timeToMinutes(office.work_start_time);
-    const wEnd   = timeToMinutes(office.work_end_time);
+    const wStart = timeToMinutes(effectiveStart);
+    const wEnd   = timeToMinutes(effectiveEnd);
     // Nghỉ ôm đầu ngày làm → dịch start
     if (lStart <= wStart && lEnd > wStart) effectiveStart = hourlyLeave.end_time;
     // Nghỉ ôm cuối ngày làm → dịch end

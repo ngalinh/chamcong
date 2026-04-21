@@ -170,6 +170,7 @@ async function decideLeave(formData: FormData) {
     leave.end_time
   ) {
     const { timeToMinutes, formatVN } = await import("@/lib/time");
+    const { effectiveWorkHours } = await import("@/lib/workHours");
     const dayStart = new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString();
     const dayEnd = new Date(`${leave.leave_date}T23:59:59.999+07:00`).toISOString();
     const { data: dayCheckIns } = await admin
@@ -179,6 +180,8 @@ async function decideLeave(formData: FormData) {
       .gte("checked_in_at", dayStart)
       .lte("checked_in_at", dayEnd);
 
+    // @ts-expect-error — supabase join
+    const empEmail: string | null = leave.employees?.email ?? null;
     const lStart = timeToMinutes(leave.start_time);
     const lEnd = timeToMinutes(leave.end_time);
 
@@ -186,11 +189,13 @@ async function decideLeave(formData: FormData) {
       // @ts-expect-error — supabase join
       const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
       if (!office) continue;
-      const wStart = timeToMinutes(office.work_start_time);
-      const wEnd = timeToMinutes(office.work_end_time);
+      // Apply per-employee override trước rồi mới dịch theo leave window
+      const base = effectiveWorkHours(empEmail, office.work_start_time, office.work_end_time);
+      let effStart = base.start;
+      let effEnd = base.end;
+      const wStart = timeToMinutes(base.start);
+      const wEnd = timeToMinutes(base.end);
 
-      let effStart = office.work_start_time;
-      let effEnd = office.work_end_time;
       if (lStart <= wStart && lEnd > wStart) effStart = leave.end_time;
       if (lEnd >= wEnd && lStart < wEnd) effEnd = leave.start_time;
 
