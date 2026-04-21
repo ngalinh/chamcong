@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
 import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2 } from "lucide-react";
+
+function diffHours(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60;
+  return Math.round((mins / 60) * 100) / 100;
+}
 
 export default function LeaveRequestForm({
   employeeName,
@@ -20,15 +29,32 @@ export default function LeaveRequestForm({
   const [category, setCategory] = useState<LeaveCategory>("online_wfh");
   const [duration, setDuration] = useState<string>("1");
   const [unit, setUnit] = useState<DurationUnit>("day");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
+  const isHourly = category === "leave_hourly";
+  const computedHours = useMemo(() => diffHours(startTime, endTime), [startTime, endTime]);
+
+  // Khi chọn nghỉ theo giờ → auto đổi unit sang hour + tính duration từ time pickers
+  useEffect(() => {
+    if (isHourly) {
+      setUnit("hour");
+      if (computedHours > 0) setDuration(String(computedHours));
+    }
+  }, [isHourly, computedHours]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setOk(null);
+    if (isHourly && computedHours <= 0) {
+      setErr("Thời gian kết thúc phải sau thời gian bắt đầu");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/leave", {
@@ -39,6 +65,8 @@ export default function LeaveRequestForm({
           category,
           duration: Number(duration),
           duration_unit: unit,
+          start_time: isHourly ? startTime : null,
+          end_time:   isHourly ? endTime   : null,
           reason: reason.trim() || null,
         }),
       });
@@ -48,7 +76,7 @@ export default function LeaveRequestForm({
       }
       setOk("Đã gửi đơn xin nghỉ");
       setReason("");
-      setDuration("1");
+      if (!isHourly) setDuration("1");
       router.refresh();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -88,28 +116,62 @@ export default function LeaveRequestForm({
         </select>
       </Row>
 
-      <Row icon={Clock} label="Thời gian">
-        <div className="flex gap-2">
-          <input
-            type="number"
-            required
-            min="0.5"
-            max="30"
-            step="0.5"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 tabular-nums"
-          />
-          <select
-            value={unit}
-            onChange={(e) => setUnit(e.target.value as DurationUnit)}
-            className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-          >
-            <option value="day">Ngày</option>
-            <option value="hour">Giờ</option>
-          </select>
-        </div>
-      </Row>
+      {isHourly ? (
+        <>
+          <Row icon={Clock} label="Thời gian bắt đầu">
+            <DateTimeBox>
+              <input
+                type="time"
+                required
+                value={startTime}
+                step={300}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
+              />
+            </DateTimeBox>
+          </Row>
+          <Row icon={Clock} label="Thời gian kết thúc">
+            <DateTimeBox>
+              <input
+                type="time"
+                required
+                value={endTime}
+                step={300}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
+              />
+            </DateTimeBox>
+          </Row>
+          <Row icon={Clock} label="Tổng thời gian">
+            <div className="h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 flex items-center text-sm font-medium tabular-nums">
+              {computedHours > 0 ? `${computedHours} giờ` : "—"}
+            </div>
+          </Row>
+        </>
+      ) : (
+        <Row icon={Clock} label="Thời gian">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              required
+              min="0.5"
+              max="30"
+              step="0.5"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 tabular-nums"
+            />
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as DurationUnit)}
+              className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
+            >
+              <option value="day">Ngày</option>
+              <option value="hour">Giờ</option>
+            </select>
+          </div>
+        </Row>
+      )}
 
       <Row icon={FileText} label="Lý do">
         <textarea
@@ -153,5 +215,14 @@ function Row({
       </div>
       {children}
     </label>
+  );
+}
+
+/** Wrapper cố định 40px cho native date/time input — tránh iOS render quá to */
+function DateTimeBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 flex items-center focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/5 transition">
+      {children}
+    </div>
   );
 }

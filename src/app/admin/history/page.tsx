@@ -398,6 +398,9 @@ export default async function HistoryPage({
   }
 
   // Build Set<employee_id|leave_date> để tra cứu Vi phạm (cần toàn bộ leave trong khoảng check-in date)
+  // Chỉ full-day leave (online_*, leave_paid, leave_unpaid) mới excuse violation.
+  // leave_hourly đã được xử lý qua effective_start/end trong API checkin,
+  // nên nếu late_minutes > 5 sau khi tính thì là vi phạm thật — không excuse bằng hasLeave.
   const leaveCoverSet = new Set<string>();
   if (checkInsRows.length > 0) {
     const dates = Array.from(new Set(checkInsRows.map((c) => c.dateVN))).sort();
@@ -405,11 +408,12 @@ export default async function HistoryPage({
     if (dates.length > 0 && empIds.length > 0) {
       const { data: covers } = await admin
         .from("leave_requests")
-        .select("employee_id, leave_date, status")
+        .select("employee_id, leave_date, status, category")
         .in("employee_id", empIds)
         .gte("leave_date", dates[0])
         .lte("leave_date", dates[dates.length - 1])
-        .eq("status", "approved"); // CHỈ đơn đã duyệt mới excuse vi phạm
+        .eq("status", "approved")
+        .neq("category", "leave_hourly"); // hourly không auto-excuse
       for (const c of covers ?? []) {
         leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
       }

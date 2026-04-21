@@ -108,15 +108,40 @@ export async function POST(request: NextRequest) {
 
   const kind: "in" | "out" = count % 2 === 0 ? "in" : "out";
 
-  // Tính late/early theo giờ làm của chi nhánh (giờ VN)
+  // Tìm đơn nghỉ theo giờ đã duyệt trong ngày — nếu có thì dịch giờ làm hiệu lực.
+  // Vd: office 9h-18h, NV nghỉ 9-10h → effective_start = 10h (NV được đến muộn tới 10h
+  // mà không tính late). NV nghỉ 16-17:30 → effective_end = 16h.
+  const { data: hourlyLeave } = await admin
+    .from("leave_requests")
+    .select("start_time, end_time")
+    .eq("employee_id", emp.id)
+    .eq("leave_date", dayStr)
+    .eq("category", "leave_hourly")
+    .eq("status", "approved")
+    .maybeSingle();
+
+  let effectiveStart = office.work_start_time;
+  let effectiveEnd   = office.work_end_time;
+  if (hourlyLeave?.start_time && hourlyLeave?.end_time) {
+    const lStart = timeToMinutes(hourlyLeave.start_time);
+    const lEnd   = timeToMinutes(hourlyLeave.end_time);
+    const wStart = timeToMinutes(office.work_start_time);
+    const wEnd   = timeToMinutes(office.work_end_time);
+    // Nghỉ ôm đầu ngày làm → dịch start
+    if (lStart <= wStart && lEnd > wStart) effectiveStart = hourlyLeave.end_time;
+    // Nghỉ ôm cuối ngày làm → dịch end
+    if (lEnd >= wEnd && lStart < wEnd) effectiveEnd = hourlyLeave.start_time;
+  }
+
+  // Tính late/early theo giờ làm hiệu lực (giờ VN)
   const nowMin = timeToMinutes(currentTimeVN());
   let late_minutes: number | null = null;
   let early_minutes: number | null = null;
   if (kind === "in") {
-    const diff = nowMin - timeToMinutes(office.work_start_time);
+    const diff = nowMin - timeToMinutes(effectiveStart);
     if (diff > 0) late_minutes = diff;
   } else {
-    const diff = timeToMinutes(office.work_end_time) - nowMin;
+    const diff = timeToMinutes(effectiveEnd) - nowMin;
     if (diff > 0) early_minutes = diff;
   }
 

@@ -51,6 +51,8 @@ export type LeaveRequest = {
   duration_unit: DurationUnit;
   reason: string | null;
   status: LeaveStatus;
+  start_time: string | null;  // "HH:MM:SS" — chỉ có khi category = "leave_hourly"
+  end_time: string | null;
   approved_at: string | null;
   approved_by: string | null;
   created_at: string;
