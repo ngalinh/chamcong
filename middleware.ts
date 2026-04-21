@@ -43,8 +43,13 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user && !isAuthRoute) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    // Build redirect URL từ X-Forwarded-* (nginx) thay vì request.nextUrl
+    // — vì Next.js standalone trong Docker (HOSTNAME=0.0.0.0) có thể trả URL
+    // dạng http://0.0.0.0:3000 → browser redirect đi sai chỗ.
+    const proto = request.headers.get("x-forwarded-proto") ?? "https";
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    const base = host ? `${proto}://${host}` : request.nextUrl.origin;
+    const url = new URL("/login", base);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
