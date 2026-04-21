@@ -139,7 +139,7 @@ async function decideLeave(formData: FormData) {
   const admin = createAdminClient();
   const { data: leave } = await admin
     .from("leave_requests")
-    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
+    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, start_time, end_time, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
     .eq("id", id)
     .maybeSingle();
   if (!leave || leave.status !== "pending") return;
@@ -159,6 +159,57 @@ async function decideLeave(formData: FormData) {
       approved_by: me?.name ?? user.email,
     })
     .eq("id", id);
+
+  // Recalc late/early cho các check-in trong ngày khi duyệt đơn nghỉ theo giờ
+  // (lúc check-in, đơn còn pending nên đã tính theo giờ làm gốc — giờ duyệt rồi
+  // thì cập nhật lại để bỏ/giảm label vi phạm).
+  if (
+    decision === "approved" &&
+    leave.category === "leave_hourly" &&
+    leave.start_time &&
+    leave.end_time
+  ) {
+    const { timeToMinutes, formatVN } = await import("@/lib/time");
+    const dayStart = new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString();
+    const dayEnd = new Date(`${leave.leave_date}T23:59:59.999+07:00`).toISOString();
+    const { data: dayCheckIns } = await admin
+      .from("check_ins")
+      .select("id, kind, checked_in_at, offices(work_start_time, work_end_time)")
+      .eq("employee_id", leave.employee_id)
+      .gte("checked_in_at", dayStart)
+      .lte("checked_in_at", dayEnd);
+
+    const lStart = timeToMinutes(leave.start_time);
+    const lEnd = timeToMinutes(leave.end_time);
+
+    for (const ci of dayCheckIns ?? []) {
+      // @ts-expect-error — supabase join
+      const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
+      if (!office) continue;
+      const wStart = timeToMinutes(office.work_start_time);
+      const wEnd = timeToMinutes(office.work_end_time);
+
+      let effStart = office.work_start_time;
+      let effEnd = office.work_end_time;
+      if (lStart <= wStart && lEnd > wStart) effStart = leave.end_time;
+      if (lEnd >= wEnd && lStart < wEnd) effEnd = leave.start_time;
+
+      const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
+      let late_minutes: number | null = null;
+      let early_minutes: number | null = null;
+      if (ci.kind === "in") {
+        const diff = ciMin - timeToMinutes(effStart);
+        if (diff > 0) late_minutes = diff;
+      } else {
+        const diff = timeToMinutes(effEnd) - ciMin;
+        if (diff > 0) early_minutes = diff;
+      }
+      await admin
+        .from("check_ins")
+        .update({ late_minutes, early_minutes })
+        .eq("id", ci.id);
+    }
+  }
 
   // Push notification cho nhân viên (fire-and-forget)
   {
