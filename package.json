@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "download-models": "bash scripts/download-models.sh"
+    "download-models": "bash scripts/download-models.sh",
+    "generate-icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

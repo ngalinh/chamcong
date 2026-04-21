@@ -274,8 +274,8 @@ export default async function Home() {
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">
-            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl shadow-indigo-500/40 transition group-active:scale-[0.98] animate-breathe">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-800" />
+            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl shadow-indigo-400/30 transition group-active:scale-[0.98] animate-breathe">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 via-indigo-500 to-purple-600" />
               <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-white/15 blur-2xl animate-float" />
               <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl animate-float" style={{ animationDelay: "-9s" }} />
               <div className="absolute inset-8 rounded-full border border-white/20" />
