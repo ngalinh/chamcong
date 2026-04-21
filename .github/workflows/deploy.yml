@@ -56,8 +56,17 @@ jobs:
             git fetch --all --prune
             git reset --hard origin/main
 
-            echo "→ Build Docker image"
-            docker build -t "$IMAGE" .
+            echo "→ Build Docker image (truyền NEXT_PUBLIC_* qua build-arg)"
+            # source .env để load các biến vào shell, rồi pass qua --build-arg
+            set -a
+            . ./.env
+            set +a
+            docker build \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY \
+              --build-arg NEXT_PUBLIC_VAPID_PUBLIC_KEY \
+              --build-arg NEXT_PUBLIC_FACE_MATCH_THRESHOLD \
+              -t "$IMAGE" .
 
             echo "→ Stop + remove container cũ (nếu có)"
             docker stop "$CONTAINER" 2>/dev/null || true
