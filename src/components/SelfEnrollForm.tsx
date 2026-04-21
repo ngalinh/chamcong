@@ -57,8 +57,17 @@ export default function SelfEnrollForm({
 
       const res = await fetch("/api/self-enroll", { method: "POST", body: form });
       if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
-        throw new Error(error ?? "Server từ chối");
+        let errorMsg = `Server từ chối (HTTP ${res.status})`;
+        try {
+          const data = await res.json();
+          if (data?.error) errorMsg = data.error;
+        } catch {
+          // Response không phải JSON — thường là HTML từ nginx/proxy
+          if (res.status === 413) errorMsg = "Ảnh quá lớn (>10MB). Chọn ảnh nhỏ hơn.";
+          else if (res.status === 502 || res.status === 504) errorMsg = "Máy chủ đang bận, thử lại sau 10 giây.";
+          else if (res.status === 401) errorMsg = "Phiên đăng nhập hết hạn, reload lại trang.";
+        }
+        throw new Error(errorMsg);
       }
 
       router.push("/");
@@ -141,7 +150,8 @@ export default function SelfEnrollForm({
       </label>
 
       <div className="rounded-xl bg-amber-50/70 border border-amber-200 text-amber-900 p-3 text-xs leading-relaxed">
-        ⚠️ <b>Chỉ enroll được 1 lần.</b> Sau khi submit không tự đổi ảnh được — muốn đổi thì admin phải xoá tài khoản rồi enroll lại.
+        💡 Bạn có thể bấm vào khung ảnh để <b>đổi ảnh</b> trước khi hoàn tất. Sau khi bấm <b>Hoàn tất đăng ký</b>,
+        muốn đổi ảnh phải liên hệ admin.
       </div>
 
       {err && <p className="text-sm text-rose-600">{err}</p>}

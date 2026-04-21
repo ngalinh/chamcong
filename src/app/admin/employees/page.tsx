@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Users, Check, CircleSlash, Trash2, Building2, Wifi } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
+import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
 
 export const dynamic = "force-dynamic";
 
@@ -155,6 +156,9 @@ export default async function EmployeesPage() {
                   offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
                   action={updateEmployeeOffice}
                 />
+                {e.face_descriptor && (
+                  <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
+                )}
                 {e.email !== meEmail && (
                   <form action={deleteEmployee} className="shrink-0">
                     <input type="hidden" name="id" value={e.id} />
