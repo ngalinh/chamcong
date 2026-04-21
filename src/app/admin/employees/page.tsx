@@ -110,63 +110,73 @@ export default async function EmployeesPage() {
         <div className="rounded-2xl border border-white/60 glass overflow-hidden divide-y divide-neutral-200/60">
           {(employees as Employee[]).map((e) => {
             const office = e.home_office_id ? officeMap.get(e.home_office_id) : undefined;
+            const canDelete = e.email !== meEmail;
             return (
-              <div key={e.id} className="p-4 flex items-center gap-3 flex-wrap sm:flex-nowrap">
-                <Avatar name={e.name} />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate flex items-center gap-1.5">
-                    {e.name}
-                    {e.is_admin && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
-                        Admin
-                      </span>
-                    )}
+              <div key={e.id} className="p-4 space-y-3">
+                {/* Row 1: avatar + tên + email + delete */}
+                <div className="flex items-start gap-3">
+                  <Avatar name={e.name} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate flex items-center gap-1.5">
+                      <span className="truncate">{e.name}</span>
+                      {e.is_admin && (
+                        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                          Admin
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-neutral-500 truncate">{e.email}</div>
                   </div>
-                  <div className="text-xs text-neutral-500 truncate">{e.email}</div>
-                  <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                    <span
-                      className={
-                        office?.is_remote
-                          ? "inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700"
-                          : office
-                          ? "inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-sky-50 text-sky-700"
-                          : "inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500"
-                      }
-                    >
-                      {office?.is_remote ? <Wifi size={11} /> : <Building2 size={11} />}
-                      {office?.name ?? "Chưa có chi nhánh"}
-                    </span>
-                    {e.face_descriptor ? (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                        <Check size={11} /> Enroll
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
-                        <CircleSlash size={11} /> Chưa enroll
-                      </span>
-                    )}
-                    {!e.is_active && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">Khoá</span>
-                    )}
-                  </div>
+                  {canDelete && (
+                    <form action={deleteEmployee} className="shrink-0">
+                      <input type="hidden" name="id" value={e.id} />
+                      <Button size="sm" variant="danger" type="submit" title="Xoá tài khoản">
+                        <Trash2 size={14} />
+                      </Button>
+                    </form>
+                  )}
                 </div>
-                <EmployeeOfficeSelect
-                  employeeId={e.id}
-                  currentOfficeId={e.home_office_id}
-                  offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
-                  action={updateEmployeeOffice}
-                />
-                {e.face_descriptor && (
-                  <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
-                )}
-                {e.email !== meEmail && (
-                  <form action={deleteEmployee} className="shrink-0">
-                    <input type="hidden" name="id" value={e.id} />
-                    <Button size="sm" variant="danger" type="submit" title="Xoá tài khoản">
-                      <Trash2 size={14} />
-                    </Button>
-                  </form>
-                )}
+
+                {/* Row 2: badges (chi nhánh / enroll / lock) */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span
+                    className={
+                      office?.is_remote
+                        ? "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-violet-50 text-violet-700"
+                        : office
+                        ? "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-sky-50 text-sky-700"
+                        : "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-neutral-100 text-neutral-500"
+                    }
+                  >
+                    {office?.is_remote ? <Wifi size={12} /> : <Building2 size={12} />}
+                    {office?.name ?? "Chưa có chi nhánh"}
+                  </span>
+                  {e.face_descriptor ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">
+                      <Check size={12} /> Đã enroll
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700">
+                      <CircleSlash size={12} /> Chưa enroll
+                    </span>
+                  )}
+                  {!e.is_active && (
+                    <span className="text-[11px] font-medium px-2 py-1 rounded-md bg-neutral-100 text-neutral-600">Khoá</span>
+                  )}
+                </div>
+
+                {/* Row 3: dropdown chi nhánh (flex-1) + nút đổi ảnh */}
+                <div className="flex items-center gap-2">
+                  <EmployeeOfficeSelect
+                    employeeId={e.id}
+                    currentOfficeId={e.home_office_id}
+                    offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
+                    action={updateEmployeeOffice}
+                  />
+                  {e.face_descriptor && (
+                    <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
+                  )}
+                </div>
               </div>
             );
           })}

@@ -19,7 +19,7 @@ export default function EmployeeOfficeSelect({
   const [pending, startTransition] = useTransition();
 
   return (
-    <form className="shrink-0 flex items-center gap-1.5">
+    <form className="flex-1 min-w-0 flex items-center gap-1.5">
       <input type="hidden" name="id" value={employeeId} />
       <select
         name="home_office_id"
@@ -31,16 +31,16 @@ export default function EmployeeOfficeSelect({
           fd.set("home_office_id", e.target.value);
           startTransition(() => action(fd));
         }}
-        className="h-9 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 max-w-[150px] disabled:opacity-50"
+        className="h-9 w-full min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 disabled:opacity-50"
       >
-        <option value="">— Chi nhánh —</option>
+        <option value="">— Đổi chi nhánh —</option>
         {offices.map((o) => (
           <option key={o.id} value={o.id}>
             {o.is_remote ? "🌐 " : ""}{o.name}
           </option>
         ))}
       </select>
-      {pending && <Loader2 size={14} className="animate-spin text-neutral-400" />}
+      {pending && <Loader2 size={14} className="animate-spin text-neutral-400 shrink-0" />}
     </form>
   );
 }
