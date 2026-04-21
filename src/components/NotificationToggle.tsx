@@ -3,18 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const PUBLIC_VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-const AUTO_PROMPT_KEY = "notif-auto-prompted";
-
-function urlBase64ToUint8Array(base64: string) {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const s = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(s);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
+import { ensurePushSubscribed } from "@/lib/push-client";
 
 type State = "unsupported" | "denied" | "subscribed" | "unsubscribed" | "loading";
 
@@ -23,72 +12,42 @@ export function NotificationToggle() {
   const [busy, setBusy] = useState(false);
   const autoTried = useRef(false);
 
+  const refresh = useCallback(async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setState("unsupported");
+      return;
+    }
+    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+      setState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setState("denied");
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      setState(sub ? "subscribed" : "unsubscribed");
+    } catch {
+      setState("unsupported");
+    }
+  }, []);
+
   const subscribe = useCallback(async () => {
     setBusy(true);
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setState(perm === "denied" ? "denied" : "unsubscribed");
+      const res = await ensurePushSubscribed();
+      if (!res.ok) {
+        if (res.reason === "denied") setState("denied");
+        else setState("unsubscribed");
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY!),
-      });
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub.toJSON()),
-      });
-      if (!res.ok) throw new Error("Không lưu được subscription");
       setState("subscribed");
-    } catch (e) {
-      console.error(e);
     } finally {
       setBusy(false);
     }
   }, []);
-
-  useEffect(() => {
-    (async () => {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-        setState("unsupported");
-        return;
-      }
-      if (!PUBLIC_VAPID_KEY) {
-        setState("unsupported");
-        return;
-      }
-      if (Notification.permission === "denied") {
-        setState("denied");
-        return;
-      }
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          setState("subscribed");
-          return;
-        }
-        // Permission đã granted nhưng chưa có subscription → tự subscribe ngay (không cần click)
-        if (Notification.permission === "granted") {
-          await subscribe();
-          return;
-        }
-        // Permission default → tự prompt 1 lần. Nếu trình duyệt yêu cầu user gesture
-        // (Safari iOS), permission sẽ vẫn là default và button sẽ hiện ra để bấm.
-        setState("unsubscribed");
-        if (!autoTried.current && localStorage.getItem(AUTO_PROMPT_KEY) !== "1") {
-          autoTried.current = true;
-          localStorage.setItem(AUTO_PROMPT_KEY, "1");
-          await subscribe();
-        }
-      } catch {
-        setState("unsupported");
-      }
-    })();
-  }, [subscribe]);
 
   async function unsubscribe() {
     setBusy(true);
@@ -108,6 +67,21 @@ export function NotificationToggle() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    (async () => {
+      await refresh();
+      // Auto-subscribe trên mount nếu permission đã granted nhưng chưa có sub
+      // (vd sau enroll đã grant nhưng subscribe fail). Không auto-prompt nếu
+      // permission default — cần user gesture trên iOS.
+      if (!autoTried.current) {
+        autoTried.current = true;
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          subscribe();
+        }
+      }
+    })();
+  }, [refresh, subscribe]);
 
   if (state === "loading") return null;
   if (state === "unsupported") return null;

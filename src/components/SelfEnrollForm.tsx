@@ -1,10 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loadFaceModels, detectDescriptor } from "@/lib/face";
+import { ensurePushSubscribed } from "@/lib/push-client";
 import { Button } from "@/components/ui/Button";
-import { UploadCloud, User, Mail, Loader2 } from "lucide-react";
+import { UploadCloud, User, Mail, Loader2, CheckCircle2, ScanFace } from "lucide-react";
+
+type DetectState =
+  | { kind: "idle" }
+  | { kind: "analyzing" }
+  | { kind: "ok"; descriptor: number[] }
+  | { kind: "error"; message: string };
 
 export default function SelfEnrollForm({
   email,
@@ -16,16 +23,40 @@ export default function SelfEnrollForm({
   const router = useRouter();
   const [name, setName] = useState(defaultName ?? "");
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [detect, setDetect] = useState<DetectState>({ kind: "idle" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Preload face models ngay khi vào trang — giảm thời gian submit sau này
+  useEffect(() => {
+    loadFaceModels().catch((e) => console.warn("[face] preload failed", e));
+  }, []);
 
   function onPick(f: File | null) {
     setFile(f);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(f ? URL.createObjectURL(f) : null);
     setErr(null);
+    setDetect(f ? { kind: "analyzing" } : { kind: "idle" });
+  }
+
+  // Khi ảnh load xong → detect descriptor ngay (không đợi click submit)
+  async function onImageLoad() {
+    const img = imgRef.current;
+    if (!img || !file) return;
+    try {
+      await loadFaceModels();
+      const result = await detectDescriptor(img);
+      if (!result) {
+        setDetect({ kind: "error", message: "Không phát hiện khuôn mặt. Chọn ảnh khác (rõ mặt, nhìn thẳng, đủ sáng)." });
+        return;
+      }
+      setDetect({ kind: "ok", descriptor: Array.from(result.descriptor) });
+    } catch (e: unknown) {
+      setDetect({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -35,25 +66,21 @@ export default function SelfEnrollForm({
       setErr("Chọn ảnh khuôn mặt trước");
       return;
     }
+    if (detect.kind === "analyzing") {
+      setErr("Đang phân tích ảnh, đợi 1 giây…");
+      return;
+    }
+    if (detect.kind !== "ok") {
+      setErr(detect.kind === "error" ? detect.message : "Chưa nhận diện được khuôn mặt");
+      return;
+    }
+
     setLoading(true);
     try {
-      await loadFaceModels();
-      const img = imgRef.current!;
-      await new Promise<void>((resolve, reject) => {
-        if (img.complete && img.naturalWidth > 0) resolve();
-        else {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error("Không load được ảnh"));
-        }
-      });
-      const result = await detectDescriptor(img);
-      if (!result) throw new Error("Không phát hiện khuôn mặt trong ảnh. Chọn ảnh khác (nhìn thẳng, rõ mặt, đủ sáng).");
-
-      const descriptor = Array.from(result.descriptor);
       const form = new FormData();
       form.append("name", name);
       form.append("photo", file);
-      form.append("descriptor", JSON.stringify(descriptor));
+      form.append("descriptor", JSON.stringify(detect.descriptor));
 
       const res = await fetch("/api/self-enroll", { method: "POST", body: form });
       if (!res.ok) {
@@ -62,13 +89,16 @@ export default function SelfEnrollForm({
           const data = await res.json();
           if (data?.error) errorMsg = data.error;
         } catch {
-          // Response không phải JSON — thường là HTML từ nginx/proxy
           if (res.status === 413) errorMsg = "Ảnh quá lớn (>10MB). Chọn ảnh nhỏ hơn.";
           else if (res.status === 502 || res.status === 504) errorMsg = "Máy chủ đang bận, thử lại sau 10 giây.";
           else if (res.status === 401) errorMsg = "Phiên đăng nhập hết hạn, reload lại trang.";
         }
         throw new Error(errorMsg);
       }
+
+      // Tận dụng user gesture của click submit → auto-enable push noti
+      // (iOS PWA bắt buộc gesture mới cho Notification.requestPermission())
+      ensurePushSubscribed().catch(() => {});
 
       router.push("/");
       router.refresh();
@@ -121,12 +151,23 @@ export default function SelfEnrollForm({
               ref={imgRef}
               src={previewUrl}
               alt="preview"
+              onLoad={onImageLoad}
               className="h-20 w-20 rounded-xl object-cover"
             />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">{file?.name}</div>
-              <div className="text-xs text-neutral-500">
-                {file && `${(file.size / 1024).toFixed(0)} KB — click để đổi ảnh`}
+              <div className="text-xs text-neutral-500 flex items-center gap-1">
+                {detect.kind === "analyzing" && (
+                  <><Loader2 size={11} className="animate-spin" /> Đang phân tích…</>
+                )}
+                {detect.kind === "ok" && (
+                  <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 size={11} /> Đã nhận diện khuôn mặt</span>
+                )}
+                {detect.kind === "error" && (
+                  <span className="text-rose-600 flex items-center gap-1"><ScanFace size={11} /> Không nhận diện được</span>
+                )}
+                {detect.kind === "idle" && file && `${(file.size / 1024).toFixed(0)} KB`}
+                <span className="text-neutral-400"> · click để đổi ảnh</span>
               </div>
             </div>
           </div>
@@ -156,9 +197,9 @@ export default function SelfEnrollForm({
 
       {err && <p className="text-sm text-rose-600">{err}</p>}
 
-      <Button size="lg" disabled={loading} className="w-full">
+      <Button size="lg" disabled={loading || detect.kind === "analyzing"} className="w-full">
         {loading && <Loader2 size={16} className="animate-spin" />}
-        {loading ? "Đang xử lý..." : "Hoàn tất đăng ký"}
+        {loading ? "Đang xử lý..." : detect.kind === "analyzing" ? "Đang phân tích ảnh..." : "Hoàn tất đăng ký"}
       </Button>
     </form>
   );
