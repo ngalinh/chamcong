@@ -1,0 +1,78 @@
+name: Deploy to chamcong.basso.vn
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # cho phép trigger thủ công từ GitHub UI
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true  # huỷ build cũ nếu push commit mới
+
+jobs:
+  # ----- Job 1: typecheck — chặn deploy nếu TS bị lỗi -----
+  typecheck:
+    name: TypeScript check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  # ----- Job 2: deploy — SSH lên server, build Docker, restart container -----
+  deploy:
+    name: Build & restart container
+    needs: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true  # dừng ngay nếu lệnh nào fail
+          script: |
+            set -euo pipefail
+
+            APP_DIR=/opt/chamcong
+            CONTAINER=chamcong
+            IMAGE=chamcong:latest
+
+            cd "$APP_DIR"
+
+            echo "→ Pull code mới nhất từ main"
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            echo "→ Build Docker image"
+            docker build -t "$IMAGE" .
+
+            echo "→ Stop + remove container cũ (nếu có)"
+            docker stop "$CONTAINER" 2>/dev/null || true
+            docker rm   "$CONTAINER" 2>/dev/null || true
+
+            echo "→ Run container mới"
+            docker run -d \
+              --name "$CONTAINER" \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              --env-file .env \
+              "$IMAGE"
+
+            echo "→ Cleanup image cũ không dùng"
+            docker image prune -f
+
+            echo "✓ Deploy xong. Container đang chạy:"
+            docker ps --filter "name=$CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
