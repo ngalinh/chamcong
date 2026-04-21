@@ -1,15 +1,30 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Fingerprint, Loader2 } from "lucide-react";
+import { Fingerprint, Loader2, AlertTriangle, Copy, Check } from "lucide-react";
+
+/**
+ * Detect in-app webview (Facebook, Messenger, Instagram, Zalo, TikTok, Line…).
+ * Google chặn OAuth từ những browser này từ 2021 — báo lỗi
+ * disallowed_useragent. NV phải mở link trong Safari / Chrome thật.
+ */
+function isInAppBrowser(ua: string): boolean {
+  return /FBAN|FBAV|FB_IAB|FBSS|Instagram|Line\/|Twitter|MicroMessenger|TikTok|Zalo|KAKAOTALK|NAVER|SnapChat/i.test(ua);
+}
 
 function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inApp, setInApp] = useState(false);
+  const [copied, setCopied] = useState(false);
   const params = useSearchParams();
   const next = params.get("next") ?? "/";
+
+  useEffect(() => {
+    setInApp(isInAppBrowser(navigator.userAgent ?? ""));
+  }, []);
 
   async function signInWithGoogle() {
     setLoading(true);
@@ -29,6 +44,14 @@ function LoginForm() {
     }
   }
 
+  async function copyUrl() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }
+
   return (
     <div className="w-full max-w-sm">
       <div className="flex flex-col items-center gap-4 mb-10">
@@ -44,11 +67,37 @@ function LoginForm() {
         </div>
       </div>
 
+      {inApp && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5 text-amber-600" />
+            <div>
+              <p className="font-semibold">Bạn đang mở trong app khác (Facebook/Messenger/Zalo…)</p>
+              <p className="text-xs mt-1 text-amber-800">
+                Google không cho phép đăng nhập từ in-app browser. Hãy mở link này trong <b>Safari</b> (iOS)
+                hoặc <b>Chrome</b> (Android).
+              </p>
+            </div>
+          </div>
+          <div className="rounded-xl bg-white/80 p-2.5 text-xs text-neutral-700 space-y-1.5">
+            <p className="font-medium">Cách mở:</p>
+            <p>📱 <b>iOS:</b> bấm <b>•••</b> góc trên phải → <b>Open in Safari</b></p>
+            <p>🤖 <b>Android:</b> bấm menu <b>⋮</b> → <b>Open in Chrome</b></p>
+          </div>
+          <button
+            onClick={copyUrl}
+            className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium flex items-center justify-center gap-2 transition"
+          >
+            {copied ? <><Check size={16} /> Đã copy</> : <><Copy size={16} /> Copy link để paste vào Safari</>}
+          </button>
+        </div>
+      )}
+
       <div className="glass rounded-3xl border border-white/60 shadow-xl shadow-neutral-900/5 p-6">
         <button
           onClick={signInWithGoogle}
-          disabled={loading}
-          className="w-full h-12 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 active:scale-[0.99] transition text-[15px] font-medium flex items-center justify-center gap-3 disabled:opacity-60"
+          disabled={loading || inApp}
+          className="w-full h-12 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 active:scale-[0.99] transition text-[15px] font-medium flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? <Loader2 size={18} className="animate-spin text-neutral-500" /> : <GoogleIcon />}
           <span>{loading ? "Đang chuyển..." : "Tiếp tục với Google"}</span>
