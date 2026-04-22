@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { PendingApprovalsBanner } from "@/components/PendingApprovalsBanner";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -36,7 +37,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
 
       <AppHeader title="Chấm công" email={user.email} nav={nav} />
-      <main className="flex-1 mx-auto max-w-6xl w-full px-safe py-4 pb-24 md:pb-8">
+      <main className="flex-1 mx-auto max-w-6xl w-full px-safe py-4 pb-24 md:pb-8 space-y-4">
+        <PendingApprovalsBanner />
         {children}
       </main>
       <BottomNav />

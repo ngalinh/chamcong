@@ -337,24 +337,28 @@ async function decideOvertime(formData: FormData) {
 export default async function HistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; office?: string; type?: RowType | "all" }>;
+  searchParams: Promise<{ from?: string; to?: string; office?: string; type?: RowType | "all"; status?: string }>;
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
+  const pendingOnly = sp.status === "pending";
   const supabase = await createClient();
   const { data: { user: viewer } } = await supabase.auth.getUser();
   const viewerEmail = viewer?.email?.toLowerCase() ?? "";
   const admin = createAdminClient();
 
-  const from = sp.from ? new Date(sp.from) : new Date(Date.now() - 7 * 86400_000);
+  // Khi xem pending → mở rộng range tìm đơn cũ chưa duyệt (3 tháng)
+  const from = sp.from
+    ? new Date(sp.from)
+    : new Date(Date.now() - (pendingOnly ? 90 : 7) * 86400_000);
   const to = sp.to ? new Date(sp.to) : new Date();
   to.setHours(23, 59, 59, 999);
 
   const { data: offices } = await admin.from("offices").select("id, name").order("name");
 
-  // Check-ins
+  // Check-ins — bỏ qua khi đang lọc pending (check-in không có khái niệm pending)
   const checkInsRows: CheckInRow[] = [];
-  if (type !== "leave") {
+  if (type !== "leave" && !pendingOnly) {
     let q = admin
       .from("check_ins")
       .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name, is_remote)")
@@ -396,13 +400,15 @@ export default async function HistoryPage({
   // Leave requests — filter theo ngày TẠO đơn (created_at), không phải leave_date
   const leaveRows: LeaveRow[] = [];
   if (type === "leave" || type === "all") {
-    const { data } = await admin
+    let q = admin
       .from("leave_requests")
       .select("id, created_at, leave_date, category, duration, duration_unit, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(300);
+    if (pendingOnly) q = q.eq("status", "pending");
+    const { data } = await q;
     for (const r of data ?? []) {
       // @ts-expect-error — supabase nested join
       const approver: string | null = r.employees?.offices?.approver_email ?? null;
@@ -426,13 +432,15 @@ export default async function HistoryPage({
   // Overtime requests — gộp chung với tab Chấm công + All
   const overtimeRows: OvertimeRow[] = [];
   if (type === "checkin" || type === "all") {
-    const { data } = await admin
+    let q = admin
       .from("overtime_requests")
       .select("id, created_at, ot_date, start_time, end_time, hours, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(300);
+    if (pendingOnly) q = q.eq("status", "pending");
+    const { data } = await q;
     for (const r of data ?? []) {
       // @ts-expect-error — supabase nested join
       const approver: string | null = r.employees?.offices?.approver_email ?? null;
@@ -486,13 +494,25 @@ export default async function HistoryPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Lịch sử</h1>
-        <a href={csvHref}>
-          <Button size="sm" variant="secondary">
-            <Download size={14} /> CSV
-          </Button>
-        </a>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {pendingOnly ? "Đơn chờ duyệt" : "Lịch sử"}
+        </h1>
+        <div className="flex items-center gap-2">
+          {pendingOnly && (
+            <a
+              href="/admin/history"
+              className="text-xs font-medium text-neutral-500 hover:text-neutral-700 underline underline-offset-2"
+            >
+              ← Xem tất cả lịch sử
+            </a>
+          )}
+          <a href={csvHref}>
+            <Button size="sm" variant="secondary">
+              <Download size={14} /> CSV
+            </Button>
+          </a>
+        </div>
       </div>
 
       <TypeTabs current={type} sp={sp} />
