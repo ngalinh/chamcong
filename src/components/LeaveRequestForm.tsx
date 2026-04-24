@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
-import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2 } from "lucide-react";
+import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2, Plus, X } from "lucide-react";
 
 function diffHours(start: string, end: string): number {
   if (!start || !end) return 0;
@@ -25,7 +25,7 @@ export default function LeaveRequestForm({
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [date, setDate] = useState(today);
+  const [dates, setDates] = useState<string[]>([today]);
   const [category, setCategory] = useState<LeaveCategory>("online_wfh");
   const [duration, setDuration] = useState<string>("1");
   const [unit, setUnit] = useState<DurationUnit>("day");
@@ -39,18 +39,38 @@ export default function LeaveRequestForm({
   const isHourly = category === "leave_hourly";
   const computedHours = useMemo(() => diffHours(startTime, endTime), [startTime, endTime]);
 
-  // Khi chọn nghỉ theo giờ → auto đổi unit sang hour + tính duration từ time pickers
+  // Khi chọn nghỉ theo giờ → auto đổi unit sang hour + tính duration từ time pickers + collapse về 1 ngày
   useEffect(() => {
     if (isHourly) {
       setUnit("hour");
       if (computedHours > 0) setDuration(String(computedHours));
+      setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
     }
   }, [isHourly, computedHours]);
+
+  function addDate() {
+    setDates((prev) => [...prev, ""]);
+  }
+  function removeDate(idx: number) {
+    setDates((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function updateDate(idx: number, value: string) {
+    setDates((prev) => prev.map((d, i) => (i === idx ? value : d)));
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setOk(null);
+    const cleanDates = dates.map((d) => d.trim()).filter(Boolean);
+    if (cleanDates.length === 0) {
+      setErr("Vui lòng chọn ít nhất 1 ngày");
+      return;
+    }
+    if (new Set(cleanDates).size !== cleanDates.length) {
+      setErr("Các ngày bị trùng nhau");
+      return;
+    }
     if (isHourly && computedHours <= 0) {
       setErr("Thời gian kết thúc phải sau thời gian bắt đầu");
       return;
@@ -61,7 +81,7 @@ export default function LeaveRequestForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          leave_date: date,
+          leave_dates: cleanDates.sort(),
           category,
           duration: Number(duration),
           duration_unit: unit,
@@ -74,8 +94,9 @@ export default function LeaveRequestForm({
         const d = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
         throw new Error(d.error ?? "Server từ chối");
       }
-      setOk("Đã gửi đơn xin nghỉ");
+      setOk(cleanDates.length > 1 ? `Đã gửi ${cleanDates.length} đơn xin nghỉ` : "Đã gửi đơn xin nghỉ");
       setReason("");
+      setDates([today]);
       if (!isHourly) setDuration("1");
       router.refresh();
     } catch (e: unknown) {
@@ -87,14 +108,39 @@ export default function LeaveRequestForm({
 
   return (
     <form onSubmit={submit} className="rounded-2xl glass border border-white/60 p-5 space-y-4">
-      <Row icon={Calendar} label="Ngày tháng">
-        <input
-          type="date"
-          required
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-        />
+      <Row icon={Calendar} label={dates.length > 1 ? `Ngày tháng (${dates.length} ngày)` : "Ngày tháng"}>
+        <div className="space-y-2">
+          {dates.map((d, i) => (
+            <div key={i} className="flex gap-2">
+              <input
+                type="date"
+                required
+                value={d}
+                onChange={(e) => updateDate(i, e.target.value)}
+                className="h-10 flex-1 min-w-0 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
+              />
+              {dates.length > 1 && (
+                <button
+                  type="button"
+                  aria-label="Xoá ngày"
+                  onClick={() => removeDate(i)}
+                  className="h-10 w-10 shrink-0 rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:border-rose-300 hover:text-rose-600 flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+          ))}
+          {!isHourly && (
+            <button
+              type="button"
+              onClick={addDate}
+              className="h-9 w-full rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-600 hover:border-neutral-900 hover:text-neutral-900 flex items-center justify-center gap-1.5"
+            >
+              <Plus size={14} /> Thêm ngày
+            </button>
+          )}
+        </div>
       </Row>
 
       <Row icon={User} label="Nhân viên">
@@ -149,7 +195,7 @@ export default function LeaveRequestForm({
           </Row>
         </>
       ) : (
-        <Row icon={Clock} label="Thời gian">
+        <Row icon={Clock} label={dates.length > 1 ? "Thời gian (mỗi ngày)" : "Thời gian"}>
           <div className="flex gap-2">
             <input
               type="number"
