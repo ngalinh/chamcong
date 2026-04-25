@@ -241,11 +241,13 @@ export default async function MyHistoryPage({
 
       <TypeTabs current={type} sp={sp} />
 
-      <form action="/history" className="flex flex-wrap gap-2 rounded-2xl border border-white/60 glass p-3">
+      <form action="/history" className="rounded-2xl border border-white/60 glass p-3 flex flex-col gap-2">
         <input type="hidden" name="type" value={type} />
-        <FilterInput icon={Calendar} name="from" type="date" defaultValue={from.toISOString().slice(0, 10)} />
-        <FilterInput icon={Calendar} name="to"   type="date" defaultValue={to.toISOString().slice(0, 10)} />
-        <Button size="sm" type="submit">Lọc</Button>
+        <div className="grid grid-cols-2 gap-2">
+          <DateField label="Từ"  name="from" defaultValue={from.toISOString().slice(0, 10)} />
+          <DateField label="Đến" name="to"   defaultValue={to.toISOString().slice(0, 10)} />
+        </div>
+        <Button size="sm" type="submit" className="w-full">Lọc</Button>
       </form>
 
       {rows.length === 0 ? (
@@ -311,20 +313,28 @@ function TypeTabs({
   );
 }
 
-function FilterInput({
-  icon: Icon,
-  ...rest
+function DateField({
+  label,
+  name,
+  defaultValue,
 }: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-} & React.InputHTMLAttributes<HTMLInputElement>) {
+  label: string;
+  name: string;
+  defaultValue?: string;
+}) {
   return (
-    <div className="relative flex-1 min-w-[140px]">
-      <Icon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
-      <input
-        className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-8 pr-2 text-sm outline-none focus:border-neutral-900"
-        {...rest}
-      />
-    </div>
+    <label className="block">
+      <span className="block text-[10px] uppercase tracking-wider text-neutral-500 mb-1 px-0.5">{label}</span>
+      <div className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-2.5 flex items-center gap-1.5 focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/5 transition">
+        <Calendar size={14} className="text-neutral-400 shrink-0" />
+        <input
+          type="date"
+          name={name}
+          defaultValue={defaultValue}
+          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm tabular-nums"
+        />
+      </div>
+    </label>
   );
 }
 
