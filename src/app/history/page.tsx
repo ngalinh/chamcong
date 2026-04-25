@@ -247,7 +247,7 @@ export default async function MyHistoryPage({
           <DateField label="Từ"  name="from" defaultValue={from.toISOString().slice(0, 10)} />
           <DateField label="Đến" name="to"   defaultValue={to.toISOString().slice(0, 10)} />
         </div>
-        <Button size="sm" type="submit" className="w-full">Lọc</Button>
+        <Button size="sm" variant="secondary" type="submit" className="w-full">Lọc</Button>
       </form>
 
       {rows.length === 0 ? (
