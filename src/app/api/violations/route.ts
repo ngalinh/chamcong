@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   sendPushToAdmins({
     title: "⚠️ Đơn vi phạm mới",
-    body: `${emp.name}: ${data.items.length} lỗi · ${totalAmount.toLocaleString("vi-VN")} VND`,
+    body: `${emp.name}: ${data.items.length} lỗi · ${totalAmount.toLocaleString("en-US")} VND`,
     url: "/admin/history?type=violation",
     tag: `violation-new-${emp.id}`,
   }).catch((e) => console.error("[push] admin notify failed", e));

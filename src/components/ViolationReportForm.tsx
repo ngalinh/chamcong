@@ -7,6 +7,15 @@ import { Calendar, FileText, Loader2, CheckCircle2, Plus, X, AlertTriangle, Wall
 
 type Item = { description: string; amount: string };
 
+// Format số nguyên với dấu phẩy mỗi 3 chữ số: "200000" -> "200,000"
+function formatAmount(digits: string): string {
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function parseAmount(formatted: string): string {
+  return formatted.replace(/\D/g, "");
+}
+
 export default function ViolationReportForm() {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
@@ -77,13 +86,15 @@ export default function ViolationReportForm() {
   return (
     <form onSubmit={submit} className="rounded-2xl glass border border-white/60 p-5 space-y-4">
       <Row icon={Calendar} label="Ngày tháng">
-        <input
-          type="date"
-          required
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-        />
+        <DateTimeBox>
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm"
+          />
+        </DateTimeBox>
       </Row>
 
       <div>
@@ -97,7 +108,7 @@ export default function ViolationReportForm() {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Lỗi vi phạm (vd: Đi muộn 30p)"
+                  placeholder="vd: làm sai quy trình"
                   value={it.description}
                   onChange={(e) => updateItem(i, { description: e.target.value })}
                   className="h-10 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900"
@@ -116,13 +127,11 @@ export default function ViolationReportForm() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-neutral-500 shrink-0 w-16">Tiền phạt</span>
                 <input
-                  type="number"
+                  type="text"
                   inputMode="numeric"
-                  min="0"
-                  step="1000"
                   placeholder="0"
-                  value={it.amount}
-                  onChange={(e) => updateItem(i, { amount: e.target.value })}
+                  value={formatAmount(it.amount)}
+                  onChange={(e) => updateItem(i, { amount: parseAmount(e.target.value) })}
                   className="h-10 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 tabular-nums text-right"
                 />
                 <span className="text-xs text-neutral-500 shrink-0">VND</span>
@@ -141,7 +150,7 @@ export default function ViolationReportForm() {
 
       <Row icon={Wallet} label="Tổng tiền phạt">
         <div className="h-11 w-full rounded-xl border border-rose-200 bg-rose-50 px-3 flex items-center text-sm font-semibold text-rose-700 tabular-nums">
-          {total.toLocaleString("vi-VN")} VND
+          {total.toLocaleString("en-US")} VND
         </div>
       </Row>
 
@@ -187,5 +196,14 @@ function Row({
       </div>
       {children}
     </label>
+  );
+}
+
+/** Wrapper cố định 44px cho native date input — tránh iOS render quá to */
+function DateTimeBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 flex items-center focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/5 transition">
+      {children}
+    </div>
   );
 }

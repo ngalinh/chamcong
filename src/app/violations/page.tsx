@@ -90,7 +90,7 @@ function ReportCard({ report: r }: { report: ReportWithItems }) {
             {formatVN(r.report_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy")}
           </div>
           <div className="text-xs text-neutral-500 mt-0.5">
-            {r.items.length} lỗi · tổng <span className="font-semibold text-rose-700 tabular-nums">{Number(r.total_amount).toLocaleString("vi-VN")} VND</span>
+            {r.items.length} lỗi · tổng <span className="font-semibold text-rose-700 tabular-nums">{Number(r.total_amount).toLocaleString("en-US")} VND</span>
           </div>
         </div>
       </div>
@@ -100,7 +100,7 @@ function ReportCard({ report: r }: { report: ReportWithItems }) {
             <li key={it.id} className="flex items-center gap-2 text-xs">
               <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
               <span className="text-rose-700 font-medium tabular-nums shrink-0">
-                {Number(it.amount).toLocaleString("vi-VN")} VND
+                {Number(it.amount).toLocaleString("en-US")} VND
               </span>
             </li>
           ))}

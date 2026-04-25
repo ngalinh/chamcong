@@ -408,7 +408,7 @@ async function decideViolation(formData: FormData) {
   const { sendPushToEmployee } = await import("@/lib/push");
   sendPushToEmployee(String(rep.employee_id), {
     title: decision === "approved" ? "✅ Đơn vi phạm đã được duyệt" : "❌ Đơn vi phạm bị từ chối",
-    body: `Ngày ${rep.report_date} · ${Number(rep.total_amount).toLocaleString("vi-VN")} VND`,
+    body: `Ngày ${rep.report_date} · ${Number(rep.total_amount).toLocaleString("en-US")} VND`,
     url: "/violations",
     tag: `violation-${id}`,
   }).catch((e) => console.error("[push] employee notify failed", e));
@@ -997,7 +997,7 @@ function ViolationCard({
           <div className="mt-1 text-xs text-neutral-700">
             <span className="font-medium">{formatVN(r.report_date + "T00:00:00+07:00", "d/M")}</span>
             <span className="text-neutral-500"> · {r.items.length} lỗi · </span>
-            <span className="font-semibold text-rose-700 tabular-nums">{r.total_amount.toLocaleString("vi-VN")} VND</span>
+            <span className="font-semibold text-rose-700 tabular-nums">{r.total_amount.toLocaleString("en-US")} VND</span>
           </div>
           {r.items.length > 0 && (
             <ul className="mt-1.5 space-y-0.5">
@@ -1005,7 +1005,7 @@ function ViolationCard({
                 <li key={i} className="flex items-center gap-2 text-xs">
                   <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
                   <span className="text-rose-700 font-medium tabular-nums shrink-0">
-                    {it.amount.toLocaleString("vi-VN")} VND
+                    {it.amount.toLocaleString("en-US")} VND
                   </span>
                 </li>
               ))}
