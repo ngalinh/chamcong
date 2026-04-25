@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
 import {
   LEAVE_CATEGORIES,
@@ -16,6 +17,7 @@ import {
   Inbox,
   Fingerprint,
   CalendarOff,
+  Calendar,
   Check,
   Clock,
   X,
@@ -88,7 +90,7 @@ type Row = CheckInRow | LeaveRow | OvertimeRow | ViolationRow;
 export default async function MyHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: RowType | "all" }>;
+  searchParams: Promise<{ type?: RowType | "all"; from?: string; to?: string }>;
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
@@ -105,8 +107,11 @@ export default async function MyHistoryPage({
     .maybeSingle();
   if (!employee) redirect("/enroll");
 
-  const from = new Date();
-  from.setDate(from.getDate() - 60); // 60 ngày qua
+  // Date range filter — default 30 ngày qua đến hôm nay
+  const from = sp.from ? new Date(sp.from + "T00:00:00+07:00") : new Date(Date.now() - 30 * 86400_000);
+  const to = sp.to ? new Date(sp.to + "T23:59:59.999+07:00") : new Date();
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
 
   const rows: Row[] = [];
 
@@ -115,7 +120,8 @@ export default async function MyHistoryPage({
       .from("check_ins")
       .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, offices(name, is_remote)")
       .eq("employee_id", employee.id)
-      .gte("checked_in_at", from.toISOString())
+      .gte("checked_in_at", fromIso)
+      .lte("checked_in_at", toIso)
       .order("checked_in_at", { ascending: false })
       .limit(100);
 
@@ -149,7 +155,8 @@ export default async function MyHistoryPage({
       .from("overtime_requests")
       .select("id, created_at, ot_date, start_time, end_time, hours, reason, status")
       .eq("employee_id", employee.id)
-      .gte("created_at", from.toISOString())
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
       .order("created_at", { ascending: false })
       .limit(100);
     for (const r of ots ?? []) {
@@ -172,6 +179,8 @@ export default async function MyHistoryPage({
       .from("leave_requests")
       .select("id, created_at, leave_date, category, duration, duration_unit, reason, status")
       .eq("employee_id", employee.id)
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
       .order("created_at", { ascending: false })
       .limit(100);
     for (const r of data ?? []) {
@@ -194,6 +203,8 @@ export default async function MyHistoryPage({
       .from("violation_reports")
       .select("id, created_at, report_date, total_amount, reason, status, violation_items(id)")
       .eq("employee_id", employee.id)
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
       .order("created_at", { ascending: false })
       .limit(100);
     for (const r of data ?? []) {
@@ -228,7 +239,14 @@ export default async function MyHistoryPage({
         </div>
       </header>
 
-      <TypeTabs current={type} />
+      <TypeTabs current={type} sp={sp} />
+
+      <form action="/history" className="flex flex-wrap gap-2 rounded-2xl border border-white/60 glass p-3">
+        <input type="hidden" name="type" value={type} />
+        <FilterInput icon={Calendar} name="from" type="date" defaultValue={from.toISOString().slice(0, 10)} />
+        <FilterInput icon={Calendar} name="to"   type="date" defaultValue={to.toISOString().slice(0, 10)} />
+        <Button size="sm" type="submit">Lọc</Button>
+      </form>
 
       {rows.length === 0 ? (
         <Empty icon={Inbox} title="Chưa có gì" description="Các hoạt động của bạn sẽ hiện ở đây." />
@@ -246,24 +264,36 @@ export default async function MyHistoryPage({
   );
 }
 
-function TypeTabs({ current }: { current: string }) {
+function TypeTabs({
+  current,
+  sp,
+}: {
+  current: string;
+  sp: { from?: string; to?: string };
+}) {
   const tabs = [
     { key: "all", label: "Tất cả", icon: Inbox },
     { key: "checkin", label: "Chấm công · OT", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
     { key: "violation", label: "Vi phạm", icon: ShieldAlert },
   ];
+  const make = (k: string) => {
+    const p = new URLSearchParams();
+    if (k !== "all") p.set("type", k);
+    if (sp.from) p.set("from", sp.from);
+    if (sp.to) p.set("to", sp.to);
+    return `/history${p.toString() ? "?" + p.toString() : ""}`;
+  };
   return (
     <div className="overflow-x-auto -mx-2 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="inline-flex p-1 rounded-xl bg-neutral-100/80 gap-1">
         {tabs.map((t) => {
           const active = current === t.key;
           const Icon = t.icon;
-          const href = t.key === "all" ? "/history" : `/history?type=${t.key}`;
           return (
             <Link
               key={t.key}
-              href={href}
+              href={make(t.key)}
               prefetch
               scroll={false}
               className={cn(
@@ -277,6 +307,23 @@ function TypeTabs({ current }: { current: string }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function FilterInput({
+  icon: Icon,
+  ...rest
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="relative flex-1 min-w-[140px]">
+      <Icon size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+      <input
+        className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-8 pr-2 text-sm outline-none focus:border-neutral-900"
+        {...rest}
+      />
     </div>
   );
 }
