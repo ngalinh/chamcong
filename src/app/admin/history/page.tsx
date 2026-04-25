@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
 import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus } from "@/types/db";
@@ -368,12 +369,18 @@ export default async function HistoryPage({
       .limit(300);
     if (sp.office) q = q.eq("office_id", sp.office);
     const { data } = await q;
-    for (const r of data ?? []) {
-      let signedUrl = "";
-      if (r.selfie_path) {
-        const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
-        signedUrl = signed?.signedUrl ?? "";
+
+    const checkIns = data ?? [];
+    const paths = checkIns.map((r) => r.selfie_path).filter(Boolean) as string[];
+    const signedMap = new Map<string, string>();
+    if (paths.length > 0) {
+      const { data: signedList } = await admin.storage.from("selfies").createSignedUrls(paths, 3600);
+      for (const s of signedList ?? []) {
+        if (s.path && s.signedUrl) signedMap.set(s.path, s.signedUrl);
       }
+    }
+
+    for (const r of checkIns) {
       const at = r.checked_in_at as string;
       checkInsRows.push({
         type: "checkin",
@@ -389,7 +396,7 @@ export default async function HistoryPage({
         late_minutes: r.late_minutes,
         early_minutes: r.early_minutes,
         selfie_path: r.selfie_path ?? "",
-        signedUrl,
+        signedUrl: r.selfie_path ? signedMap.get(r.selfie_path) ?? "" : "",
         dateVN: dateInVN(at),
         // @ts-expect-error — join
         isRemote: !!r.offices?.is_remote,
@@ -589,9 +596,11 @@ function TypeTabs({
         const active = current === t.key;
         const Icon = t.icon;
         return (
-          <a
+          <Link
             key={t.key}
             href={make(t.key)}
+            prefetch
+            scroll={false}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm font-medium transition",
               active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700",
@@ -599,7 +608,7 @@ function TypeTabs({
           >
             <Icon size={14} />
             {t.label}
-          </a>
+          </Link>
         );
       })}
     </div>
