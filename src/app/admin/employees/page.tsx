@@ -4,10 +4,12 @@ import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { Users, Check, CircleSlash, Trash2, Building2, Wifi } from "lucide-react";
+import { Users, Check, CircleSlash, Trash2, Building2, Wifi, Plus } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
+import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
+import { yearMonthVN } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,78 @@ async function deleteEmployee(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function updateEmployeePayroll(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const salary = Number(formData.get("salary") ?? 0);
+  const leaveBalance = Number(formData.get("leave_balance") ?? 0);
+  if (!Number.isFinite(salary) || salary < 0) throw new Error("Lương không hợp lệ");
+  if (!Number.isFinite(leaveBalance) || leaveBalance < 0) throw new Error("Số ngày phép không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("employees")
+    .update({ salary, leave_balance: leaveBalance })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/employees");
+}
+
+async function accrueLeaveThisMonth() {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const admin = createAdminClient();
+  const monthStr = yearMonthVN(); // "YYYY-MM" hiện tại theo giờ VN
+  const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
+
+  // Đối tượng: NV active, được tạo TRƯỚC đầu tháng hiện tại (NV vào giữa tháng → skip),
+  // và chưa được accrual cho tháng này.
+  const { data: targets } = await admin
+    .from("employees")
+    .select("id, leave_balance, last_accrual_month, created_at")
+    .eq("is_active", true)
+    .lt("created_at", monthStartIso)
+    .or(`last_accrual_month.is.null,last_accrual_month.neq.${monthStr}`);
+
+  if (!targets?.length) {
+    revalidatePath("/admin/employees");
+    return;
+  }
+
+  // Update từng row (Supabase JS không hỗ trợ +1 nguyên tử kiểu raw SQL, nên đọc rồi ghi)
+  for (const t of targets) {
+    await admin
+      .from("employees")
+      .update({
+        leave_balance: Number(t.leave_balance ?? 0) + 1,
+        last_accrual_month: monthStr,
+      })
+      .eq("id", t.id);
+  }
+
+  revalidatePath("/admin/employees");
+}
+
 async function updateEmployeeOffice(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -91,13 +165,35 @@ export default async function EmployeesPage() {
   const meEmail = user?.email ?? "";
   const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
 
+  const currentMonth = yearMonthVN();
+  const accruedCount = (employees ?? []).filter((e) => e.last_accrual_month === currentMonth).length;
+  const eligibleCount = (employees ?? []).filter((e) => {
+    const monthStartIso = new Date(`${currentMonth}-01T00:00:00+07:00`).toISOString();
+    return e.is_active && e.created_at < monthStartIso;
+  }).length;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Nhân viên</h1>
-        <p className="text-sm text-neutral-500 mt-1">
-          Nhân viên tự đăng ký khi đăng nhập lần đầu. Chi nhánh tự gán khi chấm công lần đầu — admin có thể chỉnh.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Nhân viên</h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            Nhân viên tự đăng ký khi đăng nhập lần đầu. Chi nhánh tự gán khi chấm công lần đầu — admin có thể chỉnh.
+          </p>
+        </div>
+        <form action={accrueLeaveThisMonth}>
+          <Button
+            size="sm"
+            variant="secondary"
+            type="submit"
+            title={`Cộng +1 ngày phép cho ${eligibleCount} NV (NV mới vào tháng ${currentMonth} sẽ bị bỏ qua)`}
+            disabled={accruedCount === eligibleCount && eligibleCount > 0}
+          >
+            <Plus size={14} />
+            Cộng phép tháng {currentMonth}
+            {accruedCount > 0 && <span className="text-[10px] text-neutral-500 ml-1">({accruedCount}/{eligibleCount})</span>}
+          </Button>
+        </form>
       </div>
 
       {!employees?.length ? (
@@ -177,6 +273,14 @@ export default async function EmployeesPage() {
                     <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
                   )}
                 </div>
+
+                {/* Row 4: lương + ngày phép + xem bảng lương */}
+                <EmployeePayrollEditor
+                  employeeId={e.id}
+                  initialSalary={Number(e.salary ?? 0)}
+                  initialLeaveBalance={Number(e.leave_balance ?? 0)}
+                  action={updateEmployeePayroll}
+                />
               </div>
             );
           })}

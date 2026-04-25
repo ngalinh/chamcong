@@ -24,6 +24,9 @@ export type Employee = {
   home_office_id: string | null;
   is_admin: boolean;
   is_active: boolean;
+  salary: number;
+  leave_balance: number;
+  last_accrual_month: string | null;
   created_at: string;
 };
 
