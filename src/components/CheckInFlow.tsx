@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loadFaceModels, detectDescriptor, distance } from "@/lib/face";
 import { getCurrentCoords, haversine } from "@/lib/geo";
@@ -15,7 +15,6 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import Link from "next/link";
 
 type Step = "idle" | "geo" | "camera" | "match" | "uploading" | "done" | "error";
 
@@ -44,6 +43,7 @@ export default function CheckInFlow({
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cancelledRef = useRef(false);
 
   const [step, setStep] = useState<Step>("idle");
   const [message, setMessage] = useState("Nhấn để bắt đầu");
@@ -52,19 +52,29 @@ export default function CheckInFlow({
   const [score, setScore] = useState<number | null>(null);
   const [lateEarly, setLateEarly] = useState<string | null>(null);
 
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     const v = videoRef.current;
     const stream = v?.srcObject as MediaStream | null;
     stream?.getTracks().forEach((t) => t.stop());
     if (v) v.srcObject = null;
-  };
+  }, []);
 
-  useEffect(() => stopCamera, []);
+  useEffect(() => () => {
+    cancelledRef.current = true;
+    stopCamera();
+  }, [stopCamera]);
+
+  const close = useCallback(() => {
+    cancelledRef.current = true;
+    stopCamera();
+    router.replace("/");
+  }, [router, stopCamera]);
 
   async function run() {
     setError(null);
     setScore(null);
     setMatchedOffice(null);
+    cancelledRef.current = false;
 
     try {
       if (offices.length === 0) throw new Error("Chưa có chi nhánh nào được cấu hình.");
@@ -72,6 +82,7 @@ export default function CheckInFlow({
       setStep("geo");
       setMessage("Đang kiểm tra vị trí...");
       const pos = await getCurrentCoords();
+      if (cancelledRef.current) return;
 
       const ranked = offices
         .map((o) => ({
@@ -92,12 +103,17 @@ export default function CheckInFlow({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
+      if (cancelledRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const v = videoRef.current!;
       v.srcObject = stream;
       await v.play();
 
       setMessage("Đang tải mô hình nhận diện...");
       await loadFaceModels();
+      if (cancelledRef.current) return;
 
       setStep("match");
       setMessage("Nhìn thẳng vào camera...");
@@ -106,12 +122,15 @@ export default function CheckInFlow({
       let framesWithFace = 0;
 
       while (Date.now() < deadline && framesWithFace < 3) {
+        if (cancelledRef.current) return;
         const result = await detectDescriptor(v);
+        if (cancelledRef.current) return;
         if (result) {
           framesWithFace++;
           lastDescriptor = result.descriptor;
         }
-        await new Promise((r) => setTimeout(r, 80));
+        // Yield 120ms cho main thread xử lý touch/click events giữa các frame nặng
+        await new Promise((r) => setTimeout(r, 120));
       }
       if (!lastDescriptor) {
         throw new Error("Không phát hiện được khuôn mặt. Thử chỗ sáng hơn.");
@@ -192,9 +211,14 @@ export default function CheckInFlow({
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 pt-safe px-safe z-10">
         <div className="flex items-center justify-between py-3">
-          <Link href="/" className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center">
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Đóng"
+            className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center active:bg-white/20"
+          >
             <X size={20} />
-          </Link>
+          </button>
           <p className="text-sm font-medium">{employeeName}</p>
           <div className="w-10" />
         </div>

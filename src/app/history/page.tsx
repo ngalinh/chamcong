@@ -87,12 +87,18 @@ export default async function MyHistoryPage({
       .gte("checked_in_at", from.toISOString())
       .order("checked_in_at", { ascending: false })
       .limit(100);
-    for (const r of data ?? []) {
-      let signedUrl = "";
-      if (r.selfie_path) {
-        const { data: signed } = await admin.storage.from("selfies").createSignedUrl(r.selfie_path, 3600);
-        signedUrl = signed?.signedUrl ?? "";
+
+    const checkIns = data ?? [];
+    const paths = checkIns.map((r) => r.selfie_path).filter(Boolean) as string[];
+    const signedMap = new Map<string, string>();
+    if (paths.length > 0) {
+      const { data: signedList } = await admin.storage.from("selfies").createSignedUrls(paths, 3600);
+      for (const s of signedList ?? []) {
+        if (s.path && s.signedUrl) signedMap.set(s.path, s.signedUrl);
       }
+    }
+
+    for (const r of checkIns) {
       rows.push({
         type: "checkin",
         id: r.id,
@@ -102,7 +108,7 @@ export default async function MyHistoryPage({
         office: r.offices?.name ?? null,
         distance_m: r.distance_m,
         face_match_score: r.face_match_score,
-        signedUrl,
+        signedUrl: r.selfie_path ? signedMap.get(r.selfie_path) ?? "" : "",
         // @ts-expect-error — join
         isRemote: !!r.offices?.is_remote,
       });
@@ -176,9 +182,11 @@ function TypeTabs({ current }: { current: string }) {
         const Icon = t.icon;
         const href = t.key === "all" ? "/history" : `/history?type=${t.key}`;
         return (
-          <a
+          <Link
             key={t.key}
             href={href}
+            prefetch
+            scroll={false}
             className={cn(
               "inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm font-medium transition",
               active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500",
@@ -186,7 +194,7 @@ function TypeTabs({ current }: { current: string }) {
           >
             <Icon size={14} />
             {t.label}
-          </a>
+          </Link>
         );
       })}
     </div>
