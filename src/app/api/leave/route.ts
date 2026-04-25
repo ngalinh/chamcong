@@ -15,10 +15,8 @@ const Schema = z.object({
   category: z.enum([
     "online_rain",
     "online_wfh",
-    "online_paid",
     "leave_hourly",
     "leave_paid",
-    "leave_unpaid",
   ]),
   duration: z.number().positive().max(30),
   duration_unit: z.enum(["day", "hour"]),

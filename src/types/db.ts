@@ -30,13 +30,21 @@ export type Employee = {
 export const LEAVE_CATEGORIES = {
   online_rain:  "Làm online - trời mưa",
   online_wfh:   "Làm online - WFH",
-  online_paid:  "Làm online - trừ phép",
+  online_paid:  "Làm online - trừ phép",   // deprecated — giữ để hiển thị đơn cũ
   leave_hourly: "Nghỉ theo giờ",
-  leave_paid:   "Xin nghỉ trừ phép",
-  leave_unpaid: "Xin nghỉ không lương",
+  leave_paid:   "Nghỉ theo ngày",
+  leave_unpaid: "Xin nghỉ không lương",     // deprecated — giữ để hiển thị đơn cũ
 } as const;
 
 export type LeaveCategory = keyof typeof LEAVE_CATEGORIES;
+
+// Chỉ những category còn dùng trong form NV (loại bỏ deprecated).
+export const ACTIVE_LEAVE_CATEGORIES: LeaveCategory[] = [
+  "online_rain",
+  "online_wfh",
+  "leave_hourly",
+  "leave_paid",
+];
 
 export type DurationUnit = "day" | "hour";
 

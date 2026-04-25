@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
-import { LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
+import { LEAVE_CATEGORIES, ACTIVE_LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
 import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2, Plus, X } from "lucide-react";
 
 function diffHours(start: string, end: string): number {
@@ -37,16 +37,19 @@ export default function LeaveRequestForm({
   const [ok, setOk] = useState<string | null>(null);
 
   const isHourly = category === "leave_hourly";
+  const dayOnly = category === "leave_paid"; // "Nghỉ theo ngày" — chỉ cho đơn vị Ngày
   const computedHours = useMemo(() => diffHours(startTime, endTime), [startTime, endTime]);
 
-  // Khi chọn nghỉ theo giờ → auto đổi unit sang hour + tính duration từ time pickers + collapse về 1 ngày
+  // Auto-điều chỉnh unit theo category
   useEffect(() => {
     if (isHourly) {
       setUnit("hour");
       if (computedHours > 0) setDuration(String(computedHours));
       setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
+    } else if (dayOnly) {
+      setUnit("day");
     }
-  }, [isHourly, computedHours]);
+  }, [isHourly, dayOnly, computedHours]);
 
   function addDate() {
     setDates((prev) => [...prev, ""]);
@@ -156,8 +159,8 @@ export default function LeaveRequestForm({
           onChange={(e) => setCategory(e.target.value as LeaveCategory)}
           className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
         >
-          {Object.entries(LEAVE_CATEGORIES).map(([k, label]) => (
-            <option key={k} value={k}>{label}</option>
+          {ACTIVE_LEAVE_CATEGORIES.map((k) => (
+            <option key={k} value={k}>{LEAVE_CATEGORIES[k]}</option>
           ))}
         </select>
       </Row>
@@ -207,14 +210,20 @@ export default function LeaveRequestForm({
               onChange={(e) => setDuration(e.target.value)}
               className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 tabular-nums"
             />
-            <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as DurationUnit)}
-              className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
-            >
-              <option value="day">Ngày</option>
-              <option value="hour">Giờ</option>
-            </select>
+            {dayOnly ? (
+              <div className="h-10 px-3 rounded-xl border border-neutral-200 bg-neutral-50 text-sm text-neutral-600 flex items-center select-none">
+                Ngày
+              </div>
+            ) : (
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value as DurationUnit)}
+                className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
+              >
+                <option value="day">Ngày</option>
+                <option value="hour">Giờ</option>
+              </select>
+            )}
           </div>
         </Row>
       )}
