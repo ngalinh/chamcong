@@ -711,26 +711,28 @@ function TypeTabs({
     return `/admin/history${p.toString() ? "?" + p.toString() : ""}`;
   };
   return (
-    <div className="inline-flex p-1 rounded-xl bg-neutral-100 gap-1">
-      {tabs.map((t) => {
-        const active = current === t.key;
-        const Icon = t.icon;
-        return (
-          <Link
-            key={t.key}
-            href={make(t.key)}
-            prefetch
-            scroll={false}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm font-medium transition",
-              active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700",
-            )}
-          >
-            <Icon size={14} />
-            {t.label}
-          </Link>
-        );
-      })}
+    <div className="overflow-x-auto -mx-2 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="inline-flex p-1 rounded-xl bg-neutral-100 gap-1">
+        {tabs.map((t) => {
+          const active = current === t.key;
+          const Icon = t.icon;
+          return (
+            <Link
+              key={t.key}
+              href={make(t.key)}
+              prefetch
+              scroll={false}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium transition shrink-0 whitespace-nowrap",
+                active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700",
+              )}
+            >
+              <Icon size={14} />
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

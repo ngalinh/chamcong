@@ -3,7 +3,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Empty } from "@/components/ui/Empty";
-import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus } from "@/types/db";
+import {
+  LEAVE_CATEGORIES,
+  type LeaveCategory,
+  type LeaveStatus,
+  type OvertimeStatus,
+  type ViolationStatus,
+  type CheckInKind,
+} from "@/types/db";
 import {
   ArrowLeft,
   Inbox,
@@ -16,8 +23,9 @@ import {
   LogIn,
   LogOut,
   Wifi,
+  Hourglass,
+  ShieldAlert,
 } from "lucide-react";
-import type { CheckInKind } from "@/types/db";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -26,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type RowType = "checkin" | "leave";
+type RowType = "checkin" | "leave" | "violation";
 
 type CheckInRow = {
   type: "checkin";
@@ -52,7 +60,30 @@ type LeaveRow = {
   status: LeaveStatus;
 };
 
-type Row = CheckInRow | LeaveRow;
+type OvertimeRow = {
+  type: "overtime";
+  id: string;
+  at: string;
+  ot_date: string;
+  start_time: string;
+  end_time: string;
+  hours: number;
+  reason: string | null;
+  status: OvertimeStatus;
+};
+
+type ViolationRow = {
+  type: "violation";
+  id: string;
+  at: string;
+  report_date: string;
+  total_amount: number;
+  itemCount: number;
+  reason: string | null;
+  status: ViolationStatus;
+};
+
+type Row = CheckInRow | LeaveRow | OvertimeRow | ViolationRow;
 
 export default async function MyHistoryPage({
   searchParams,
@@ -79,7 +110,7 @@ export default async function MyHistoryPage({
 
   const rows: Row[] = [];
 
-  if (type !== "leave") {
+  if (type === "all" || type === "checkin") {
     const { data } = await admin
       .from("check_ins")
       .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, offices(name, is_remote)")
@@ -113,9 +144,30 @@ export default async function MyHistoryPage({
         isRemote: !!r.offices?.is_remote,
       });
     }
+
+    const { data: ots } = await admin
+      .from("overtime_requests")
+      .select("id, created_at, ot_date, start_time, end_time, hours, reason, status")
+      .eq("employee_id", employee.id)
+      .gte("created_at", from.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(100);
+    for (const r of ots ?? []) {
+      rows.push({
+        type: "overtime",
+        id: r.id,
+        at: r.created_at as string,
+        ot_date: r.ot_date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        hours: Number(r.hours),
+        reason: r.reason,
+        status: (r.status ?? "pending") as OvertimeStatus,
+      });
+    }
   }
 
-  if (type !== "checkin") {
+  if (type === "all" || type === "leave") {
     const { data } = await admin
       .from("leave_requests")
       .select("id, created_at, leave_date, category, duration, duration_unit, reason, status")
@@ -133,6 +185,28 @@ export default async function MyHistoryPage({
         duration_unit: r.duration_unit,
         reason: r.reason,
         status: (r.status ?? "pending") as LeaveStatus,
+      });
+    }
+  }
+
+  if (type === "all" || type === "violation") {
+    const { data } = await admin
+      .from("violation_reports")
+      .select("id, created_at, report_date, total_amount, reason, status, violation_items(id)")
+      .eq("employee_id", employee.id)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    for (const r of data ?? []) {
+      const items = (r as { violation_items?: unknown[] }).violation_items ?? [];
+      rows.push({
+        type: "violation",
+        id: r.id,
+        at: r.created_at as string,
+        report_date: r.report_date,
+        total_amount: Number(r.total_amount),
+        itemCount: items.length,
+        reason: r.reason,
+        status: (r.status ?? "pending") as ViolationStatus,
       });
     }
   }
@@ -157,12 +231,15 @@ export default async function MyHistoryPage({
       <TypeTabs current={type} />
 
       {rows.length === 0 ? (
-        <Empty icon={Inbox} title="Chưa có gì" description="Các lần chấm công và đơn xin nghỉ của bạn sẽ hiện ở đây." />
+        <Empty icon={Inbox} title="Chưa có gì" description="Các hoạt động của bạn sẽ hiện ở đây." />
       ) : (
         <div className="flex flex-col gap-2">
-          {rows.map((r) =>
-            r.type === "checkin" ? <CheckInCard key={`c:${r.id}`} row={r} /> : <LeaveCard key={`l:${r.id}`} row={r} />,
-          )}
+          {rows.map((r) => {
+            if (r.type === "checkin") return <CheckInCard key={`c:${r.id}`} row={r} />;
+            if (r.type === "leave") return <LeaveCard key={`l:${r.id}`} row={r} />;
+            if (r.type === "overtime") return <OvertimeCard key={`o:${r.id}`} row={r} />;
+            return <ViolationCard key={`v:${r.id}`} row={r} />;
+          })}
         </div>
       )}
     </main>
@@ -172,31 +249,34 @@ export default async function MyHistoryPage({
 function TypeTabs({ current }: { current: string }) {
   const tabs = [
     { key: "all", label: "Tất cả", icon: Inbox },
-    { key: "checkin", label: "Chấm công", icon: Fingerprint },
+    { key: "checkin", label: "Chấm công · OT", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
+    { key: "violation", label: "Vi phạm", icon: ShieldAlert },
   ];
   return (
-    <div className="inline-flex p-1 rounded-xl bg-neutral-100/80 gap-1 self-start">
-      {tabs.map((t) => {
-        const active = current === t.key;
-        const Icon = t.icon;
-        const href = t.key === "all" ? "/history" : `/history?type=${t.key}`;
-        return (
-          <Link
-            key={t.key}
-            href={href}
-            prefetch
-            scroll={false}
-            className={cn(
-              "inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm font-medium transition",
-              active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500",
-            )}
-          >
-            <Icon size={14} />
-            {t.label}
-          </Link>
-        );
-      })}
+    <div className="overflow-x-auto -mx-2 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="inline-flex p-1 rounded-xl bg-neutral-100/80 gap-1">
+        {tabs.map((t) => {
+          const active = current === t.key;
+          const Icon = t.icon;
+          const href = t.key === "all" ? "/history" : `/history?type=${t.key}`;
+          return (
+            <Link
+              key={t.key}
+              href={href}
+              prefetch
+              scroll={false}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium transition shrink-0 whitespace-nowrap",
+                active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500",
+              )}
+            >
+              <Icon size={14} />
+              {t.label}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -270,7 +350,58 @@ function LeaveCard({ row: r }: { row: LeaveRow }) {
   );
 }
 
-function StatusBadge({ status }: { status: LeaveStatus }) {
+function OvertimeCard({ row: r }: { row: OvertimeRow }) {
+  return (
+    <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
+      <div className="h-14 w-14 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+        <Hourglass size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
+            <Hourglass size={10} /> Overtime
+          </span>
+          <StatusBadge status={r.status} />
+        </div>
+        <div className="mt-0.5 text-sm font-medium tabular-nums">
+          {formatVN(r.ot_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {r.hours} giờ
+        </div>
+        <div className="text-xs text-neutral-400 mt-0.5">
+          nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}
+        </div>
+        {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ViolationCard({ row: r }: { row: ViolationRow }) {
+  return (
+    <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
+      <div className="h-14 w-14 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+        <ShieldAlert size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">
+            <ShieldAlert size={10} /> Vi phạm
+          </span>
+          <StatusBadge status={r.status} />
+        </div>
+        <div className="mt-0.5 text-sm font-medium">
+          {formatVN(r.report_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.itemCount} lỗi ·{" "}
+          <span className="text-rose-700 tabular-nums">{r.total_amount.toLocaleString("en-US")} VND</span>
+        </div>
+        <div className="text-xs text-neutral-400 mt-0.5">
+          nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}
+        </div>
+        {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: LeaveStatus | OvertimeStatus | ViolationStatus }) {
   const map = {
     pending:  { label: "Chờ duyệt", cls: "bg-neutral-100 text-neutral-600", Icon: Clock },
     approved: { label: "Đã duyệt",  cls: "bg-emerald-50 text-emerald-700", Icon: Check },
