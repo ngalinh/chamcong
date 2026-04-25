@@ -103,3 +103,26 @@ export type OvertimeRequest = {
   approved_by: string | null;
   created_at: string;
 };
+
+export type ViolationStatus = "pending" | "approved" | "rejected";
+
+export type ViolationReport = {
+  id: string;
+  employee_id: string;
+  report_date: string;
+  total_amount: number;
+  reason: string | null;
+  status: ViolationStatus;
+  approved_at: string | null;
+  approved_by: string | null;
+  created_at: string;
+};
+
+export type ViolationItem = {
+  id: string;
+  report_id: string;
+  description: string;
+  amount: number;
+  position: number;
+  created_at: string;
+};

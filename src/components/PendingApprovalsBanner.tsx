@@ -15,13 +15,17 @@ export async function PendingApprovalsBanner() {
   const viewerEmail = user.email.toLowerCase();
 
   const admin = createAdminClient();
-  const [{ data: pendingLeaves }, { data: pendingOT }] = await Promise.all([
+  const [{ data: pendingLeaves }, { data: pendingOT }, { data: pendingViolations }] = await Promise.all([
     admin
       .from("leave_requests")
       .select("id, employees(home_office_id, offices:home_office_id(approver_email))")
       .eq("status", "pending"),
     admin
       .from("overtime_requests")
+      .select("id, employees(home_office_id, offices:home_office_id(approver_email))")
+      .eq("status", "pending"),
+    admin
+      .from("violation_reports")
       .select("id, employees(home_office_id, offices:home_office_id(approver_email))")
       .eq("status", "pending"),
   ]);
@@ -39,12 +43,14 @@ export async function PendingApprovalsBanner() {
 
   const leaveCount = canApprove(pendingLeaves);
   const otCount = canApprove(pendingOT);
-  const total = leaveCount + otCount;
+  const violationCount = canApprove(pendingViolations);
+  const total = leaveCount + otCount + violationCount;
   if (total === 0) return null;
 
   const parts: string[] = [];
   if (leaveCount > 0) parts.push(`${leaveCount} xin nghỉ`);
   if (otCount > 0) parts.push(`${otCount} OT`);
+  if (violationCount > 0) parts.push(`${violationCount} vi phạm`);
 
   return (
     <Link

@@ -23,6 +23,7 @@ import {
   Timer,
   Wifi,
   TrendingUp,
+  ShieldAlert,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -249,10 +250,11 @@ export default async function Home() {
       </header>
 
       <div className="relative flex-1 flex flex-col gap-6 max-w-md w-full mx-auto py-6">
-        <div className="grid grid-cols-3 gap-2.5">
-          <ActionTile href="/leave"    Icon={CalendarOff} title="Xin nghỉ"    subtitle="WFH, trừ phép" tone="amber" />
-          <ActionTile href="/overtime" Icon={Timer}       title="Làm OT"      subtitle="Ngoài giờ"     tone="violet" />
-          <ActionTile href="/history"  Icon={History}     title="Lịch sử"     subtitle="Chấm công"     tone="sky" />
+        <div className="grid grid-cols-2 gap-2.5">
+          <ActionTile href="/leave"      Icon={CalendarOff} title="Xin nghỉ"  subtitle="WFH, trừ phép"   tone="amber" />
+          <ActionTile href="/overtime"   Icon={Timer}       title="Làm OT"    subtitle="Ngoài giờ"        tone="violet" />
+          <ActionTile href="/violations" Icon={ShieldAlert} title="Vi phạm"   subtitle="Tự khai, phạt"    tone="rose" />
+          <ActionTile href="/history"    Icon={History}     title="Lịch sử"   subtitle="Chấm công"        tone="sky" />
         </div>
 
         {/* Thống kê tháng — bấm vào card xem chi tiết */}
@@ -406,6 +408,7 @@ const TILE_TONE = {
   amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600"  },
   sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600"    },
   violet: { iconBg: "bg-violet-50", iconText: "text-violet-600" },
+  rose:   { iconBg: "bg-rose-50",   iconText: "text-rose-600"   },
 } as const;
 
 function ActionTile({

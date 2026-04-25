@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus } from "@/types/db";
+import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus, type ViolationStatus, type ViolationItem } from "@/types/db";
 import {
   Inbox,
   Trash2,
@@ -23,6 +23,7 @@ import {
   Hourglass,
   Lock,
   Wifi,
+  ShieldAlert,
 } from "lucide-react";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -32,7 +33,7 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type RowType = "checkin" | "leave";
+type RowType = "checkin" | "leave" | "violation";
 
 type CheckInRow = {
   type: "checkin";
@@ -79,7 +80,20 @@ type OvertimeRow = {
   approver_email: string | null;
 };
 
-type Row = CheckInRow | LeaveRow | OvertimeRow;
+type ViolationRow = {
+  type: "violation";
+  id: string;
+  at: string;
+  employee: { name: string; email: string } | null;
+  report_date: string;
+  total_amount: number;
+  reason: string | null;
+  status: ViolationStatus;
+  approver_email: string | null;
+  items: { description: string; amount: number; position: number }[];
+};
+
+type Row = CheckInRow | LeaveRow | OvertimeRow | ViolationRow;
 
 const dateInVN = dateVnFn;
 
@@ -335,6 +349,74 @@ async function decideOvertime(formData: FormData) {
   revalidatePath("/admin");
 }
 
+async function deleteViolation(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  await createAdminClient().from("violation_reports").delete().eq("id", String(formData.get("id")));
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+}
+
+async function decideViolation(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin, name, email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const decision = String(formData.get("decision"));
+  if (decision !== "approved" && decision !== "rejected") throw new Error("Decision không hợp lệ");
+
+  const admin = createAdminClient();
+  const { data: rep } = await admin
+    .from("violation_reports")
+    .select("id, employee_id, status, report_date, total_amount, employees(home_office_id, offices:home_office_id(approver_email))")
+    .eq("id", id)
+    .maybeSingle();
+  if (!rep || rep.status !== "pending") return;
+
+  // @ts-expect-error — supabase nested join
+  const approver: string | null = rep.employees?.offices?.approver_email ?? null;
+  if (approver && approver.toLowerCase() !== user.email.toLowerCase()) {
+    throw new Error("Đơn này thuộc chi nhánh khác — bạn không có quyền duyệt");
+  }
+
+  await admin
+    .from("violation_reports")
+    .update({
+      status: decision,
+      approved_at: new Date().toISOString(),
+      approved_by: me?.name ?? user.email,
+    })
+    .eq("id", id);
+
+  const { sendPushToEmployee } = await import("@/lib/push");
+  sendPushToEmployee(String(rep.employee_id), {
+    title: decision === "approved" ? "✅ Đơn vi phạm đã được duyệt" : "❌ Đơn vi phạm bị từ chối",
+    body: `Ngày ${rep.report_date} · ${Number(rep.total_amount).toLocaleString("vi-VN")} VND`,
+    url: "/violations",
+    tag: `violation-${id}`,
+  }).catch((e) => console.error("[push] employee notify failed", e));
+
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+}
+
 export default async function HistoryPage({
   searchParams,
 }: {
@@ -359,7 +441,7 @@ export default async function HistoryPage({
 
   // Check-ins — bỏ qua khi đang lọc pending (check-in không có khái niệm pending)
   const checkInsRows: CheckInRow[] = [];
-  if (type !== "leave" && !pendingOnly) {
+  if ((type === "all" || type === "checkin") && !pendingOnly) {
     let q = admin
       .from("check_ins")
       .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name, is_remote)")
@@ -436,6 +518,40 @@ export default async function HistoryPage({
     }
   }
 
+  // Violation reports — tab riêng, hoặc gộp ở "all"
+  const violationRows: ViolationRow[] = [];
+  if (type === "violation" || type === "all") {
+    let q = admin
+      .from("violation_reports")
+      .select("id, created_at, report_date, total_amount, reason, status, violation_items(description, amount, position), employees(name, email, home_office_id, offices:home_office_id(approver_email))")
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (pendingOnly) q = q.eq("status", "pending");
+    const { data } = await q;
+    for (const r of data ?? []) {
+      // @ts-expect-error — supabase nested join
+      const approver: string | null = r.employees?.offices?.approver_email ?? null;
+      const items = ((r.violation_items ?? []) as Pick<ViolationItem, "description" | "amount" | "position">[])
+        .map((it) => ({ description: it.description, amount: Number(it.amount), position: it.position }))
+        .sort((a, b) => a.position - b.position);
+      violationRows.push({
+        type: "violation",
+        id: r.id,
+        at: r.created_at as string,
+        // @ts-expect-error — join
+        employee: r.employees,
+        report_date: r.report_date,
+        total_amount: Number(r.total_amount),
+        reason: r.reason,
+        status: (r.status ?? "pending") as ViolationStatus,
+        approver_email: approver,
+        items,
+      });
+    }
+  }
+
   // Overtime requests — gộp chung với tab Chấm công + All
   const overtimeRows: OvertimeRow[] = [];
   if (type === "checkin" || type === "all") {
@@ -491,7 +607,7 @@ export default async function HistoryPage({
     }
   }
 
-  const rows: Row[] = [...checkInsRows, ...leaveRows, ...overtimeRows].sort(
+  const rows: Row[] = [...checkInsRows, ...leaveRows, ...overtimeRows, ...violationRows].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
 
@@ -562,7 +678,10 @@ export default async function HistoryPage({
             if (r.type === "leave") {
               return <LeaveCard key={`l:${r.id}`} row={r} onDelete={deleteLeave} onDecide={decideLeave} viewerEmail={viewerEmail} />;
             }
-            return <OvertimeCard key={`o:${r.id}`} row={r} onDelete={deleteOvertime} onDecide={decideOvertime} viewerEmail={viewerEmail} />;
+            if (r.type === "overtime") {
+              return <OvertimeCard key={`o:${r.id}`} row={r} onDelete={deleteOvertime} onDecide={decideOvertime} viewerEmail={viewerEmail} />;
+            }
+            return <ViolationCard key={`v:${r.id}`} row={r} onDelete={deleteViolation} onDecide={decideViolation} viewerEmail={viewerEmail} />;
           })}
         </div>
       )}
@@ -581,6 +700,7 @@ function TypeTabs({
     { key: "all", label: "Tất cả", icon: Inbox },
     { key: "checkin", label: "Chấm công · OT", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
+    { key: "violation", label: "Vi phạm", icon: ShieldAlert },
   ];
   const make = (k: string) => {
     const p = new URLSearchParams();
@@ -839,6 +959,106 @@ function OvertimeCard({
         )
       )}
     </div>
+  );
+}
+
+function ViolationCard({
+  row: r,
+  onDelete,
+  onDecide,
+  viewerEmail,
+}: {
+  row: ViolationRow;
+  onDelete: (fd: FormData) => void;
+  onDecide: (fd: FormData) => void;
+  viewerEmail: string;
+}) {
+  const canDecide = !r.approver_email || r.approver_email.toLowerCase() === viewerEmail;
+  return (
+    <div className="rounded-2xl border border-white/60 glass p-3">
+      <div className="flex gap-3">
+        <div className="h-16 w-16 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+          <ShieldAlert size={22} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">
+              <ShieldAlert size={10} /> Vi phạm
+            </span>
+            <ViolationStatusBadge status={r.status} />
+            {r.status === "pending" && r.approver_email && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+                Duyệt: {r.approver_email}
+              </span>
+            )}
+          </div>
+          <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
+          <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
+          <div className="mt-1 text-xs text-neutral-700">
+            <span className="font-medium">{formatVN(r.report_date + "T00:00:00+07:00", "d/M")}</span>
+            <span className="text-neutral-500"> · {r.items.length} lỗi · </span>
+            <span className="font-semibold text-rose-700 tabular-nums">{r.total_amount.toLocaleString("vi-VN")} VND</span>
+          </div>
+          {r.items.length > 0 && (
+            <ul className="mt-1.5 space-y-0.5">
+              {r.items.map((it, i) => (
+                <li key={i} className="flex items-center gap-2 text-xs">
+                  <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
+                  <span className="text-rose-700 font-medium tabular-nums shrink-0">
+                    {it.amount.toLocaleString("vi-VN")} VND
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
+        </div>
+        <form action={onDelete} className="self-start">
+          <input type="hidden" name="id" value={r.id} />
+          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+        </form>
+      </div>
+
+      {r.status === "pending" && (
+        canDecide ? (
+          <div className="flex gap-2 pt-3 mt-3 border-t border-neutral-200/60">
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="approved" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <Check size={14} /> Duyệt
+              </button>
+            </form>
+            <form action={onDecide} className="flex-1">
+              <input type="hidden" name="id" value={r.id} />
+              <input type="hidden" name="decision" value="rejected" />
+              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+                <X size={14} /> Từ chối
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 pt-3 mt-3 border-t border-neutral-200/60 text-xs text-neutral-500">
+            <Lock size={12} /> Chỉ admin được gán cho chi nhánh này mới duyệt được.
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+function ViolationStatusBadge({ status }: { status: ViolationStatus }) {
+  const map = {
+    pending:  { label: "Chờ duyệt", cls: "bg-neutral-100 text-neutral-600", Icon: Clock },
+    approved: { label: "Đã duyệt",  cls: "bg-emerald-50 text-emerald-700", Icon: Check },
+    rejected: { label: "Từ chối",   cls: "bg-rose-50 text-rose-700",       Icon: X },
+  }[status];
+  const { Icon } = map;
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded", map.cls)}>
+      <Icon size={10} /> {map.label}
+    </span>
   );
 }
 
