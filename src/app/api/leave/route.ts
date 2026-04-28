@@ -54,6 +54,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const data = parsed.data;
 
+  // Chặn trùng lặp: cùng NV + cùng category + cùng ngày + status pending hoặc approved
+  const { data: existing } = await admin
+    .from("leave_requests")
+    .select("leave_date, status")
+    .eq("employee_id", emp.id)
+    .eq("category", data.category)
+    .in("leave_date", data.leave_dates)
+    .in("status", ["pending", "approved"]);
+
+  if (existing && existing.length > 0) {
+    const dupDates = [...new Set(existing.map((e) => e.leave_date as string))].sort();
+    const formatted = dupDates
+      .map((d) => {
+        const [, m, day] = d.split("-");
+        return `${Number(day)}/${Number(m)}`;
+      })
+      .join(", ");
+    const hasApproved = existing.some((e) => e.status === "approved");
+    const message = hasApproved
+      ? `Bạn đã có đơn xin nghỉ ngày ${formatted} được duyệt rồi`
+      : `Bạn đã gửi đơn xin nghỉ ngày ${formatted} và đang chờ sếp duyệt`;
+    return NextResponse.json({ error: message }, { status: 409 });
+  }
+
   const rows = data.leave_dates.map((d) => ({
     employee_id: emp.id,
     leave_date: d,
