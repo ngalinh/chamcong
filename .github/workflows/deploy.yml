@@ -28,9 +28,10 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-  # ----- Job 2: deploy — SSH lên server, build Docker, restart container -----
+  # ----- Job 2: deploy — blue-green rolling: redeploy lần lượt 2 container -----
+  # Yêu cầu nginx config 1 lần (xem docs/nginx-blue-green.conf)
   deploy:
-    name: Build & restart container
+    name: Build & rolling restart
     needs: typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -42,13 +43,16 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          script_stop: true  # dừng ngay nếu lệnh nào fail
+          script_stop: true
           script: |
             set -euo pipefail
 
             APP_DIR=/opt/chamcong
-            CONTAINER=chamcong
             IMAGE=chamcong:latest
+            CONTAINER_A=chamcong-a
+            CONTAINER_B=chamcong-b
+            PORT_A=3000
+            PORT_B=3001
 
             cd "$APP_DIR"
 
@@ -56,8 +60,7 @@ jobs:
             git fetch --all --prune
             git reset --hard origin/main
 
-            echo "→ Build Docker image (truyền NEXT_PUBLIC_* qua build-arg)"
-            # source .env để load các biến vào shell, rồi pass qua --build-arg
+            echo "→ Build Docker image (NEXT_PUBLIC_* qua build-arg)"
             set -a
             . ./.env
             set +a
@@ -68,20 +71,49 @@ jobs:
               --build-arg NEXT_PUBLIC_FACE_MATCH_THRESHOLD \
               -t "$IMAGE" .
 
-            echo "→ Stop + remove container cũ (nếu có)"
-            docker stop "$CONTAINER" 2>/dev/null || true
-            docker rm   "$CONTAINER" 2>/dev/null || true
+            # Migration: nếu còn container "chamcong" (single-container cũ), xoá
+            if docker inspect chamcong > /dev/null 2>&1; then
+              echo "→ Migrate: xoá container đơn 'chamcong' cũ"
+              docker stop chamcong 2>/dev/null || true
+              docker rm   chamcong 2>/dev/null || true
+            fi
 
-            echo "→ Run container mới"
-            docker run -d \
-              --name "$CONTAINER" \
-              --restart unless-stopped \
-              -p 3000:3000 \
-              --env-file .env \
-              "$IMAGE"
+            # Function: redeploy 1 container — stop, remove, run, wait healthy
+            redeploy() {
+              local NAME=$1
+              local PORT=$2
+              echo "→ Redeploying $NAME (port $PORT)"
+              docker stop "$NAME" 2>/dev/null || true
+              docker rm   "$NAME" 2>/dev/null || true
+              docker run -d \
+                --name "$NAME" \
+                --restart unless-stopped \
+                -p "$PORT":3000 \
+                --env-file .env \
+                "$IMAGE"
+
+              # Health check: poll /api/health max 60s
+              echo "  …waiting for health"
+              for i in $(seq 1 30); do
+                if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/api/health"; then
+                  echo "  ✓ $NAME healthy (sau ${i} lần thử)"
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "✗ $NAME không healthy sau 60s — abort deploy"
+              docker logs "$NAME" --tail 50 || true
+              exit 1
+            }
+
+            # Rolling redeploy: A trước, B sau.
+            # Trong lúc A down, nginx auto-failover sang B (vẫn chạy version cũ).
+            # Sau khi A xong → tới B, nginx auto-failover sang A (đã có version mới).
+            redeploy "$CONTAINER_A" "$PORT_A"
+            redeploy "$CONTAINER_B" "$PORT_B"
 
             echo "→ Cleanup image cũ không dùng"
             docker image prune -f
 
-            echo "✓ Deploy xong. Container đang chạy:"
-            docker ps --filter "name=$CONTAINER" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo "✓ Deploy xong. Containers đang chạy:"
+            docker ps --filter "name=chamcong" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
