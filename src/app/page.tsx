@@ -253,7 +253,7 @@ export default async function Home() {
         <div className="grid grid-cols-2 gap-2.5">
           <ActionTile href="/leave"      Icon={CalendarOff} title="Xin nghỉ"  subtitle="WFH, trừ phép"   tone="amber" />
           <ActionTile href="/overtime"   Icon={Timer}       title="Làm OT"    subtitle="Ngoài giờ"        tone="violet" />
-          <ActionTile href="/violations" Icon={ShieldAlert} title="Vi phạm"   subtitle="Tự khai, phạt"    tone="rose" />
+          <ActionTile href="/violations" Icon={ShieldAlert} title="Thưởng / Vi phạm" subtitle="Tự khai" tone="rose" />
           <ActionTile href="/history"    Icon={History}     title="Lịch sử"   subtitle="Chấm công"        tone="sky" />
         </div>
 

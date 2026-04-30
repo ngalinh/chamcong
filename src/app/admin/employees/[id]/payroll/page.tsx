@@ -16,6 +16,7 @@ import {
   Hourglass,
   Wifi,
   ShieldAlert,
+  Sparkles,
   Clock,
   AlertTriangle,
   TrendingDown,
@@ -77,7 +78,7 @@ export default async function PayrollPage({
       .order("checked_in_at", { ascending: true }),
     admin
       .from("violation_reports")
-      .select("id, report_date, total_amount, violation_items(id)")
+      .select("id, kind, report_date, total_amount, violation_items(id)")
       .eq("employee_id", emp.id)
       .eq("status", "approved")
       .gte("report_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
@@ -127,6 +128,7 @@ export default async function PayrollPage({
     excusedDays,
     selfViolations: (violations ?? []).map((v) => ({
       id: v.id,
+      kind: ((v.kind ?? "violation") as "bonus" | "violation"),
       report_date: v.report_date,
       total_amount: Number(v.total_amount),
       item_count: ((v as { violation_items?: unknown[] }).violation_items ?? []).length,
@@ -270,6 +272,27 @@ export default async function PayrollPage({
         )}
       </Section>
 
+      {/* Thưởng tự khai */}
+      <Section
+        icon={Sparkles}
+        title="Thưởng tự khai (đã duyệt)"
+        subtitle={`${result.selfBonuses.length} đơn`}
+        empty="Không có đơn thưởng."
+      >
+        {result.selfBonuses.length > 0 && (
+          <ul className="divide-y divide-neutral-200/60">
+            {result.selfBonuses.map((v) => (
+              <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                <Sparkles size={14} className="text-emerald-600 shrink-0" />
+                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
+                <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
+                <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
       {/* Vi phạm tự khai */}
       <Section
         icon={ShieldAlert}
@@ -295,18 +318,25 @@ export default async function PayrollPage({
       <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-5 space-y-2">
         <div className="flex items-center gap-2 text-rose-900 mb-2">
           <TrendingDown size={18} />
-          <h2 className="font-semibold">Tổng tiền trừ lương — {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}</h2>
+          <h2 className="font-semibold">Tổng kết — {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}</h2>
         </div>
         <TotalRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
         <TotalRow label="Trừ lương từ nghỉ vượt phép + nghỉ giờ + online" value={result.totalWageDeduction} />
         <TotalRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
+        {result.totalSelfBonus > 0 && (
+          <TotalRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
+        )}
         <div className="pt-2 mt-2 border-t border-rose-300/60 flex items-center justify-between">
-          <span className="font-semibold text-rose-900">Tổng cộng</span>
+          <span className="font-semibold text-rose-900">Tổng tiền trừ</span>
           <span className="text-2xl font-bold text-rose-700 tabular-nums">−{Math.round(result.grandTotal).toLocaleString("en-US")} VND</span>
         </div>
         <p className="text-xs text-rose-700/80 mt-1">
-          Lương thực nhận tạm tính: <b className="tabular-nums">{Math.max(0, result.salary - result.grandTotal).toLocaleString("en-US")} VND</b>{" "}
-          (= {result.salary.toLocaleString("en-US")} − {Math.round(result.grandTotal).toLocaleString("en-US")})
+          Lương thực nhận tạm tính:{" "}
+          <b className="tabular-nums">
+            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus).toLocaleString("en-US")} VND
+          </b>{" "}
+          (= {result.salary.toLocaleString("en-US")} − {Math.round(result.grandTotal).toLocaleString("en-US")}
+          {result.totalSelfBonus > 0 && ` + ${Math.round(result.totalSelfBonus).toLocaleString("en-US")}`})
         </p>
       </div>
     </div>
@@ -458,11 +488,13 @@ function Badge({ children, tone }: { children: React.ReactNode; tone: "neutral" 
   );
 }
 
-function TotalRow({ label, value }: { label: string; value: number }) {
+function TotalRow({ label, value, positive = false }: { label: string; value: number; positive?: boolean }) {
+  const sign = positive ? "+" : value > 0 ? "−" : "";
+  const cls = positive ? "text-emerald-700" : "text-rose-700";
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-rose-800/80">{label}</span>
-      <span className="font-medium text-rose-700 tabular-nums">{value > 0 ? "−" : ""}{Math.round(value).toLocaleString("en-US")} VND</span>
+      <span className={cn("font-medium tabular-nums", cls)}>{sign}{Math.round(value).toLocaleString("en-US")} VND</span>
     </div>
   );
 }

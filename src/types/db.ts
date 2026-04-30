@@ -118,10 +118,12 @@ export type OvertimeRequest = {
 };
 
 export type ViolationStatus = "pending" | "approved" | "rejected";
+export type ViolationKind = "bonus" | "violation";
 
 export type ViolationReport = {
   id: string;
   employee_id: string;
+  kind: ViolationKind;
   report_date: string;
   total_amount: number;
   reason: string | null;

@@ -7,11 +7,12 @@ import { sendPushToAdmins } from "@/lib/push";
 export const runtime = "nodejs";
 
 const Schema = z.object({
+  kind: z.enum(["bonus", "violation"]),
   report_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ"),
   items: z.array(z.object({
-    description: z.string().min(1, "Vui lòng nhập lỗi vi phạm").max(200),
+    description: z.string().min(1, "Vui lòng nhập mô tả").max(200),
     amount: z.number().min(0).max(100_000_000),
-  })).min(1, "Vui lòng thêm ít nhất 1 lỗi vi phạm").max(50),
+  })).min(1, "Vui lòng thêm ít nhất 1 mục").max(50),
   reason: z.string().max(500).nullable().optional(),
 });
 
@@ -41,6 +42,7 @@ export async function POST(request: NextRequest) {
     .from("violation_reports")
     .insert({
       employee_id: emp.id,
+      kind: data.kind,
       report_date: data.report_date,
       total_amount: totalAmount,
       reason: data.reason ?? null,
@@ -62,9 +64,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: itemsErr.message }, { status: 500 });
   }
 
+  const isBonus = data.kind === "bonus";
   sendPushToAdmins({
-    title: "⚠️ Đơn vi phạm mới",
-    body: `${emp.name}: ${data.items.length} lỗi · ${totalAmount.toLocaleString("en-US")} VND`,
+    title: isBonus ? "🎁 Đơn thưởng mới" : "⚠️ Đơn vi phạm mới",
+    body: `${emp.name}: ${data.items.length} ${isBonus ? "mục" : "lỗi"} · ${totalAmount.toLocaleString("en-US")} VND`,
     url: "/admin/history?type=violation",
     tag: `violation-new-${emp.id}`,
   }).catch((e) => console.error("[push] admin notify failed", e));

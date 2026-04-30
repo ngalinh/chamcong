@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus, type ViolationStatus, type ViolationItem } from "@/types/db";
+import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus, type ViolationStatus, type ViolationKind, type ViolationItem } from "@/types/db";
 import {
   Inbox,
   Trash2,
@@ -24,6 +24,7 @@ import {
   Lock,
   Wifi,
   ShieldAlert,
+  Sparkles,
 } from "lucide-react";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -85,6 +86,7 @@ type ViolationRow = {
   id: string;
   at: string;
   employee: { name: string; email: string } | null;
+  kind: ViolationKind;
   report_date: string;
   total_amount: number;
   reason: string | null;
@@ -393,7 +395,7 @@ async function decideViolation(formData: FormData) {
   const admin = createAdminClient();
   const { data: rep } = await admin
     .from("violation_reports")
-    .select("id, employee_id, status, report_date, total_amount, employees(home_office_id, offices:home_office_id(approver_email))")
+    .select("id, employee_id, kind, status, report_date, total_amount, employees(home_office_id, offices:home_office_id(approver_email))")
     .eq("id", id)
     .maybeSingle();
   if (!rep || rep.status !== "pending") return;
@@ -413,9 +415,11 @@ async function decideViolation(formData: FormData) {
     })
     .eq("id", id);
 
+  const isBonus = rep.kind === "bonus";
+  const subject = isBonus ? "thưởng" : "vi phạm";
   const { sendPushToEmployee } = await import("@/lib/push");
   sendPushToEmployee(String(rep.employee_id), {
-    title: decision === "approved" ? "✅ Đơn vi phạm đã được duyệt" : "❌ Đơn vi phạm bị từ chối",
+    title: decision === "approved" ? `✅ Đơn ${subject} đã được duyệt` : `❌ Đơn ${subject} bị từ chối`,
     body: `Ngày ${rep.report_date} · ${Number(rep.total_amount).toLocaleString("en-US")} VND`,
     url: "/violations",
     tag: `violation-${id}`,
@@ -531,7 +535,7 @@ export default async function HistoryPage({
   if (type === "violation" || type === "all") {
     let q = admin
       .from("violation_reports")
-      .select("id, created_at, report_date, total_amount, reason, status, violation_items(description, amount, position), employees(name, email, home_office_id, offices:home_office_id(approver_email))")
+      .select("id, created_at, kind, report_date, total_amount, reason, status, violation_items(description, amount, position), employees(name, email, home_office_id, offices:home_office_id(approver_email))")
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
@@ -550,6 +554,7 @@ export default async function HistoryPage({
         at: r.created_at as string,
         // @ts-expect-error — join
         employee: r.employees,
+        kind: ((r.kind ?? "violation") as ViolationKind),
         report_date: r.report_date,
         total_amount: Number(r.total_amount),
         reason: r.reason,
@@ -708,7 +713,7 @@ function TypeTabs({
     { key: "all", label: "Tất cả", icon: Inbox },
     { key: "checkin", label: "Chấm công · OT", icon: Fingerprint },
     { key: "leave", label: "Xin nghỉ", icon: CalendarOff },
-    { key: "violation", label: "Vi phạm", icon: ShieldAlert },
+    { key: "violation", label: "Thưởng / Vi phạm", icon: ShieldAlert },
   ];
   const make = (k: string) => {
     const p = new URLSearchParams();
@@ -984,16 +989,20 @@ function ViolationCard({
   viewerEmail: string;
 }) {
   const canDecide = !r.approver_email || r.approver_email.toLowerCase() === viewerEmail;
+  const isBonus = r.kind === "bonus";
+  const tone = isBonus
+    ? { iconBg: "bg-emerald-50 text-emerald-600", badge: "bg-emerald-50 text-emerald-700", amount: "text-emerald-700", label: "Thưởng", Icon: Sparkles, unit: "mục", sign: "+" }
+    : { iconBg: "bg-rose-50 text-rose-600", badge: "bg-rose-50 text-rose-700", amount: "text-rose-700", label: "Vi phạm", Icon: ShieldAlert, unit: "lỗi", sign: "" };
   return (
     <div className="rounded-2xl border border-white/60 glass p-3">
       <div className="flex gap-3">
-        <div className="h-16 w-16 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-          <ShieldAlert size={22} />
+        <div className={cn("h-16 w-16 rounded-xl flex items-center justify-center shrink-0", tone.iconBg)}>
+          <tone.Icon size={22} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">
-              <ShieldAlert size={10} /> Vi phạm
+            <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded", tone.badge)}>
+              <tone.Icon size={10} /> {tone.label}
             </span>
             <ViolationStatusBadge status={r.status} />
             {r.status === "pending" && r.approver_email && (
@@ -1006,16 +1015,16 @@ function ViolationCard({
           <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
           <div className="mt-1 text-xs text-neutral-700">
             <span className="font-medium">{formatVN(r.report_date + "T00:00:00+07:00", "d/M")}</span>
-            <span className="text-neutral-500"> · {r.items.length} lỗi · </span>
-            <span className="font-semibold text-rose-700 tabular-nums">{r.total_amount.toLocaleString("en-US")} VND</span>
+            <span className="text-neutral-500"> · {r.items.length} {tone.unit} · </span>
+            <span className={cn("font-semibold tabular-nums", tone.amount)}>{tone.sign}{r.total_amount.toLocaleString("en-US")} VND</span>
           </div>
           {r.items.length > 0 && (
             <ul className="mt-1.5 space-y-0.5">
               {r.items.map((it, i) => (
                 <li key={i} className="flex items-center gap-2 text-xs">
                   <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
-                  <span className="text-rose-700 font-medium tabular-nums shrink-0">
-                    {it.amount.toLocaleString("en-US")} VND
+                  <span className={cn("font-medium tabular-nums shrink-0", tone.amount)}>
+                    {tone.sign}{it.amount.toLocaleString("en-US")} VND
                   </span>
                 </li>
               ))}

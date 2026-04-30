@@ -50,7 +50,7 @@ export async function PendingApprovalsBanner() {
   const parts: string[] = [];
   if (leaveCount > 0) parts.push(`${leaveCount} xin nghỉ`);
   if (otCount > 0) parts.push(`${otCount} OT`);
-  if (violationCount > 0) parts.push(`${violationCount} vi phạm`);
+  if (violationCount > 0) parts.push(`${violationCount} thưởng/vi phạm`);
 
   return (
     <Link

@@ -4,8 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import ViolationReportForm from "@/components/ViolationReportForm";
 import { Empty } from "@/components/ui/Empty";
-import type { ViolationReport, ViolationItem, ViolationStatus } from "@/types/db";
-import { ArrowLeft, Inbox, AlertTriangle, Check, X, Clock } from "lucide-react";
+import type { ViolationReport, ViolationItem, ViolationStatus, ViolationKind } from "@/types/db";
+import { ArrowLeft, Inbox, ShieldAlert, Sparkles, Check, X, Clock } from "lucide-react";
 import { formatVN } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ export default async function ViolationsPage() {
         </Link>
         <div>
           <p className="text-xs uppercase tracking-[0.15em] text-neutral-400 font-medium">Tự khai</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Vi phạm</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Thưởng / Vi phạm</h1>
         </div>
       </header>
 
@@ -63,7 +63,7 @@ export default async function ViolationsPage() {
             reports.map((r) => <ReportCard key={r.id} report={r} />)
           ) : (
             <div className="rounded-2xl glass border border-white/60 overflow-hidden">
-              <Empty icon={Inbox} title="Chưa có đơn nào" description="Đơn vi phạm của bạn sẽ hiện ở đây." />
+              <Empty icon={Inbox} title="Chưa có đơn nào" description="Đơn thưởng/vi phạm của bạn sẽ hiện ở đây." />
             </div>
           )}
         </div>
@@ -73,16 +73,20 @@ export default async function ViolationsPage() {
 }
 
 function ReportCard({ report: r }: { report: ReportWithItems }) {
+  const isBonus = (r.kind as ViolationKind) === "bonus";
+  const tone = isBonus
+    ? { iconBg: "bg-emerald-50 text-emerald-600", badge: "bg-emerald-50 text-emerald-700", amount: "text-emerald-700", label: "Thưởng", Icon: Sparkles, unit: "mục" }
+    : { iconBg: "bg-rose-50 text-rose-600", badge: "bg-rose-50 text-rose-700", amount: "text-rose-700", label: "Vi phạm", Icon: ShieldAlert, unit: "lỗi" };
   return (
     <div className="rounded-2xl glass border border-white/60 p-3">
       <div className="flex items-start gap-3">
-        <div className="h-10 w-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-          <AlertTriangle size={16} />
+        <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0", tone.iconBg)}>
+          <tone.Icon size={16} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">
-              <AlertTriangle size={10} /> Vi phạm
+            <span className={cn("inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded", tone.badge)}>
+              <tone.Icon size={10} /> {tone.label}
             </span>
             <StatusBadge status={r.status} />
           </div>
@@ -90,7 +94,10 @@ function ReportCard({ report: r }: { report: ReportWithItems }) {
             {formatVN(r.report_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy")}
           </div>
           <div className="text-xs text-neutral-500 mt-0.5">
-            {r.items.length} lỗi · tổng <span className="font-semibold text-rose-700 tabular-nums">{Number(r.total_amount).toLocaleString("en-US")} VND</span>
+            {r.items.length} {tone.unit} · tổng{" "}
+            <span className={cn("font-semibold tabular-nums", tone.amount)}>
+              {isBonus ? "+" : ""}{Number(r.total_amount).toLocaleString("en-US")} VND
+            </span>
           </div>
         </div>
       </div>
@@ -99,8 +106,8 @@ function ReportCard({ report: r }: { report: ReportWithItems }) {
           {r.items.map((it) => (
             <li key={it.id} className="flex items-center gap-2 text-xs">
               <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
-              <span className="text-rose-700 font-medium tabular-nums shrink-0">
-                {Number(it.amount).toLocaleString("en-US")} VND
+              <span className={cn("font-medium tabular-nums shrink-0", tone.amount)}>
+                {isBonus ? "+" : ""}{Number(it.amount).toLocaleString("en-US")} VND
               </span>
             </li>
           ))}

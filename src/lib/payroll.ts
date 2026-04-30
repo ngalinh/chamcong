@@ -40,6 +40,13 @@ export type SelfViolationItem = {
   itemCount: number;
 };
 
+export type SelfBonusItem = {
+  id: string;
+  reportDate: string;
+  totalAmount: number;
+  itemCount: number;
+};
+
 export type PayrollResult = {
   salary: number;
   workdays: number;
@@ -50,11 +57,13 @@ export type PayrollResult = {
   leaves: PayrollLeaveItem[];
   lateEarlyViolations: PayrollViolation[];
   selfViolations: SelfViolationItem[];
-  // Tổng các loại trừ
+  selfBonuses: SelfBonusItem[];
+  // Tổng các loại
   totalLatePenalty: number;
   totalSelfViolation: number;
-  totalWageDeduction: number;  // từ leaves vượt phép + leave_hourly + online vượt hết phép
-  grandTotal: number;          // toàn bộ tiền bị trừ
+  totalSelfBonus: number;        // thưởng — cộng vào lương cuối kỳ
+  totalWageDeduction: number;    // từ leaves vượt phép + leave_hourly + online vượt hết phép
+  grandTotal: number;            // tổng tiền bị TRỪ (chưa trừ bonus). Lương thực nhận = salary - grandTotal + totalSelfBonus
 };
 
 type LeaveInput = {
@@ -79,6 +88,7 @@ type CheckInInput = {
 
 type SelfViolationInput = {
   id: string;
+  kind: "bonus" | "violation";
   report_date: string;
   total_amount: number;
   item_count: number;
@@ -91,7 +101,7 @@ export function computePayroll(args: {
   approvedLeaves: LeaveInput[];   // sorted by leave_date asc
   checkIns: CheckInInput[];        // tất cả check-ins trong tháng
   excusedDays: Set<string>;        // các ngày YYYY-MM-DD có leave_paid/online_* approved → không tính vi phạm late/early
-  selfViolations: SelfViolationInput[]; // approved violation_reports
+  selfViolations: SelfViolationInput[]; // approved violation_reports (cả bonus + violation)
 }): PayrollResult {
   const { workdays, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations } = args;
   const dayRate = workdays > 0 ? salary / workdays : 0;
@@ -210,14 +220,21 @@ export function computePayroll(args: {
   }
   const totalLatePenalty = allLateEarly.filter((v) => v.countedForPenalty).length * LATE_PENALTY_AMOUNT;
 
-  // Self violations
-  const selfVList: SelfViolationItem[] = selfViolations.map((v) => ({
-    id: v.id,
-    reportDate: v.report_date,
-    totalAmount: Number(v.total_amount),
-    itemCount: v.item_count,
-  }));
+  // Tách self-reported entries: bonus (cộng) vs violation (trừ)
+  const selfVList: SelfViolationItem[] = [];
+  const selfBList: SelfBonusItem[] = [];
+  for (const v of selfViolations) {
+    const item = {
+      id: v.id,
+      reportDate: v.report_date,
+      totalAmount: Number(v.total_amount),
+      itemCount: v.item_count,
+    };
+    if (v.kind === "bonus") selfBList.push(item);
+    else selfVList.push(item);
+  }
   const totalSelfViolation = selfVList.reduce((s, v) => s + v.totalAmount, 0);
+  const totalSelfBonus     = selfBList.reduce((s, v) => s + v.totalAmount, 0);
 
   return {
     salary,
@@ -229,8 +246,10 @@ export function computePayroll(args: {
     leaves,
     lateEarlyViolations: allLateEarly,
     selfViolations: selfVList,
+    selfBonuses: selfBList,
     totalLatePenalty,
     totalSelfViolation,
+    totalSelfBonus,
     totalWageDeduction,
     grandTotal: totalLatePenalty + totalSelfViolation + totalWageDeduction,
   };
