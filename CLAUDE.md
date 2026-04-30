@@ -85,7 +85,7 @@ https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/sql/new
 
 ### Per-employee work hours override
 
-Một số NV có ca khác (vd Trâm Trương ca chiều 13:30 → cuối ngày). Hardcode trong [src/lib/workHours.ts](src/lib/workHours.ts) thay vì làm UI. Map theo email (lowercase). Áp dụng trong cả `/api/checkin` và `decideLeave` (recalc khi duyệt đơn hourly).
+Một số NV có ca khác (vd Trâm Trương ca chiều 13:30 → cuối ngày). Lưu ở DB cột `employees.work_start_time` + `work_end_time` (nullable, null = dùng giờ chi nhánh). Admin set qua UI ở `/admin/employees`. Logic ở [src/lib/workHours.ts](src/lib/workHours.ts) `effectiveWorkHours()` — áp dụng trong cả `/api/checkin` và `decideLeave` (recalc khi duyệt đơn hourly).
 
 ### Branch routing duyệt nghỉ/OT
 
@@ -141,7 +141,7 @@ Logic ở `decideLeave` + `decideOvertime` trong [src/app/admin/history/page.tsx
 │   │   ├── face.ts                # face-api wrapper
 │   │   ├── geo.ts                 # Geolocation + Permissions API + multi-platform error msg
 │   │   ├── time.ts                # formatVN / dateVN / timeToMinutes (Asia/Ho_Chi_Minh)
-│   │   ├── workHours.ts           # Per-employee work hours override (Trâm Trương ca chiều)
+│   │   ├── workHours.ts           # effectiveWorkHours: NV override (DB) > giờ chi nhánh
 │   │   ├── push.ts                # web-push server: send tới employee/admin subs
 │   │   ├── push-client.ts         # ensurePushSubscribed() — gọi từ user gesture
 │   │   ├── email.ts               # nodemailer Gmail SMTP (cskh@basso.vn)
