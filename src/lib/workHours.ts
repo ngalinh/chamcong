@@ -1,26 +1,41 @@
 /**
- * Override giờ làm riêng cho vài nhân viên đặc biệt — không muốn bày lên UI.
- * Key = email (lowercase). Field nào undefined → dùng của office.
+ * Override giờ làm theo NV.
  *
- * Thêm / xoá override ở đây, không cần migration.
+ * Thứ tự ưu tiên (cao → thấp):
+ *  1. DB columns employees.work_start_time / work_end_time (sửa qua UI admin)
+ *  2. Hardcode legacy bên dưới (cho NV cũ, có thể migrate dần qua UI)
+ *  3. work_start_time / work_end_time của chi nhánh
  */
 const EMPLOYEE_WORK_HOURS_OVERRIDE: Record<string, { start?: string; end?: string }> = {
-  // Trâm Trương: ca chiều, bắt đầu 13:30, kết thúc theo VP Sài Gòn
+  // Trâm Trương: ca chiều — giữ làm fallback nếu chưa set qua UI.
+  // Sau khi admin set qua UI có thể xoá entry này.
   "trammy.truong@gmail.com": { start: "13:30:00" },
 };
 
+type EmployeeForHours = {
+  email?: string | null;
+  work_start_time?: string | null;
+  work_end_time?: string | null;
+};
+
 /**
- * Lấy giờ làm hiệu lực của NV theo office + override riêng (nếu có).
- * Không dịch theo đơn nghỉ theo giờ — phần đó xử lý ở tầng caller.
+ * Lấy giờ làm hiệu lực của NV theo thứ tự ưu tiên ở docstring trên.
+ * Backward-compat: nếu truyền string (email cũ) thay vì object → wrap.
  */
 export function effectiveWorkHours(
-  email: string | null | undefined,
+  emp: EmployeeForHours | string | null | undefined,
   officeStart: string,
   officeEnd: string,
 ): { start: string; end: string } {
-  const override = email ? EMPLOYEE_WORK_HOURS_OVERRIDE[email.toLowerCase()] : undefined;
+  const e: EmployeeForHours =
+    typeof emp === "string" ? { email: emp } : emp ?? {};
+
+  const hardOverride = e.email
+    ? EMPLOYEE_WORK_HOURS_OVERRIDE[e.email.toLowerCase()]
+    : undefined;
+
   return {
-    start: override?.start ?? officeStart,
-    end:   override?.end   ?? officeEnd,
+    start: e.work_start_time ?? hardOverride?.start ?? officeStart,
+    end:   e.work_end_time   ?? hardOverride?.end   ?? officeEnd,
   };
 }

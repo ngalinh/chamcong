@@ -27,6 +27,8 @@ export type Employee = {
   salary: number;
   leave_balance: number;
   last_accrual_month: string | null;
+  work_start_time: string | null;  // "HH:MM:SS" — null = dùng giờ chi nhánh
+  work_end_time: string | null;
   created_at: string;
 };
 

@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const { data: emp } = await admin
     .from("employees")
-    .select("id, is_active, face_descriptor, is_admin, email, home_office_id")
+    .select("id, is_active, face_descriptor, is_admin, email, home_office_id, work_start_time, work_end_time")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!emp || !emp.is_active)
@@ -121,8 +121,16 @@ export async function POST(request: NextRequest) {
     .eq("status", "approved")
     .maybeSingle();
 
-  // Apply per-employee override trước (vd NV ca chiều)
-  const base = effectiveWorkHours(emp.email, office.work_start_time, office.work_end_time);
+  // Apply per-employee override trước (DB columns → fallback hardcode → office)
+  const base = effectiveWorkHours(
+    {
+      email: emp.email,
+      work_start_time: emp.work_start_time,
+      work_end_time: emp.work_end_time,
+    },
+    office.work_start_time,
+    office.work_end_time,
+  );
   let effectiveStart = base.start;
   let effectiveEnd   = base.end;
   if (hourlyLeave?.start_time && hourlyLeave?.end_time) {

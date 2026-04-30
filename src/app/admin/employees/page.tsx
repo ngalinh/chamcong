@@ -9,6 +9,7 @@ import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
 import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
+import EmployeeWorkHoursEditor from "@/components/EmployeeWorkHoursEditor";
 import { yearMonthVN } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -123,6 +124,38 @@ async function accrueLeaveThisMonth() {
       })
       .eq("id", t.id);
   }
+
+  revalidatePath("/admin/employees");
+}
+
+async function updateEmployeeWorkHours(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const startRaw = String(formData.get("work_start_time") ?? "").trim();
+  const endRaw = String(formData.get("work_end_time") ?? "").trim();
+  const TIME_RX = /^\d{2}:\d{2}(:\d{2})?$/;
+  if (startRaw && !TIME_RX.test(startRaw)) throw new Error("Giờ bắt đầu không hợp lệ");
+  if (endRaw && !TIME_RX.test(endRaw)) throw new Error("Giờ kết thúc không hợp lệ");
+
+  const work_start_time = startRaw || null;
+  const work_end_time = endRaw || null;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("employees")
+    .update({ work_start_time, work_end_time })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
 
   revalidatePath("/admin/employees");
 }
@@ -281,6 +314,26 @@ export default async function EmployeesPage() {
                   initialLeaveBalance={Number(e.leave_balance ?? 0)}
                   action={updateEmployeePayroll}
                 />
+
+                {/* Row 5: giờ làm override (để trống = dùng giờ chi nhánh) */}
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium px-0.5">
+                    Giờ làm riêng — để trống = dùng giờ chi nhánh
+                    {office && (
+                      <span className="text-neutral-400 ml-1 normal-case tracking-normal">
+                        ({office.work_start_time?.slice(0, 5)}–{office.work_end_time?.slice(0, 5)})
+                      </span>
+                    )}
+                  </p>
+                  <EmployeeWorkHoursEditor
+                    employeeId={e.id}
+                    initialStart={e.work_start_time ?? null}
+                    initialEnd={e.work_end_time ?? null}
+                    officeStart={office?.work_start_time ?? null}
+                    officeEnd={office?.work_end_time ?? null}
+                    action={updateEmployeeWorkHours}
+                  />
+                </div>
               </div>
             );
           })}
