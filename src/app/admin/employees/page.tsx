@@ -315,25 +315,16 @@ export default async function EmployeesPage() {
                   action={updateEmployeePayroll}
                 />
 
-                {/* Row 5: giờ làm override (để trống = dùng giờ chi nhánh) */}
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium px-0.5">
-                    Giờ làm riêng — để trống = dùng giờ chi nhánh
-                    {office && (
-                      <span className="text-neutral-400 ml-1 normal-case tracking-normal">
-                        ({office.work_start_time?.slice(0, 5)}–{office.work_end_time?.slice(0, 5)})
-                      </span>
-                    )}
-                  </p>
-                  <EmployeeWorkHoursEditor
-                    employeeId={e.id}
-                    initialStart={e.work_start_time ?? null}
-                    initialEnd={e.work_end_time ?? null}
-                    officeStart={office?.work_start_time ?? null}
-                    officeEnd={office?.work_end_time ?? null}
-                    action={updateEmployeeWorkHours}
-                  />
-                </div>
+                {/* Row 5: button "Thời gian làm việc" — click mới expand form
+                    set giờ làm riêng (mặc định = giờ chi nhánh, không cần đụng đến) */}
+                <EmployeeWorkHoursEditor
+                  employeeId={e.id}
+                  initialStart={e.work_start_time ?? null}
+                  initialEnd={e.work_end_time ?? null}
+                  officeStart={office?.work_start_time ?? null}
+                  officeEnd={office?.work_end_time ?? null}
+                  action={updateEmployeeWorkHours}
+                />
               </div>
             );
           })}
