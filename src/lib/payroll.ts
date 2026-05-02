@@ -298,48 +298,13 @@ export function computeParttimePayroll(args: {
 }): ParttimePayrollResult {
   const { hourlyRate, overtimeRate, workStartTime, workEndTime, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
 
-  // Pair in+out → shifts
+  // Sort 1 lần để dùng cho cả late/early detection và shift pairing
   const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
-  const shifts: ParttimeShift[] = [];
-  let pendingIn: CheckInInput | null = null;
-  for (const ci of sorted) {
-    if (ci.kind === "in") {
-      if (pendingIn) {
-        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
-      }
-      pendingIn = ci;
-    } else if (ci.kind === "out") {
-      if (pendingIn) {
-        const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
-        const actualHours = Math.max(0, ms / 3600_000);
-        // Cap vào work window: phần thời gian trong [workStart, workEnd] mới được tính.
-        // Hours ngoài (vd sau 24h) → user submit OT request riêng, không double-count.
-        const sane = actualHours > 18 ? 0 : actualHours;
-        const regularHours = sane > 0
-          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, workStartTime, workEndTime)
-          : 0;
-        shifts.push({
-          date: pendingIn.dateVN,
-          startAt: pendingIn.checked_in_at,
-          endAt: ci.checked_in_at,
-          hours: regularHours,
-          actualHours: sane,
-        });
-        pendingIn = null;
-      }
-    }
-  }
-  if (pendingIn) {
-    shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
-  }
 
-  const workedHours = shifts.reduce((s, sh) => s + sh.hours, 0);
-  const basePay = workedHours * hourlyRate;
-  const otPay = approvedOTHours * overtimeRate;
-
-  // Late/early
+  // Late/early violations — compute trước để biết check-in nào nằm trong 3 lần
+  // miễn phí (forgiven) vs lần thứ 4+ (counted for penalty).
   const allLateEarly: PayrollViolation[] = [];
-  for (const ci of checkIns) {
+  for (const ci of sorted) {
     if (excusedDays.has(ci.dateVN)) continue;
     const isLate = ci.kind === "in" && (ci.late_minutes ?? 0) > 5;
     const isEarly = ci.kind === "out" && (ci.early_minutes ?? 0) > 5;
@@ -353,11 +318,58 @@ export function computeParttimePayroll(args: {
       countedForPenalty: false,
     });
   }
-  allLateEarly.sort((a, b) => a.at.localeCompare(b.at));
+  // allLateEarly đã sorted vì sorted đã sorted
   for (let i = 0; i < allLateEarly.length; i++) {
     if (i >= LATE_PENALTY_FREE) allLateEarly[i].countedForPenalty = true;
   }
   const totalLatePenalty = allLateEarly.filter((v) => v.countedForPenalty).length * LATE_PENALTY_AMOUNT;
+
+  // penaltyMap: id check-in → đã bị tính phạt chưa (true = lần 4+, false = miễn phí)
+  const penaltyMap = new Map<string, boolean>();
+  for (const v of allLateEarly) {
+    penaltyMap.set(v.id, v.countedForPenalty);
+  }
+
+  // Pair in+out → shifts (apply forgiveness cho late check-in trong 3 lần đầu)
+  const shifts: ParttimeShift[] = [];
+  let pendingIn: CheckInInput | null = null;
+  let pendingInForgiven = false;
+  for (const ci of sorted) {
+    if (ci.kind === "in") {
+      if (pendingIn) {
+        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
+      }
+      pendingIn = ci;
+      // Late + chưa bị tính phạt (trong 3 lần đầu HOẶC excused) → forgiven cho hours
+      const isLate = (ci.late_minutes ?? 0) > 5;
+      pendingInForgiven = isLate && penaltyMap.get(ci.id) !== true;
+    } else if (ci.kind === "out") {
+      if (pendingIn) {
+        const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
+        const actualHours = Math.max(0, ms / 3600_000);
+        const sane = actualHours > 18 ? 0 : actualHours;
+        const regularHours = sane > 0
+          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, workStartTime, workEndTime, { forgivenLateStart: pendingInForgiven })
+          : 0;
+        shifts.push({
+          date: pendingIn.dateVN,
+          startAt: pendingIn.checked_in_at,
+          endAt: ci.checked_in_at,
+          hours: regularHours,
+          actualHours: sane,
+        });
+        pendingIn = null;
+        pendingInForgiven = false;
+      }
+    }
+  }
+  if (pendingIn) {
+    shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
+  }
+
+  const workedHours = shifts.reduce((s, sh) => s + sh.hours, 0);
+  const basePay = workedHours * hourlyRate;
+  const otPay = approvedOTHours * overtimeRate;
 
   // Bonus / Violation
   const selfVList: SelfViolationItem[] = [];
@@ -414,6 +426,7 @@ function regularHoursOfShift(
   endAtIso: string,
   workStartHM: string,
   workEndHM: string,
+  opts: { forgivenLateStart?: boolean } = {},
 ): number {
   const startDateVN = dateVN(startAtIso);
   const startMin = timeToMinutes(workStartHM);
@@ -437,7 +450,8 @@ function regularHoursOfShift(
 
   const shiftStartMs = new Date(startAtIso).getTime();
   const shiftEndMs = new Date(endAtIso).getTime();
-  const overlapStart = Math.max(regStartMs, shiftStartMs);
+  // Forgiven late: bỏ qua thời điểm check-in muộn, tính từ workStart như chưa muộn
+  const overlapStart = opts.forgivenLateStart ? regStartMs : Math.max(regStartMs, shiftStartMs);
   const overlapEnd = Math.min(regEndMs, shiftEndMs);
   return Math.max(0, (overlapEnd - overlapStart) / 3600_000);
 }
