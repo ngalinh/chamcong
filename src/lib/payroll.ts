@@ -48,6 +48,16 @@ export type SelfBonusItem = {
   itemCount: number;
 };
 
+export type OvertimeEntry = {
+  id: string;
+  date: string;        // YYYY-MM-DD
+  startTime: string;   // HH:MM:SS
+  endTime: string;
+  hours: number;
+  reason: string | null;
+  pay: number;         // VND
+};
+
 export type PayrollResult = {
   salary: number;
   workdays: number;
@@ -59,12 +69,14 @@ export type PayrollResult = {
   lateEarlyViolations: PayrollViolation[];
   selfViolations: SelfViolationItem[];
   selfBonuses: SelfBonusItem[];
+  overtimes: OvertimeEntry[];      // chi tiết từng đơn OT
   // Tổng các loại
   totalLatePenalty: number;
   totalSelfViolation: number;
-  totalSelfBonus: number;        // thưởng — cộng vào lương cuối kỳ
-  totalWageDeduction: number;    // từ leaves vượt phép + leave_hourly + online vượt hết phép
-  grandTotal: number;            // tổng tiền bị TRỪ (chưa trừ bonus). Lương thực nhận = salary - grandTotal + totalSelfBonus
+  totalSelfBonus: number;
+  totalOTPay: number;              // OT pay cộng vào lương
+  totalWageDeduction: number;
+  grandTotal: number;              // tổng tiền bị TRỪ (chưa cộng bonus + OT)
 };
 
 type LeaveInput = {
@@ -95,6 +107,15 @@ type SelfViolationInput = {
   item_count: number;
 };
 
+type OvertimeInput = {
+  id: string;
+  ot_date: string;
+  start_time: string;
+  end_time: string;
+  hours: number;
+  reason: string | null;
+};
+
 export function computePayroll(args: {
   workdays: number;
   salary: number;
@@ -103,8 +124,9 @@ export function computePayroll(args: {
   checkIns: CheckInInput[];        // tất cả check-ins trong tháng
   excusedDays: Set<string>;        // các ngày YYYY-MM-DD có leave_paid/online_* approved → không tính vi phạm late/early
   selfViolations: SelfViolationInput[]; // approved violation_reports (cả bonus + violation)
+  overtimes: OvertimeInput[];      // approved overtime_requests trong tháng
 }): PayrollResult {
-  const { workdays, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations } = args;
+  const { workdays, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations, overtimes } = args;
   const dayRate = workdays > 0 ? salary / workdays : 0;
   const hourRate = dayRate / HOURS_PER_WORKDAY;
 
@@ -237,6 +259,19 @@ export function computePayroll(args: {
   const totalSelfViolation = selfVList.reduce((s, v) => s + v.totalAmount, 0);
   const totalSelfBonus     = selfBList.reduce((s, v) => s + v.totalAmount, 0);
 
+  // OT pay: 1 giờ OT = lương/giờ (= salary / workdays / 8) — fulltime không có
+  // overtime_rate riêng, dùng hourRate thuần.
+  const otEntries: OvertimeEntry[] = overtimes.map((o) => ({
+    id: o.id,
+    date: o.ot_date,
+    startTime: o.start_time,
+    endTime: o.end_time,
+    hours: Number(o.hours),
+    reason: o.reason,
+    pay: Number(o.hours) * hourRate,
+  }));
+  const totalOTPay = otEntries.reduce((s, o) => s + o.pay, 0);
+
   return {
     salary,
     workdays,
@@ -248,8 +283,10 @@ export function computePayroll(args: {
     lateEarlyViolations: allLateEarly,
     selfViolations: selfVList,
     selfBonuses: selfBList,
+    overtimes: otEntries,
     totalLatePenalty,
     totalSelfViolation,
+    totalOTPay,
     totalSelfBonus,
     totalWageDeduction,
     grandTotal: totalLatePenalty + totalSelfViolation + totalWageDeduction,
@@ -276,26 +313,40 @@ export type ParttimePayrollResult = {
   basePay: number;
   approvedOTHours: number;
   otPay: number;
+  overtimes: OvertimeEntry[];
   lateEarlyViolations: PayrollViolation[];
   totalLatePenalty: number;
   selfViolations: SelfViolationItem[];
   selfBonuses: SelfBonusItem[];
   totalSelfViolation: number;
   totalSelfBonus: number;
-  grandDeduction: number;  // tiền bị TRỪ (penalty + violations)
-  grandEarning: number;    // tiền THỰC NHẬN (basePay + otPay - grandDeduction + bonuses)
+  grandDeduction: number;
+  grandEarning: number;
 };
 
 export function computeParttimePayroll(args: {
   hourlyRate: number;
   overtimeRate: number;
-  workShifts: WorkShift[];          // multi-shift, sorted asc theo start
-  checkIns: CheckInInput[];          // sorted asc theo checked_in_at
-  approvedOTHours: number;            // tổng giờ OT đã duyệt trong tháng
+  workShifts: WorkShift[];
+  checkIns: CheckInInput[];
+  overtimes: OvertimeInput[];
   excusedDays: Set<string>;
   selfViolations: SelfViolationInput[];
 }): ParttimePayrollResult {
-  const { hourlyRate, overtimeRate, workShifts, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
+  const { hourlyRate, overtimeRate, workShifts, checkIns, overtimes, excusedDays, selfViolations } = args;
+  // Parttime: nếu overtime_rate > 0 → dùng nó; else fallback hourly_rate.
+  const effOTRate = overtimeRate > 0 ? overtimeRate : hourlyRate;
+  const otEntries: OvertimeEntry[] = overtimes.map((o) => ({
+    id: o.id,
+    date: o.ot_date,
+    startTime: o.start_time,
+    endTime: o.end_time,
+    hours: Number(o.hours),
+    reason: o.reason,
+    pay: Number(o.hours) * effOTRate,
+  }));
+  const approvedOTHours = otEntries.reduce((s, o) => s + o.hours, 0);
+  const otPay = otEntries.reduce((s, o) => s + o.pay, 0);
 
   // Sort 1 lần để dùng cho cả late/early detection và shift pairing
   const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
@@ -370,7 +421,6 @@ export function computeParttimePayroll(args: {
 
   const workedHours = shifts.reduce((s, sh) => s + sh.hours, 0);
   const basePay = workedHours * hourlyRate;
-  const otPay = approvedOTHours * overtimeRate;
 
   // Bonus / Violation
   const selfVList: SelfViolationItem[] = [];
@@ -399,6 +449,7 @@ export function computeParttimePayroll(args: {
     basePay,
     approvedOTHours,
     otPay,
+    overtimes: otEntries,
     lateEarlyViolations: allLateEarly,
     totalLatePenalty,
     selfViolations: selfVList,

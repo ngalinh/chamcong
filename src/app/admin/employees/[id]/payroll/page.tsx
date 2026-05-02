@@ -83,11 +83,12 @@ export default async function PayrollPage({
       .order("report_date", { ascending: true }),
     admin
       .from("overtime_requests")
-      .select("hours")
+      .select("id, ot_date, start_time, end_time, hours, reason")
       .eq("employee_id", emp.id)
       .eq("status", "approved")
       .gte("ot_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
-      .lt("ot_date", monthEndDate(ym.year, ym.month)),
+      .lt("ot_date", monthEndDate(ym.year, ym.month))
+      .order("ot_date", { ascending: true }),
     isParttime
       ? Promise.resolve({ data: [] })
       : admin
@@ -100,7 +101,14 @@ export default async function PayrollPage({
           .order("leave_date", { ascending: true }),
   ]);
 
-  const approvedOTHours = (otRequests ?? []).reduce((s, r) => s + Number(r.hours ?? 0), 0);
+  const otInputs = (otRequests ?? []).map((r) => ({
+    id: r.id,
+    ot_date: r.ot_date as string,
+    start_time: r.start_time as string,
+    end_time: r.end_time as string,
+    hours: Number(r.hours ?? 0),
+    reason: (r.reason ?? null) as string | null,
+  }));
 
   // excused days = ngày NV không có mặt ở văn phòng (chỉ áp cho fulltime)
   const excusedDays = new Set<string>();
@@ -214,7 +222,7 @@ export default async function PayrollPage({
       overtimeRate: Number(emp.overtime_rate),
       workShifts,
       checkIns: checkInsForCalc,
-      approvedOTHours,
+      overtimes: otInputs,
       excusedDays,
       selfViolations: selfViolationsInput,
     });
@@ -243,6 +251,7 @@ export default async function PayrollPage({
     checkIns: checkInsForCalc,
     excusedDays,
     selfViolations: selfViolationsInput,
+    overtimes: otInputs,
   });
 
   return (
@@ -335,6 +344,9 @@ function ParttimeView({
       {/* Đi muộn / Về sớm */}
       <LateEarlySection result={result} />
 
+      {/* OT */}
+      <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.overtimeRate > 0 ? result.overtimeRate : result.hourlyRate)}/giờ`} />
+
       {/* Bonus / Violation */}
       <BonusSection bonuses={result.selfBonuses} />
       <ViolationSection violations={result.selfViolations} />
@@ -415,6 +427,7 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
         )}
       </Section>
 
+      <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
       <BonusSection bonuses={result.selfBonuses} />
       <ViolationSection violations={result.selfViolations} />
 
@@ -426,6 +439,9 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
         <TotalRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
         <TotalRow label="Trừ lương từ nghỉ vượt phép + nghỉ giờ + online" value={result.totalWageDeduction} />
         <TotalRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
+        {result.totalOTPay > 0 && (
+          <TotalRow label="Lương OT (đã duyệt)" value={result.totalOTPay} positive />
+        )}
         {result.totalSelfBonus > 0 && (
           <TotalRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
         )}
@@ -436,10 +452,8 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
         <p className="text-xs text-rose-700/80 mt-1">
           Lương thực nhận tạm tính:{" "}
           <b className="tabular-nums">
-            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus).toLocaleString("en-US")} VND
-          </b>{" "}
-          (= {result.salary.toLocaleString("en-US")} − {Math.round(result.grandTotal).toLocaleString("en-US")}
-          {result.totalSelfBonus > 0 && ` + ${Math.round(result.totalSelfBonus).toLocaleString("en-US")}`})
+            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay).toLocaleString("en-US")} VND
+          </b>
         </p>
       </div>
     </>
@@ -475,6 +489,33 @@ function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollRe
               ) : (
                 <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
               )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+function OvertimeSection({ overtimes, hourLabel }: { overtimes: PayrollResult["overtimes"]; hourLabel: string }) {
+  const total = overtimes.reduce((s, o) => s + o.pay, 0);
+  return (
+    <Section
+      icon={Hourglass}
+      title="Làm OT (đơn đã duyệt)"
+      subtitle={`${overtimes.length} đơn · ${hourLabel} · tổng +${Math.round(total).toLocaleString("en-US")}`}
+      empty="Không có đơn OT trong tháng này."
+    >
+      {overtimes.length > 0 && (
+        <ul className="divide-y divide-neutral-200/60">
+          {overtimes.map((o) => (
+            <li key={o.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <Hourglass size={14} className="text-violet-600 shrink-0" />
+              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(o.date + "T00:00:00+07:00", "dd/MM")}</span>
+              <span className="font-mono tabular-nums text-xs text-neutral-500 shrink-0">{o.startTime.slice(0, 5)}–{o.endTime.slice(0, 5)}</span>
+              <span className="text-xs text-neutral-700 shrink-0">{fmtHours(o.hours)}</span>
+              <span className="flex-1 text-xs text-neutral-500 truncate">{o.reason ?? ""}</span>
+              <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(o.pay).toLocaleString("en-US")}</span>
             </li>
           ))}
         </ul>
