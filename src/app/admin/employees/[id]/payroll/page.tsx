@@ -7,6 +7,7 @@ import { LEAVE_CATEGORIES, type Employee, type LeaveCategory, type LeaveStatus }
 import { computePayroll, computeParttimePayroll, type PayrollResult, type ParttimePayrollResult } from "@/lib/payroll";
 import { countWorkdaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { dateVN, formatVN } from "@/lib/time";
+import { effectiveWorkHours } from "@/lib/workHours";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -185,9 +186,33 @@ export default async function PayrollPage({
   );
 
   if (isParttime) {
+    // Tính work window hiệu lực để cap giờ làm parttime
+    let officeWorkStart = "09:00:00";
+    let officeWorkEnd = "18:00:00";
+    if (emp.home_office_id) {
+      const { data: office } = await admin
+        .from("offices")
+        .select("work_start_time, work_end_time")
+        .eq("id", emp.home_office_id)
+        .maybeSingle();
+      officeWorkStart = office?.work_start_time ?? "09:00:00";
+      officeWorkEnd = office?.work_end_time ?? "18:00:00";
+    }
+    const eff = effectiveWorkHours(
+      {
+        email: emp.email,
+        work_start_time: emp.work_start_time,
+        work_end_time: emp.work_end_time,
+      },
+      officeWorkStart,
+      officeWorkEnd,
+    );
+
     const result = computeParttimePayroll({
       hourlyRate: Number(emp.hourly_rate),
       overtimeRate: Number(emp.overtime_rate),
+      workStartTime: eff.start,
+      workEndTime: eff.end,
       checkIns: checkInsForCalc,
       approvedOTHours,
       excusedDays,
@@ -196,7 +221,7 @@ export default async function PayrollPage({
     return (
       <div className="space-y-5">
         {header}
-        <ParttimeView result={result} monthStr={monthStr} />
+        <ParttimeView result={result} monthStr={monthStr} workStart={eff.start} workEnd={eff.end} />
       </div>
     );
   }
@@ -231,11 +256,23 @@ export default async function PayrollPage({
 // =============================================================================
 // PARTTIME VIEW
 // =============================================================================
-function ParttimeView({ result, monthStr }: { result: ParttimePayrollResult; monthStr: string }) {
+function ParttimeView({
+  result,
+  monthStr,
+  workStart,
+  workEnd,
+}: {
+  result: ParttimePayrollResult;
+  monthStr: string;
+  workStart: string;
+  workEnd: string;
+}) {
+  const wsHM = workStart.slice(0, 5);
+  const weHM = workEnd.slice(0, 5);
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <SummaryCard icon={Clock}     label="Tổng giờ làm"   value={fmtHours(result.workedHours)}             tone="sky" />
+        <SummaryCard icon={Clock}     label={`Tổng giờ làm (${wsHM}–${weHM})`} value={fmtHours(result.workedHours)} tone="sky" />
         <SummaryCard icon={Wallet}    label="Lương / giờ"     value={fmtVnd(result.hourlyRate)}                tone="indigo" />
         <SummaryCard icon={Hourglass} label="OT đã duyệt"     value={fmtHours(result.approvedOTHours)}         tone="amber" />
         <SummaryCard icon={Wallet}    label="Lương OT / giờ"  value={fmtVnd(result.overtimeRate)}              tone="violet" />
@@ -256,31 +293,41 @@ function ParttimeView({ result, monthStr }: { result: ParttimePayrollResult; mon
       <Section
         icon={Calendar}
         title="Ca làm việc trong tháng"
-        subtitle={`${result.shifts.length} ca`}
+        subtitle={`${result.shifts.length} ca · giờ trong khung ${wsHM}–${weHM} mới tính lương, ngoài khung gửi đơn OT`}
         empty="Chưa có ca làm việc nào trong tháng này."
       >
         {result.shifts.length > 0 && (
           <ul className="divide-y divide-neutral-200/60">
-            {result.shifts.map((sh, i) => (
-              <li key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{i + 1}</span>
-                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
-                  {formatVN(sh.startAt, "dd/MM HH:mm")}
-                </span>
-                <span className="text-neutral-400">→</span>
-                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
-                  {sh.endAt ? formatVN(sh.endAt, "dd/MM HH:mm") : "—"}
-                </span>
-                <span className="flex-1" />
-                {sh.endAt ? (
-                  <span className="text-emerald-700 font-semibold tabular-nums shrink-0">
-                    {fmtHours(sh.hours)}
+            {result.shifts.map((sh, i) => {
+              const exceededOT = sh.endAt && sh.actualHours - sh.hours > 0.02; // > 1 phút sai lệch
+              return (
+                <li key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm flex-wrap">
+                  <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{i + 1}</span>
+                  <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                    {formatVN(sh.startAt, "dd/MM HH:mm")}
                   </span>
-                ) : (
-                  <Badge tone="amber">Chưa check-out</Badge>
-                )}
-              </li>
-            ))}
+                  <span className="text-neutral-400">→</span>
+                  <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                    {sh.endAt ? formatVN(sh.endAt, "dd/MM HH:mm") : "—"}
+                  </span>
+                  <span className="flex-1" />
+                  {sh.endAt ? (
+                    <>
+                      <span className="text-emerald-700 font-semibold tabular-nums shrink-0">
+                        {fmtHours(sh.hours)}
+                      </span>
+                      {exceededOT && (
+                        <span className="text-[10px] text-neutral-500 shrink-0">
+                          (thực tế {fmtHours(sh.actualHours)})
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <Badge tone="amber">Chưa check-out</Badge>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Section>

@@ -1,4 +1,5 @@
 import type { LeaveCategory, LeaveStatus } from "@/types/db";
+import { dateVN, formatVN, timeToMinutes } from "@/lib/time";
 
 const LATE_PENALTY_FREE = 3;          // 3 lần đầu không phạt
 const LATE_PENALTY_AMOUNT = 50_000;   // VND/lần từ lần thứ 4
@@ -263,7 +264,8 @@ export type ParttimeShift = {
   date: string;          // YYYY-MM-DD theo giờ VN của check-in
   startAt: string;       // ISO
   endAt: string | null;  // ISO, null = chưa check-out (shift dở)
-  hours: number;         // (endAt - startAt) / 3600s, 0 nếu chưa check-out
+  hours: number;         // giờ thực dùng để tính lương — đã cap vào work window
+  actualHours: number;   // giờ thực tế từ check-in tới check-out
 };
 
 export type ParttimePayrollResult = {
@@ -287,12 +289,14 @@ export type ParttimePayrollResult = {
 export function computeParttimePayroll(args: {
   hourlyRate: number;
   overtimeRate: number;
-  checkIns: CheckInInput[];      // sorted asc theo checked_in_at
-  approvedOTHours: number;        // tổng giờ OT đã duyệt trong tháng
+  workStartTime: string;          // "HH:MM:SS" — work window để cap giờ làm
+  workEndTime: string;
+  checkIns: CheckInInput[];        // sorted asc theo checked_in_at
+  approvedOTHours: number;          // tổng giờ OT đã duyệt trong tháng
   excusedDays: Set<string>;
   selfViolations: SelfViolationInput[];
 }): ParttimePayrollResult {
-  const { hourlyRate, overtimeRate, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
+  const { hourlyRate, overtimeRate, workStartTime, workEndTime, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
 
   // Pair in+out → shifts
   const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
@@ -300,25 +304,33 @@ export function computeParttimePayroll(args: {
   let pendingIn: CheckInInput | null = null;
   for (const ci of sorted) {
     if (ci.kind === "in") {
-      // Nếu có in trước đó chưa close → push shift dở
       if (pendingIn) {
-        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0 });
+        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
       }
       pendingIn = ci;
     } else if (ci.kind === "out") {
       if (pendingIn) {
         const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
-        const hours = Math.max(0, ms / 3600_000);
-        // Sanity: nếu > 18h thì coi shift là invalid (forgot to out), bỏ qua phần dư
-        const validHours = hours > 18 ? 0 : hours;
-        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: ci.checked_in_at, hours: validHours });
+        const actualHours = Math.max(0, ms / 3600_000);
+        // Cap vào work window: phần thời gian trong [workStart, workEnd] mới được tính.
+        // Hours ngoài (vd sau 24h) → user submit OT request riêng, không double-count.
+        const sane = actualHours > 18 ? 0 : actualHours;
+        const regularHours = sane > 0
+          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, workStartTime, workEndTime)
+          : 0;
+        shifts.push({
+          date: pendingIn.dateVN,
+          startAt: pendingIn.checked_in_at,
+          endAt: ci.checked_in_at,
+          hours: regularHours,
+          actualHours: sane,
+        });
         pendingIn = null;
       }
-      // 'out' không có 'in' tương ứng → skip
     }
   }
   if (pendingIn) {
-    shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0 });
+    shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
   }
 
   const workedHours = shifts.reduce((s, sh) => s + sh.hours, 0);
@@ -383,6 +395,56 @@ export function computeParttimePayroll(args: {
     grandDeduction,
     grandEarning,
   };
+}
+
+/**
+ * Tính số giờ overlap của 1 shift với cửa sổ giờ làm chính thức.
+ * Hỗ trợ ca xuyên đêm (workEnd < workStart hoặc workEnd = "00:00:00").
+ *
+ * Vd NV ca 20:00-00:00:
+ *   - shift 20:11 → 02:00 (cross midnight) → overlap với [20:00, 00:00 next] = 3h49m
+ *   - shift 20:00 → 23:50 → overlap = 3h50m (full)
+ *
+ * Vd NV ca 21:00-06:00:
+ *   - shift 21:00 day1 → 06:00 day2 → overlap = 9h (full)
+ *   - shift 21:00 day1 → 07:00 day2 (1h OT) → overlap = 9h (cap tại 06:00)
+ */
+function regularHoursOfShift(
+  startAtIso: string,
+  endAtIso: string,
+  workStartHM: string,
+  workEndHM: string,
+): number {
+  const startDateVN = dateVN(startAtIso);
+  const startMin = timeToMinutes(workStartHM);
+  const endMin = timeToMinutes(workEndHM);
+  const isNightShift = endMin <= startMin;
+
+  const ws = workStartHM.length >= 8 ? workStartHM : `${workStartHM}:00`;
+  const we = workEndHM.length >= 8 ? workEndHM : `${workEndHM}:00`;
+  const regStartMs = new Date(`${startDateVN}T${ws}+07:00`).getTime();
+  let regEndMs: number;
+  if (isNightShift) {
+    const next = addDaysVN(startDateVN, 1);
+    if (endMin === 0) {
+      regEndMs = new Date(`${next}T00:00:00+07:00`).getTime();
+    } else {
+      regEndMs = new Date(`${next}T${we}+07:00`).getTime();
+    }
+  } else {
+    regEndMs = new Date(`${startDateVN}T${we}+07:00`).getTime();
+  }
+
+  const shiftStartMs = new Date(startAtIso).getTime();
+  const shiftEndMs = new Date(endAtIso).getTime();
+  const overlapStart = Math.max(regStartMs, shiftStartMs);
+  const overlapEnd = Math.min(regEndMs, shiftEndMs);
+  return Math.max(0, (overlapEnd - overlapStart) / 3600_000);
+}
+
+function addDaysVN(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T00:00:00+07:00`);
+  return formatVN(new Date(d.getTime() + days * 86400_000), "yyyy-MM-dd");
 }
 
 function formatNum(n: number): string {
