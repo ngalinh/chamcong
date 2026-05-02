@@ -155,20 +155,37 @@ async function updateEmployeeWorkHours(formData: FormData) {
   if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
 
   const id = String(formData.get("id"));
-  const startRaw = String(formData.get("work_start_time") ?? "").trim();
-  const endRaw = String(formData.get("work_end_time") ?? "").trim();
+  const shiftsJson = String(formData.get("work_shifts") ?? "[]");
+  let shifts: { start: string; end: string }[];
+  try {
+    shifts = JSON.parse(shiftsJson);
+    if (!Array.isArray(shifts)) throw new Error("not array");
+  } catch {
+    throw new Error("Dữ liệu ca làm không hợp lệ");
+  }
   const TIME_RX = /^\d{2}:\d{2}(:\d{2})?$/;
-  if (startRaw && !TIME_RX.test(startRaw)) throw new Error("Giờ bắt đầu không hợp lệ");
-  if (endRaw && !TIME_RX.test(endRaw)) throw new Error("Giờ kết thúc không hợp lệ");
+  for (const s of shifts) {
+    if (!s || typeof s !== "object" || !TIME_RX.test(s.start) || !TIME_RX.test(s.end)) {
+      throw new Error("Giờ ca làm không hợp lệ");
+    }
+  }
+  // Normalize HH:MM → HH:MM:SS, sort by start
+  const normalized = shifts
+    .map((s) => ({
+      start: s.start.length === 5 ? `${s.start}:00` : s.start,
+      end:   s.end.length   === 5 ? `${s.end}:00`   : s.end,
+    }))
+    .sort((a, b) => a.start.localeCompare(b.start));
 
-  const work_start_time = startRaw || null;
-  const work_end_time = endRaw || null;
+  // Đồng thời sync work_start/end với first/last để legacy callers vẫn đọc đúng
+  const updates: Record<string, unknown> = {
+    work_shifts: normalized,
+    work_start_time: normalized[0]?.start ?? null,
+    work_end_time: normalized[normalized.length - 1]?.end ?? null,
+  };
 
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("employees")
-    .update({ work_start_time, work_end_time })
-    .eq("id", id);
+  const { error } = await admin.from("employees").update(updates).eq("id", id);
   if (error) throw new Error(error.message);
 
   revalidatePath("/admin/employees");
@@ -332,10 +349,11 @@ export default async function EmployeesPage() {
                   action={updateEmployeePayroll}
                 />
 
-                {/* Row 5: button "Thời gian làm việc" — click mới expand form
-                    set giờ làm riêng (mặc định = giờ chi nhánh, không cần đụng đến) */}
+                {/* Row 5: button "Thời gian làm việc" — click mới expand form,
+                    có thể nhập nhiều ca (parttime online) hoặc chỉ 1 ca */}
                 <EmployeeWorkHoursEditor
                   employeeId={e.id}
+                  initialShifts={Array.isArray(e.work_shifts) ? (e.work_shifts as { start: string; end: string }[]) : []}
                   initialStart={e.work_start_time ?? null}
                   initialEnd={e.work_end_time ?? null}
                   officeStart={office?.work_start_time ?? null}

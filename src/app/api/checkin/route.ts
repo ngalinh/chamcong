@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
 import { isAdminEmail } from "@/lib/utils";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
-import { effectiveWorkHours } from "@/lib/workHours";
+import { effectiveWorkShifts } from "@/lib/workHours";
 
 const Schema = z.object({
   office_id: z.string().uuid(),
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const { data: emp } = await admin
     .from("employees")
-    .select("id, is_active, face_descriptor, is_admin, email, home_office_id, work_start_time, work_end_time")
+    .select("id, is_active, face_descriptor, is_admin, email, home_office_id, work_start_time, work_end_time, work_shifts")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!emp || !emp.is_active)
@@ -143,18 +143,27 @@ export async function POST(request: NextRequest) {
     .eq("status", "approved")
     .maybeSingle();
 
-  // Apply per-employee override trước (DB columns → fallback hardcode → office)
-  const base = effectiveWorkHours(
+  // Tìm shift hiệu lực gần với hiện tại nhất (hỗ trợ multi-shift parttime).
+  // Cho check-in: closest theo start time. Cho check-out: closest theo end time.
+  const shifts = effectiveWorkShifts(
     {
       email: emp.email,
       work_start_time: emp.work_start_time,
       work_end_time: emp.work_end_time,
+      work_shifts: (emp.work_shifts ?? null) as Array<{ start: string; end: string }> | null,
     },
     office.work_start_time,
     office.work_end_time,
   );
-  let effectiveStart = base.start;
-  let effectiveEnd   = base.end;
+  const nowMinForShift = timeToMinutes(currentTimeVN());
+  const closest = shifts.reduce((best, s) => {
+    const t = timeToMinutes(kind === "in" ? s.start : s.end);
+    const distance = Math.abs(nowMinForShift - t);
+    if (!best || distance < best.dist) return { shift: s, dist: distance };
+    return best;
+  }, null as { shift: typeof shifts[0]; dist: number } | null)!;
+  let effectiveStart = closest.shift.start;
+  let effectiveEnd   = closest.shift.end;
   if (hourlyLeave?.start_time && hourlyLeave?.end_time) {
     const lStart = timeToMinutes(hourlyLeave.start_time);
     const lEnd   = timeToMinutes(hourlyLeave.end_time);

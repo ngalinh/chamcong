@@ -16,6 +16,8 @@ export type Office = {
 
 export type EmploymentType = "fulltime" | "parttime";
 
+export type WorkShift = { start: string; end: string };  // "HH:MM:SS"
+
 export type Employee = {
   id: string;
   user_id: string | null;
@@ -32,8 +34,9 @@ export type Employee = {
   overtime_rate: number;
   leave_balance: number;
   last_accrual_month: string | null;
-  work_start_time: string | null;  // "HH:MM:SS" — null = dùng giờ chi nhánh
+  work_start_time: string | null;  // legacy single-shift override
   work_end_time: string | null;
+  work_shifts: WorkShift[];        // multi-shift, ưu tiên hơn work_start/end
   created_at: string;
 };
 

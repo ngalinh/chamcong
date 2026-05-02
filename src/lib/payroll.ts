@@ -1,4 +1,4 @@
-import type { LeaveCategory, LeaveStatus } from "@/types/db";
+import type { LeaveCategory, LeaveStatus, WorkShift } from "@/types/db";
 import { dateVN, formatVN, timeToMinutes } from "@/lib/time";
 
 const LATE_PENALTY_FREE = 3;          // 3 lần đầu không phạt
@@ -289,14 +289,13 @@ export type ParttimePayrollResult = {
 export function computeParttimePayroll(args: {
   hourlyRate: number;
   overtimeRate: number;
-  workStartTime: string;          // "HH:MM:SS" — work window để cap giờ làm
-  workEndTime: string;
-  checkIns: CheckInInput[];        // sorted asc theo checked_in_at
-  approvedOTHours: number;          // tổng giờ OT đã duyệt trong tháng
+  workShifts: WorkShift[];          // multi-shift, sorted asc theo start
+  checkIns: CheckInInput[];          // sorted asc theo checked_in_at
+  approvedOTHours: number;            // tổng giờ OT đã duyệt trong tháng
   excusedDays: Set<string>;
   selfViolations: SelfViolationInput[];
 }): ParttimePayrollResult {
-  const { hourlyRate, overtimeRate, workStartTime, workEndTime, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
+  const { hourlyRate, overtimeRate, workShifts, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
 
   // Sort 1 lần để dùng cho cả late/early detection và shift pairing
   const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
@@ -348,8 +347,10 @@ export function computeParttimePayroll(args: {
         const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
         const actualHours = Math.max(0, ms / 3600_000);
         const sane = actualHours > 18 ? 0 : actualHours;
-        const regularHours = sane > 0
-          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, workStartTime, workEndTime, { forgivenLateStart: pendingInForgiven })
+        // Tìm work shift gần nhất với check-in time (dùng start time để match)
+        const ws = closestWorkShiftForCheckIn(workShifts, pendingIn.checked_in_at);
+        const regularHours = sane > 0 && ws
+          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, ws.start, ws.end, { forgivenLateStart: pendingInForgiven })
           : 0;
         shifts.push({
           date: pendingIn.dateVN,
@@ -421,6 +422,19 @@ export function computeParttimePayroll(args: {
  *   - shift 21:00 day1 → 06:00 day2 → overlap = 9h (full)
  *   - shift 21:00 day1 → 07:00 day2 (1h OT) → overlap = 9h (cap tại 06:00)
  */
+/** Tìm work shift có start time gần nhất với check-in (theo phút trong ngày VN). */
+function closestWorkShiftForCheckIn(shifts: WorkShift[], checkInIso: string): WorkShift | null {
+  if (shifts.length === 0) return null;
+  if (shifts.length === 1) return shifts[0];
+  const ciTimeStr = formatVN(checkInIso, "HH:mm:ss");
+  const ciMin = timeToMinutes(ciTimeStr);
+  return shifts.reduce<WorkShift | null>((best, s) => {
+    const distance = Math.abs(ciMin - timeToMinutes(s.start));
+    if (!best) return s;
+    return distance < Math.abs(ciMin - timeToMinutes(best.start)) ? s : best;
+  }, null);
+}
+
 function regularHoursOfShift(
   startAtIso: string,
   endAtIso: string,

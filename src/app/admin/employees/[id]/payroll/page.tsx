@@ -7,7 +7,7 @@ import { LEAVE_CATEGORIES, type Employee, type LeaveCategory, type LeaveStatus }
 import { computePayroll, computeParttimePayroll, type PayrollResult, type ParttimePayrollResult } from "@/lib/payroll";
 import { countWorkdaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { dateVN, formatVN } from "@/lib/time";
-import { effectiveWorkHours } from "@/lib/workHours";
+import { effectiveWorkShifts } from "@/lib/workHours";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -186,7 +186,7 @@ export default async function PayrollPage({
   );
 
   if (isParttime) {
-    // Tính work window hiệu lực để cap giờ làm parttime
+    // Tính work shifts hiệu lực để cap giờ làm parttime
     let officeWorkStart = "09:00:00";
     let officeWorkEnd = "18:00:00";
     if (emp.home_office_id) {
@@ -198,11 +198,12 @@ export default async function PayrollPage({
       officeWorkStart = office?.work_start_time ?? "09:00:00";
       officeWorkEnd = office?.work_end_time ?? "18:00:00";
     }
-    const eff = effectiveWorkHours(
+    const workShifts = effectiveWorkShifts(
       {
         email: emp.email,
         work_start_time: emp.work_start_time,
         work_end_time: emp.work_end_time,
+        work_shifts: emp.work_shifts ?? null,
       },
       officeWorkStart,
       officeWorkEnd,
@@ -211,8 +212,7 @@ export default async function PayrollPage({
     const result = computeParttimePayroll({
       hourlyRate: Number(emp.hourly_rate),
       overtimeRate: Number(emp.overtime_rate),
-      workStartTime: eff.start,
-      workEndTime: eff.end,
+      workShifts,
       checkIns: checkInsForCalc,
       approvedOTHours,
       excusedDays,
@@ -221,7 +221,7 @@ export default async function PayrollPage({
     return (
       <div className="space-y-5">
         {header}
-        <ParttimeView result={result} monthStr={monthStr} workStart={eff.start} workEnd={eff.end} />
+        <ParttimeView result={result} monthStr={monthStr} workShifts={workShifts} />
       </div>
     );
   }
@@ -259,20 +259,20 @@ export default async function PayrollPage({
 function ParttimeView({
   result,
   monthStr,
-  workStart,
-  workEnd,
+  workShifts,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
-  workStart: string;
-  workEnd: string;
+  workShifts: { start: string; end: string }[];
 }) {
-  const wsHM = workStart.slice(0, 5);
-  const weHM = workEnd.slice(0, 5);
+  const shiftsLabel = workShifts.length === 1
+    ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
+    : `${workShifts.length} ca`;
+  const allShiftsLabel = workShifts.map((s) => `${s.start.slice(0, 5)}–${s.end.slice(0, 5)}`).join(", ");
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-        <SummaryCard icon={Clock}     label={`Tổng giờ làm (${wsHM}–${weHM})`} value={fmtHours(result.workedHours)} tone="sky" />
+        <SummaryCard icon={Clock}     label={`Tổng giờ làm (${shiftsLabel})`}  value={fmtHours(result.workedHours)} tone="sky" />
         <SummaryCard icon={Wallet}    label="Lương / giờ"     value={fmtVnd(result.hourlyRate)}                tone="indigo" />
         <SummaryCard icon={Hourglass} label="OT đã duyệt"     value={fmtHours(result.approvedOTHours)}         tone="amber" />
         <SummaryCard icon={Wallet}    label="Lương OT / giờ"  value={fmtVnd(result.overtimeRate)}              tone="violet" />
@@ -293,7 +293,7 @@ function ParttimeView({
       <Section
         icon={Calendar}
         title="Ca làm việc trong tháng"
-        subtitle={`${result.shifts.length} ca · giờ trong khung ${wsHM}–${weHM} mới tính lương, ngoài khung gửi đơn OT`}
+        subtitle={`${result.shifts.length} ca · giờ trong khung ${allShiftsLabel} mới tính lương, ngoài khung gửi đơn OT`}
         empty="Chưa có ca làm việc nào trong tháng này."
       >
         {result.shifts.length > 0 && (

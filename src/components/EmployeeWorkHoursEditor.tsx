@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Save, Loader2, RotateCcw, X } from "lucide-react";
+import { Clock, Save, Loader2, RotateCcw, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { WorkShift } from "@/types/db";
 
 export default function EmployeeWorkHoursEditor({
   employeeId,
+  initialShifts,
   initialStart,
   initialEnd,
   officeStart,
@@ -13,32 +15,36 @@ export default function EmployeeWorkHoursEditor({
   action,
 }: {
   employeeId: string;
+  initialShifts: WorkShift[];
   initialStart: string | null;
   initialEnd: string | null;
   officeStart: string | null;
   officeEnd: string | null;
   action: (fd: FormData) => Promise<void> | void;
 }) {
-  const initialStartHM = initialStart?.slice(0, 5) ?? "";
-  const initialEndHM = initialEnd?.slice(0, 5) ?? "";
+  const initialEffective: WorkShift[] = initialShifts.length > 0
+    ? initialShifts
+    : initialStart && initialEnd
+      ? [{ start: initialStart, end: initialEnd }]
+      : [];
 
   const [expanded, setExpanded] = useState(false);
-  const [start, setStart] = useState(initialStartHM);
-  const [end, setEnd] = useState(initialEndHM);
+  const [shifts, setShifts] = useState<WorkShift[]>(initialEffective.length > 0 ? initialEffective : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }]);
   const [saving, setSaving] = useState(false);
 
-  const dirty = start !== initialStartHM || end !== initialEndHM;
+  const dirty = JSON.stringify(shifts.map(toHM)) !== JSON.stringify(initialEffective.map(toHM));
   const officeStartHM = officeStart?.slice(0, 5);
   const officeEndHM = officeEnd?.slice(0, 5);
-  const hasOverride = !!initialStart || !!initialEnd;
+  const hasOverride = initialEffective.length > 0;
+  const isMulti = initialEffective.length > 1;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     const fd = new FormData();
     fd.set("id", employeeId);
-    fd.set("work_start_time", start.trim());
-    fd.set("work_end_time", end.trim());
+    // Server normalize HH:MM → HH:MM:SS
+    fd.set("work_shifts", JSON.stringify(shifts));
     try {
       await action(fd);
       setExpanded(false);
@@ -48,12 +54,31 @@ export default function EmployeeWorkHoursEditor({
   }
 
   function close() {
-    setStart(initialStartHM);
-    setEnd(initialEndHM);
+    setShifts(initialEffective.length > 0 ? initialEffective : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }]);
     setExpanded(false);
   }
 
+  function clearAll() {
+    setShifts([]);
+  }
+
+  function addShift() {
+    setShifts((prev) => [...prev, { start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }]);
+  }
+
+  function removeShift(idx: number) {
+    setShifts((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function updateShift(idx: number, patch: Partial<WorkShift>) {
+    setShifts((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
   if (!expanded) {
+    let label: string;
+    if (!hasOverride) label = "Thời gian làm việc";
+    else if (isMulti) label = `${initialEffective.length} ca riêng`;
+    else label = `Giờ làm riêng: ${initialEffective[0].start.slice(0, 5)} → ${initialEffective[0].end.slice(0, 5)}`;
     return (
       <button
         type="button"
@@ -64,18 +89,15 @@ export default function EmployeeWorkHoursEditor({
             ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
             : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50",
         )}
-        title={hasOverride ? "Click để sửa giờ làm riêng" : "Click để set giờ làm riêng (mặc định = giờ chi nhánh)"}
       >
         <Clock size={12} />
-        {hasOverride
-          ? `Giờ làm riêng: ${initialStartHM || officeStartHM || "—"} → ${initialEndHM || officeEndHM || "—"}`
-          : "Thời gian làm việc"}
+        {label}
       </button>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-xl border border-neutral-200 bg-white p-2.5 space-y-2">
+    <form onSubmit={onSubmit} className="rounded-xl border border-neutral-200 bg-white p-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">
           Giờ làm riêng — để trống = dùng giờ chi nhánh
@@ -94,32 +116,66 @@ export default function EmployeeWorkHoursEditor({
           <X size={12} />
         </button>
       </div>
-      <div className="grid grid-cols-[1fr_auto_1fr_auto_auto] gap-2 items-center">
-        <input
-          type="time"
-          value={start}
-          step={300}
-          onChange={(e) => setStart(e.target.value)}
-          placeholder={officeStartHM ?? "—"}
-          className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-        />
-        <span className="text-neutral-400">→</span>
-        <input
-          type="time"
-          value={end}
-          step={300}
-          onChange={(e) => setEnd(e.target.value)}
-          placeholder={officeEndHM ?? "—"}
-          className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-        />
+
+      {shifts.length === 0 ? (
+        <div className="text-xs text-neutral-500 text-center py-3">
+          Đã xoá hết — sẽ dùng giờ chi nhánh sau khi lưu.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {shifts.map((s, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-500 shrink-0 w-10">
+                Ca {i + 1}
+              </span>
+              <input
+                type="time"
+                value={s.start.slice(0, 5)}
+                step={300}
+                onChange={(e) => updateShift(i, { start: e.target.value })}
+                className="h-9 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 tabular-nums"
+              />
+              <span className="text-neutral-400 shrink-0">→</span>
+              <input
+                type="time"
+                value={s.end.slice(0, 5)}
+                step={300}
+                onChange={(e) => updateShift(i, { end: e.target.value })}
+                className="h-9 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 tabular-nums"
+              />
+              {shifts.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeShift(i)}
+                  aria-label="Xoá ca"
+                  className="h-9 w-9 shrink-0 rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:border-rose-300 hover:text-rose-600 flex items-center justify-center"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={addShift}
+        className="h-8 w-full rounded-lg border border-dashed border-neutral-300 text-xs text-neutral-600 hover:border-neutral-900 hover:text-neutral-900 flex items-center justify-center gap-1.5"
+      >
+        <Plus size={12} /> Thêm ca
+      </button>
+
+      <div className="flex gap-2 pt-1">
         <button
           type="button"
-          onClick={() => { setStart(""); setEnd(""); }}
-          title="Xoá override → dùng giờ chi nhánh"
-          className="h-9 w-9 rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 flex items-center justify-center"
+          onClick={clearAll}
+          title="Xoá hết → dùng giờ chi nhánh"
+          className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-neutral-500 text-xs hover:bg-neutral-50 inline-flex items-center gap-1"
         >
-          <RotateCcw size={14} />
+          <RotateCcw size={12} /> Xoá hết
         </button>
+        <div className="flex-1" />
         <button
           type="submit"
           disabled={!dirty || saving}
@@ -131,4 +187,8 @@ export default function EmployeeWorkHoursEditor({
       </div>
     </form>
   );
+}
+
+function toHM(s: WorkShift): { start: string; end: string } {
+  return { start: s.start.slice(0, 5), end: s.end.slice(0, 5) };
 }
