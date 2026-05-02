@@ -14,6 +14,8 @@ export type Office = {
   created_at: string;
 };
 
+export type EmploymentType = "fulltime" | "parttime";
+
 export type Employee = {
   id: string;
   user_id: string | null;
@@ -24,7 +26,10 @@ export type Employee = {
   home_office_id: string | null;
   is_admin: boolean;
   is_active: boolean;
+  employment_type: EmploymentType;
   salary: number;
+  hourly_rate: number;
+  overtime_rate: number;
   leave_balance: number;
   last_accrual_month: string | null;
   work_start_time: string | null;  // "HH:MM:SS" — null = dùng giờ chi nhánh

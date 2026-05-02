@@ -86,28 +86,50 @@ export async function POST(request: NextRequest) {
     if (upErr) return NextResponse.json({ error: "Không upload được ảnh" }, { status: 500 });
   }
 
-  // Đếm số lần chấm công hôm nay (theo giờ VN) để auto-infer kind
+  // Auto-infer kind dựa vào check-in GẦN NHẤT (không phải đếm theo ngày VN),
+  // để hỗ trợ ca đêm xuyên 0h:
+  //   - last="in" và elapsed < 18h → đây là check-out của ca đang mở
+  //   - last="out" hoặc null hoặc elapsed > 18h → ca mới, kind=in
   const dayStr = dateVN(new Date());
-  const dayStart = new Date(`${dayStr}T00:00:00+07:00`).toISOString();
-  const dayEnd = new Date(`${dayStr}T23:59:59.999+07:00`).toISOString();
-  const { data: todayCheckIns } = await admin
+  const SHIFT_MAX_HOURS = 18;
+  const { data: lastCi } = await admin
     .from("check_ins")
-    .select("id, kind")
+    .select("kind, checked_in_at")
     .eq("employee_id", emp.id)
-    .gte("checked_in_at", dayStart)
-    .lte("checked_in_at", dayEnd)
-    .order("checked_in_at", { ascending: true });
+    .order("checked_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const count = todayCheckIns?.length ?? 0;
+  const elapsedMin = lastCi
+    ? (Date.now() - new Date(lastCi.checked_in_at as string).getTime()) / 60000
+    : Infinity;
 
-  if (!isAdmin && count >= 2) {
+  // Anti-spam: vừa chấm công < 1 phút trước → reject
+  if (lastCi && elapsedMin < 1) {
     return NextResponse.json(
-      { error: "Bạn đã chấm công đủ 2 lần hôm nay (check-in + check-out)." },
+      { error: "Bạn vừa chấm công xong, vui lòng đợi 1 phút." },
       { status: 409 },
     );
   }
 
-  const kind: "in" | "out" = count % 2 === 0 ? "in" : "out";
+  const kind: "in" | "out" =
+    lastCi?.kind === "in" && elapsedMin < SHIFT_MAX_HOURS * 60 ? "out" : "in";
+
+  // Spam protection: tối đa 2 events trong 18h gần nhất (1 ca = in+out)
+  if (!isAdmin) {
+    const since = new Date(Date.now() - SHIFT_MAX_HOURS * 3600_000).toISOString();
+    const { count: recentCount } = await admin
+      .from("check_ins")
+      .select("id", { count: "exact", head: true })
+      .eq("employee_id", emp.id)
+      .gte("checked_in_at", since);
+    if ((recentCount ?? 0) >= 2) {
+      return NextResponse.json(
+        { error: "Bạn đã chấm công đủ 2 lần trong 18 giờ qua." },
+        { status: 409 },
+      );
+    }
+  }
 
   // Tìm đơn nghỉ theo giờ đã duyệt trong ngày — nếu có thì dịch giờ làm hiệu lực.
   // Vd: office 9h-18h, NV nghỉ 9-10h → effective_start = 10h (NV được đến muộn tới 10h
@@ -144,15 +166,29 @@ export async function POST(request: NextRequest) {
     if (lEnd >= wEnd && lStart < wEnd) effectiveEnd = hourlyLeave.start_time;
   }
 
-  // Tính late/early theo giờ làm hiệu lực (giờ VN)
+  // Tính late/early theo giờ làm hiệu lực (giờ VN), có hỗ trợ ca xuyên nửa đêm.
+  // Vd: NV ca đêm 21:00-06:00 → endMin (360) < startMin (1260) → isNightShift.
+  //   Check-out lúc 06:00 hôm sau: nowMin=360, expected = endMin+0 → diff=0, no early.
+  //   Check-out lúc 05:30 hôm sau: nowMin=330, diff = 360-330 = 30 → early=30.
+  //   Check-in lúc 02:00 hôm sau (rất muộn): nowMin=120, isNightShift, nowMin < endMin
+  //     → diff = nowMin + 1440 - startMin = 120+1440-1260 = 300 → late=300.
   const nowMin = timeToMinutes(currentTimeVN());
+  const startMin = timeToMinutes(effectiveStart);
+  const endMin = timeToMinutes(effectiveEnd);
+  const isNightShift = endMin < startMin;
   let late_minutes: number | null = null;
   let early_minutes: number | null = null;
   if (kind === "in") {
-    const diff = nowMin - timeToMinutes(effectiveStart);
+    const diff =
+      isNightShift && nowMin < endMin
+        ? nowMin + 24 * 60 - startMin
+        : nowMin - startMin;
     if (diff > 0) late_minutes = diff;
   } else {
-    const diff = timeToMinutes(effectiveEnd) - nowMin;
+    const diff =
+      isNightShift && nowMin >= startMin
+        ? endMin + 24 * 60 - nowMin
+        : endMin - nowMin;
     if (diff > 0) early_minutes = diff;
   }
 

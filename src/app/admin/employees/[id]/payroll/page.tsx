@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { LEAVE_CATEGORIES, type Employee, type LeaveCategory, type LeaveStatus } from "@/types/db";
-import { computePayroll } from "@/lib/payroll";
+import { computePayroll, computeParttimePayroll, type PayrollResult, type ParttimePayrollResult } from "@/lib/payroll";
 import { countWorkdaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { dateVN, formatVN } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -22,11 +22,13 @@ import {
   TrendingDown,
   ChevronLeft,
   ChevronRight,
+  Briefcase,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 const fmtVnd = (n: number) => `${Math.round(n).toLocaleString("en-US")} VND`;
+const fmtHours = (h: number) => `${h.toFixed(2).replace(/\.?0+$/, "")} h`;
 
 export default async function PayrollPage({
   params,
@@ -60,15 +62,9 @@ export default async function PayrollPage({
     .maybeSingle<Employee>();
   if (!emp) notFound();
 
-  const [{ data: leaves }, { data: checkIns }, { data: violations }] = await Promise.all([
-    admin
-      .from("leave_requests")
-      .select("id, leave_date, category, status, duration, duration_unit, reason")
-      .eq("employee_id", emp.id)
-      .eq("status", "approved")
-      .gte("leave_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
-      .lt("leave_date", monthEndDate(ym.year, ym.month))
-      .order("leave_date", { ascending: true }),
+  const isParttime = emp.employment_type === "parttime";
+
+  const [{ data: checkIns }, { data: violations }, { data: otRequests }, { data: leaves }] = await Promise.all([
     admin
       .from("check_ins")
       .select("id, kind, checked_in_at, late_minutes, early_minutes, offices(name)")
@@ -84,11 +80,28 @@ export default async function PayrollPage({
       .gte("report_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
       .lt("report_date", monthEndDate(ym.year, ym.month))
       .order("report_date", { ascending: true }),
+    admin
+      .from("overtime_requests")
+      .select("hours")
+      .eq("employee_id", emp.id)
+      .eq("status", "approved")
+      .gte("ot_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
+      .lt("ot_date", monthEndDate(ym.year, ym.month)),
+    isParttime
+      ? Promise.resolve({ data: [] })
+      : admin
+          .from("leave_requests")
+          .select("id, leave_date, category, status, duration, duration_unit, reason")
+          .eq("employee_id", emp.id)
+          .eq("status", "approved")
+          .gte("leave_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
+          .lt("leave_date", monthEndDate(ym.year, ym.month))
+          .order("leave_date", { ascending: true }),
   ]);
 
-  const workdays = countWorkdaysInMonth(ym.year, ym.month);
+  const approvedOTHours = (otRequests ?? []).reduce((s, r) => s + Number(r.hours ?? 0), 0);
 
-  // excused days = ngày NV không có mặt ở văn phòng (leave_paid / online_*)
+  // excused days = ngày NV không có mặt ở văn phòng (chỉ áp cho fulltime)
   const excusedDays = new Set<string>();
   for (const lv of leaves ?? []) {
     if (
@@ -111,37 +124,13 @@ export default async function PayrollPage({
     office: ci.offices?.name ?? null,
   }));
 
-  const result = computePayroll({
-    workdays,
-    salary: Number(emp.salary),
-    balanceStart: Number(emp.leave_balance),
-    approvedLeaves: (leaves ?? []).map((l) => ({
-      id: l.id,
-      leave_date: l.leave_date,
-      category: l.category as LeaveCategory,
-      status: l.status as LeaveStatus,
-      duration: Number(l.duration),
-      duration_unit: l.duration_unit as "day" | "hour",
-      reason: l.reason,
-    })),
-    checkIns: checkInsForCalc,
-    excusedDays,
-    selfViolations: (violations ?? []).map((v) => ({
-      id: v.id,
-      kind: ((v.kind ?? "violation") as "bonus" | "violation"),
-      report_date: v.report_date,
-      total_amount: Number(v.total_amount),
-      item_count: ((v as { violation_items?: unknown[] }).violation_items ?? []).length,
-    })),
-  });
-
-  // Group leaves theo loại để hiển thị mục riêng
-  const leavesByCat: Record<string, typeof result.leaves> = {};
-  for (const lv of result.leaves) {
-    const k = lv.category;
-    leavesByCat[k] ??= [];
-    leavesByCat[k].push(lv);
-  }
+  const selfViolationsInput = (violations ?? []).map((v) => ({
+    id: v.id,
+    kind: ((v.kind ?? "violation") as "bonus" | "violation"),
+    report_date: v.report_date,
+    total_amount: Number(v.total_amount),
+    item_count: ((v as { violation_items?: unknown[] }).violation_items ?? []).length,
+  }));
 
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
@@ -149,8 +138,8 @@ export default async function PayrollPage({
   const prevHref = `/admin/employees/${id}/payroll?month=${prev.y}-${String(prev.m).padStart(2, "0")}`;
   const nextHref = `/admin/employees/${id}/payroll?month=${next.y}-${String(next.m).padStart(2, "0")}`;
 
-  return (
-    <div className="space-y-5">
+  const header = (
+    <>
       <div className="flex items-center gap-3">
         <Link
           href="/admin/employees"
@@ -159,13 +148,20 @@ export default async function PayrollPage({
           <ArrowLeft size={16} />
         </Link>
         <div>
-          <p className="text-xs uppercase tracking-[0.15em] text-neutral-400 font-medium">Bảng lương</p>
+          <p className="text-xs uppercase tracking-[0.15em] text-neutral-400 font-medium flex items-center gap-1.5">
+            Bảng lương
+            <span className={cn(
+              "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded inline-flex items-center gap-1",
+              isParttime ? "bg-violet-50 text-violet-700" : "bg-sky-50 text-sky-700",
+            )}>
+              <Briefcase size={9} /> {isParttime ? "Parttime" : "Fulltime"}
+            </span>
+          </p>
           <h1 className="text-2xl font-semibold tracking-tight">{emp.name}</h1>
           <p className="text-xs text-neutral-500">{emp.email}</p>
         </div>
       </div>
 
-      {/* Month picker */}
       <div className="flex items-center justify-between rounded-xl border border-white/60 glass p-2">
         <Link href={prevHref} className="h-9 w-9 rounded-lg hover:bg-white/70 flex items-center justify-center text-neutral-600">
           <ChevronLeft size={18} />
@@ -185,8 +181,159 @@ export default async function PayrollPage({
           <ChevronRight size={18} />
         </Link>
       </div>
+    </>
+  );
 
-      {/* Summary cards */}
+  if (isParttime) {
+    const result = computeParttimePayroll({
+      hourlyRate: Number(emp.hourly_rate),
+      overtimeRate: Number(emp.overtime_rate),
+      checkIns: checkInsForCalc,
+      approvedOTHours,
+      excusedDays,
+      selfViolations: selfViolationsInput,
+    });
+    return (
+      <div className="space-y-5">
+        {header}
+        <ParttimeView result={result} monthStr={monthStr} />
+      </div>
+    );
+  }
+
+  const workdays = countWorkdaysInMonth(ym.year, ym.month);
+  const result = computePayroll({
+    workdays,
+    salary: Number(emp.salary),
+    balanceStart: Number(emp.leave_balance),
+    approvedLeaves: (leaves ?? []).map((l) => ({
+      id: l.id,
+      leave_date: l.leave_date,
+      category: l.category as LeaveCategory,
+      status: l.status as LeaveStatus,
+      duration: Number(l.duration),
+      duration_unit: l.duration_unit as "day" | "hour",
+      reason: l.reason,
+    })),
+    checkIns: checkInsForCalc,
+    excusedDays,
+    selfViolations: selfViolationsInput,
+  });
+
+  return (
+    <div className="space-y-5">
+      {header}
+      <FulltimeView result={result} monthStr={monthStr} />
+    </div>
+  );
+}
+
+// =============================================================================
+// PARTTIME VIEW
+// =============================================================================
+function ParttimeView({ result, monthStr }: { result: ParttimePayrollResult; monthStr: string }) {
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <SummaryCard icon={Clock}     label="Tổng giờ làm"   value={fmtHours(result.workedHours)}             tone="sky" />
+        <SummaryCard icon={Wallet}    label="Lương / giờ"     value={fmtVnd(result.hourlyRate)}                tone="indigo" />
+        <SummaryCard icon={Hourglass} label="OT đã duyệt"     value={fmtHours(result.approvedOTHours)}         tone="amber" />
+        <SummaryCard icon={Wallet}    label="Lương OT / giờ"  value={fmtVnd(result.overtimeRate)}              tone="violet" />
+      </div>
+
+      {result.hourlyRate === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-800 flex items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <div>
+            Lương theo giờ đang là <b>0 VND</b>. Vào trang
+            <Link href="/admin/employees" className="underline mx-1">Nhân viên</Link>
+            để cập nhật.
+          </div>
+        </div>
+      )}
+
+      {/* Shifts */}
+      <Section
+        icon={Calendar}
+        title="Ca làm việc trong tháng"
+        subtitle={`${result.shifts.length} ca`}
+        empty="Chưa có ca làm việc nào trong tháng này."
+      >
+        {result.shifts.length > 0 && (
+          <ul className="divide-y divide-neutral-200/60">
+            {result.shifts.map((sh, i) => (
+              <li key={i} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{i + 1}</span>
+                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                  {formatVN(sh.startAt, "dd/MM HH:mm")}
+                </span>
+                <span className="text-neutral-400">→</span>
+                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                  {sh.endAt ? formatVN(sh.endAt, "dd/MM HH:mm") : "—"}
+                </span>
+                <span className="flex-1" />
+                {sh.endAt ? (
+                  <span className="text-emerald-700 font-semibold tabular-nums shrink-0">
+                    {fmtHours(sh.hours)}
+                  </span>
+                ) : (
+                  <Badge tone="amber">Chưa check-out</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      {/* Đi muộn / Về sớm */}
+      <LateEarlySection result={result} />
+
+      {/* Bonus / Violation */}
+      <BonusSection bonuses={result.selfBonuses} />
+      <ViolationSection violations={result.selfViolations} />
+
+      {/* Tổng */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 space-y-2">
+        <div className="flex items-center gap-2 text-emerald-900 mb-2">
+          <Wallet size={18} />
+          <h2 className="font-semibold">Tổng kết — {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}</h2>
+        </div>
+        <EarnRow label={`Lương theo giờ (${fmtHours(result.workedHours)} × ${fmtVnd(result.hourlyRate)})`} value={result.basePay} positive />
+        {result.approvedOTHours > 0 && (
+          <EarnRow label={`Lương OT (${fmtHours(result.approvedOTHours)} × ${fmtVnd(result.overtimeRate)})`} value={result.otPay} positive />
+        )}
+        {result.totalLatePenalty > 0 && (
+          <EarnRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
+        )}
+        {result.totalSelfViolation > 0 && (
+          <EarnRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
+        )}
+        {result.totalSelfBonus > 0 && (
+          <EarnRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
+        )}
+        <div className="pt-2 mt-2 border-t border-emerald-300/60 flex items-center justify-between">
+          <span className="font-semibold text-emerald-900">Lương thực nhận tạm tính</span>
+          <span className="text-2xl font-bold text-emerald-700 tabular-nums">{Math.max(0, Math.round(result.grandEarning)).toLocaleString("en-US")} VND</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// =============================================================================
+// FULLTIME VIEW
+// =============================================================================
+function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: string }) {
+  // Group leaves theo loại
+  const leavesByCat: Record<string, typeof result.leaves> = {};
+  for (const lv of result.leaves) {
+    const k = lv.category;
+    leavesByCat[k] ??= [];
+    leavesByCat[k].push(lv);
+  }
+
+  return (
+    <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         <SummaryCard icon={Calendar}    label="Ngày làm việc"    value={`${formatNum(result.workdays)} ngày`}             tone="sky" />
         <SummaryCard icon={Wallet}      label="Lương / ngày"      value={fmtVnd(result.dayRate)}                            tone="indigo" />
@@ -205,116 +352,25 @@ export default async function PayrollPage({
         </div>
       )}
 
-      {/* Đi muộn / Về sớm */}
-      <Section
-        icon={Clock}
-        title="Đi muộn / Về sớm"
-        subtitle={`${result.lateEarlyViolations.length} lần · ${result.lateEarlyViolations.filter((v) => v.countedForPenalty).length} lần phạt 50k`}
-        empty="Không có vi phạm đi muộn / về sớm."
-      >
-        {result.lateEarlyViolations.length > 0 && (
-          <ul className="divide-y divide-neutral-200/60">
-            {result.lateEarlyViolations.map((v, idx) => (
-              <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{idx + 1}</span>
-                <span className={cn(
-                  "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                  v.kind === "late" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700",
-                )}>
-                  {v.kind === "late" ? "Muộn" : "Về sớm"}
-                </span>
-                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.at, "dd/MM HH:mm")}</span>
-                <span className="text-xs text-neutral-500 truncate flex-1">{v.office ?? "—"} · {v.minutes}p</span>
-                {v.countedForPenalty ? (
-                  <span className="text-rose-700 font-semibold tabular-nums shrink-0">−50,000</span>
-                ) : (
-                  <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+      <LateEarlySection result={result} />
+
+      <Section icon={CalendarOff} title="Nghỉ theo ngày" subtitle={`${(leavesByCat.leave_paid ?? []).length} đơn`} empty="Không có đơn nghỉ theo ngày.">
+        {leavesByCat.leave_paid && <LeaveList items={leavesByCat.leave_paid} />}
       </Section>
 
-      {/* Xin nghỉ ngày */}
-      <Section
-        icon={CalendarOff}
-        title="Nghỉ theo ngày"
-        subtitle={`${(leavesByCat.leave_paid ?? []).length} đơn`}
-        empty="Không có đơn nghỉ theo ngày."
-      >
-        {leavesByCat.leave_paid && (
-          <LeaveList items={leavesByCat.leave_paid} />
-        )}
+      <Section icon={Hourglass} title="Nghỉ theo giờ" subtitle={`${(leavesByCat.leave_hourly ?? []).length} đơn`} empty="Không có đơn nghỉ theo giờ.">
+        {leavesByCat.leave_hourly && <LeaveList items={leavesByCat.leave_hourly} />}
       </Section>
 
-      {/* Nghỉ theo giờ */}
-      <Section
-        icon={Hourglass}
-        title="Nghỉ theo giờ"
-        subtitle={`${(leavesByCat.leave_hourly ?? []).length} đơn`}
-        empty="Không có đơn nghỉ theo giờ."
-      >
-        {leavesByCat.leave_hourly && (
-          <LeaveList items={leavesByCat.leave_hourly} />
-        )}
-      </Section>
-
-      {/* Online */}
-      <Section
-        icon={Wifi}
-        title="Làm online"
-        subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`}
-        empty="Không có đơn làm online."
-      >
+      <Section icon={Wifi} title="Làm online" subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`} empty="Không có đơn làm online.">
         {(leavesByCat.online_wfh || leavesByCat.online_rain) && (
           <LeaveList items={[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].sort((a, b) => a.date.localeCompare(b.date))} />
         )}
       </Section>
 
-      {/* Thưởng tự khai */}
-      <Section
-        icon={Sparkles}
-        title="Thưởng tự khai (đã duyệt)"
-        subtitle={`${result.selfBonuses.length} đơn`}
-        empty="Không có đơn thưởng."
-      >
-        {result.selfBonuses.length > 0 && (
-          <ul className="divide-y divide-neutral-200/60">
-            {result.selfBonuses.map((v) => (
-              <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                <Sparkles size={14} className="text-emerald-600 shrink-0" />
-                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
-                <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
-                <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      <BonusSection bonuses={result.selfBonuses} />
+      <ViolationSection violations={result.selfViolations} />
 
-      {/* Vi phạm tự khai */}
-      <Section
-        icon={ShieldAlert}
-        title="Vi phạm tự khai (đã duyệt)"
-        subtitle={`${result.selfViolations.length} đơn`}
-        empty="Không có đơn vi phạm."
-      >
-        {result.selfViolations.length > 0 && (
-          <ul className="divide-y divide-neutral-200/60">
-            {result.selfViolations.map((v) => (
-              <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                <ShieldAlert size={14} className="text-rose-600 shrink-0" />
-                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
-                <span className="text-xs text-neutral-500 flex-1">{v.itemCount} lỗi</span>
-                <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      {/* Tổng */}
       <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-5 space-y-2">
         <div className="flex items-center gap-2 text-rose-900 mb-2">
           <TrendingDown size={18} />
@@ -339,14 +395,91 @@ export default async function PayrollPage({
           {result.totalSelfBonus > 0 && ` + ${Math.round(result.totalSelfBonus).toLocaleString("en-US")}`})
         </p>
       </div>
-    </div>
+    </>
   );
 }
 
+// =============================================================================
+// Shared sections
+// =============================================================================
+function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollResult["lateEarlyViolations"] } }) {
+  return (
+    <Section
+      icon={Clock}
+      title="Đi muộn / Về sớm"
+      subtitle={`${result.lateEarlyViolations.length} lần · ${result.lateEarlyViolations.filter((v) => v.countedForPenalty).length} lần phạt 50k`}
+      empty="Không có vi phạm đi muộn / về sớm."
+    >
+      {result.lateEarlyViolations.length > 0 && (
+        <ul className="divide-y divide-neutral-200/60">
+          {result.lateEarlyViolations.map((v, idx) => (
+            <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{idx + 1}</span>
+              <span className={cn(
+                "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                v.kind === "late" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700",
+              )}>
+                {v.kind === "late" ? "Muộn" : "Về sớm"}
+              </span>
+              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.at, "dd/MM HH:mm")}</span>
+              <span className="text-xs text-neutral-500 truncate flex-1">{v.office ?? "—"} · {v.minutes}p</span>
+              {v.countedForPenalty ? (
+                <span className="text-rose-700 font-semibold tabular-nums shrink-0">−50,000</span>
+              ) : (
+                <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+function BonusSection({ bonuses }: { bonuses: PayrollResult["selfBonuses"] }) {
+  return (
+    <Section icon={Sparkles} title="Thưởng tự khai (đã duyệt)" subtitle={`${bonuses.length} đơn`} empty="Không có đơn thưởng.">
+      {bonuses.length > 0 && (
+        <ul className="divide-y divide-neutral-200/60">
+          {bonuses.map((v) => (
+            <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <Sparkles size={14} className="text-emerald-600 shrink-0" />
+              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
+              <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
+              <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+function ViolationSection({ violations }: { violations: PayrollResult["selfViolations"] }) {
+  return (
+    <Section icon={ShieldAlert} title="Vi phạm tự khai (đã duyệt)" subtitle={`${violations.length} đơn`} empty="Không có đơn vi phạm.">
+      {violations.length > 0 && (
+        <ul className="divide-y divide-neutral-200/60">
+          {violations.map((v) => (
+            <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <ShieldAlert size={14} className="text-rose-600 shrink-0" />
+              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
+              <span className="text-xs text-neutral-500 flex-1">{v.itemCount} lỗi</span>
+              <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
 const ONLINE_WFH_FREE_DAYS = 3;
 
 function monthEndDate(year: number, month: number): string {
-  // start of next month, để dùng với .lt() (less-than)
   const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
   return `${next.y}-${String(next.m).padStart(2, "0")}-01`;
 }
@@ -364,7 +497,7 @@ function SummaryCard({
   icon: React.ComponentType<{ size?: number }>;
   label: string;
   value: string;
-  tone: "sky" | "indigo" | "amber" | "emerald" | "rose";
+  tone: "sky" | "indigo" | "amber" | "emerald" | "rose" | "violet";
 }) {
   const toneCls = {
     sky:     "bg-sky-50 text-sky-700",
@@ -372,6 +505,7 @@ function SummaryCard({
     amber:   "bg-amber-50 text-amber-700",
     emerald: "bg-emerald-50 text-emerald-700",
     rose:    "bg-rose-50 text-rose-700",
+    violet:  "bg-violet-50 text-violet-700",
   }[tone];
   return (
     <div className="rounded-xl border border-white/60 glass p-3">
@@ -466,7 +600,6 @@ function LeaveLabel({
     if (wageHours > 0) return <Badge tone="rose">Trừ lương {f(wageHours)}h</Badge>;
     return <Badge tone="rose">Trừ lương {f(wageDays)}d</Badge>;
   }
-  // phep_wage
   return (
     <span className="inline-flex items-center gap-1">
       <Badge tone="amber">Phép {f(phepUsed)}d</Badge>
@@ -494,6 +627,17 @@ function TotalRow({ label, value, positive = false }: { label: string; value: nu
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-rose-800/80">{label}</span>
+      <span className={cn("font-medium tabular-nums", cls)}>{sign}{Math.round(value).toLocaleString("en-US")} VND</span>
+    </div>
+  );
+}
+
+function EarnRow({ label, value, positive = false }: { label: string; value: number; positive?: boolean }) {
+  const sign = positive ? "+" : value > 0 ? "−" : "";
+  const cls = positive ? "text-emerald-700" : "text-rose-700";
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-emerald-900/80">{label}</span>
       <span className={cn("font-medium tabular-nums", cls)}>{sign}{Math.round(value).toLocaleString("en-US")} VND</span>
     </div>
   );

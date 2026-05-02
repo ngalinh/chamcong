@@ -69,15 +69,28 @@ async function updateEmployeePayroll(formData: FormData) {
   if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
 
   const id = String(formData.get("id"));
+  const employmentType = String(formData.get("employment_type") ?? "fulltime");
+  if (employmentType !== "fulltime" && employmentType !== "parttime")
+    throw new Error("Loại nhân viên không hợp lệ");
   const salary = Number(formData.get("salary") ?? 0);
   const leaveBalance = Number(formData.get("leave_balance") ?? 0);
+  const hourlyRate = Number(formData.get("hourly_rate") ?? 0);
+  const overtimeRate = Number(formData.get("overtime_rate") ?? 0);
   if (!Number.isFinite(salary) || salary < 0) throw new Error("Lương không hợp lệ");
   if (!Number.isFinite(leaveBalance) || leaveBalance < 0) throw new Error("Số ngày phép không hợp lệ");
+  if (!Number.isFinite(hourlyRate) || hourlyRate < 0) throw new Error("Lương theo giờ không hợp lệ");
+  if (!Number.isFinite(overtimeRate) || overtimeRate < 0) throw new Error("Lương OT không hợp lệ");
 
   const admin = createAdminClient();
   const { error } = await admin
     .from("employees")
-    .update({ salary, leave_balance: leaveBalance })
+    .update({
+      employment_type: employmentType,
+      salary,
+      leave_balance: leaveBalance,
+      hourly_rate: hourlyRate,
+      overtime_rate: overtimeRate,
+    })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
@@ -100,12 +113,13 @@ async function accrueLeaveThisMonth() {
   const monthStr = yearMonthVN(); // "YYYY-MM" hiện tại theo giờ VN
   const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
 
-  // Đối tượng: NV active, được tạo TRƯỚC đầu tháng hiện tại (NV vào giữa tháng → skip),
-  // và chưa được accrual cho tháng này.
+  // Đối tượng: NV active fulltime, được tạo TRƯỚC đầu tháng hiện tại (NV vào giữa tháng → skip),
+  // và chưa được accrual cho tháng này. Parttime không có ngày phép → skip luôn.
   const { data: targets } = await admin
     .from("employees")
     .select("id, leave_balance, last_accrual_month, created_at")
     .eq("is_active", true)
+    .eq("employment_type", "fulltime")
     .lt("created_at", monthStartIso)
     .or(`last_accrual_month.is.null,last_accrual_month.neq.${monthStr}`);
 
@@ -307,11 +321,14 @@ export default async function EmployeesPage() {
                   )}
                 </div>
 
-                {/* Row 4: lương + ngày phép + xem bảng lương */}
+                {/* Row 4: loại NV + lương + xem bảng lương (UI tự đổi field theo fulltime/parttime) */}
                 <EmployeePayrollEditor
                   employeeId={e.id}
+                  initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
                   initialSalary={Number(e.salary ?? 0)}
                   initialLeaveBalance={Number(e.leave_balance ?? 0)}
+                  initialHourlyRate={Number(e.hourly_rate ?? 0)}
+                  initialOvertimeRate={Number(e.overtime_rate ?? 0)}
                   action={updateEmployeePayroll}
                 />
 

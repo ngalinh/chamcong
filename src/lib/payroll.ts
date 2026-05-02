@@ -255,6 +255,136 @@ export function computePayroll(args: {
   };
 }
 
+// ====================================================================
+// PARTTIME — lương theo giờ
+// ====================================================================
+
+export type ParttimeShift = {
+  date: string;          // YYYY-MM-DD theo giờ VN của check-in
+  startAt: string;       // ISO
+  endAt: string | null;  // ISO, null = chưa check-out (shift dở)
+  hours: number;         // (endAt - startAt) / 3600s, 0 nếu chưa check-out
+};
+
+export type ParttimePayrollResult = {
+  hourlyRate: number;
+  overtimeRate: number;
+  shifts: ParttimeShift[];
+  workedHours: number;
+  basePay: number;
+  approvedOTHours: number;
+  otPay: number;
+  lateEarlyViolations: PayrollViolation[];
+  totalLatePenalty: number;
+  selfViolations: SelfViolationItem[];
+  selfBonuses: SelfBonusItem[];
+  totalSelfViolation: number;
+  totalSelfBonus: number;
+  grandDeduction: number;  // tiền bị TRỪ (penalty + violations)
+  grandEarning: number;    // tiền THỰC NHẬN (basePay + otPay - grandDeduction + bonuses)
+};
+
+export function computeParttimePayroll(args: {
+  hourlyRate: number;
+  overtimeRate: number;
+  checkIns: CheckInInput[];      // sorted asc theo checked_in_at
+  approvedOTHours: number;        // tổng giờ OT đã duyệt trong tháng
+  excusedDays: Set<string>;
+  selfViolations: SelfViolationInput[];
+}): ParttimePayrollResult {
+  const { hourlyRate, overtimeRate, checkIns, approvedOTHours, excusedDays, selfViolations } = args;
+
+  // Pair in+out → shifts
+  const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
+  const shifts: ParttimeShift[] = [];
+  let pendingIn: CheckInInput | null = null;
+  for (const ci of sorted) {
+    if (ci.kind === "in") {
+      // Nếu có in trước đó chưa close → push shift dở
+      if (pendingIn) {
+        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0 });
+      }
+      pendingIn = ci;
+    } else if (ci.kind === "out") {
+      if (pendingIn) {
+        const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
+        const hours = Math.max(0, ms / 3600_000);
+        // Sanity: nếu > 18h thì coi shift là invalid (forgot to out), bỏ qua phần dư
+        const validHours = hours > 18 ? 0 : hours;
+        shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: ci.checked_in_at, hours: validHours });
+        pendingIn = null;
+      }
+      // 'out' không có 'in' tương ứng → skip
+    }
+  }
+  if (pendingIn) {
+    shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0 });
+  }
+
+  const workedHours = shifts.reduce((s, sh) => s + sh.hours, 0);
+  const basePay = workedHours * hourlyRate;
+  const otPay = approvedOTHours * overtimeRate;
+
+  // Late/early
+  const allLateEarly: PayrollViolation[] = [];
+  for (const ci of checkIns) {
+    if (excusedDays.has(ci.dateVN)) continue;
+    const isLate = ci.kind === "in" && (ci.late_minutes ?? 0) > 5;
+    const isEarly = ci.kind === "out" && (ci.early_minutes ?? 0) > 5;
+    if (!isLate && !isEarly) continue;
+    allLateEarly.push({
+      id: ci.id,
+      at: ci.checked_in_at,
+      kind: isLate ? "late" : "early",
+      minutes: isLate ? (ci.late_minutes ?? 0) : (ci.early_minutes ?? 0),
+      office: ci.office,
+      countedForPenalty: false,
+    });
+  }
+  allLateEarly.sort((a, b) => a.at.localeCompare(b.at));
+  for (let i = 0; i < allLateEarly.length; i++) {
+    if (i >= LATE_PENALTY_FREE) allLateEarly[i].countedForPenalty = true;
+  }
+  const totalLatePenalty = allLateEarly.filter((v) => v.countedForPenalty).length * LATE_PENALTY_AMOUNT;
+
+  // Bonus / Violation
+  const selfVList: SelfViolationItem[] = [];
+  const selfBList: SelfBonusItem[] = [];
+  for (const v of selfViolations) {
+    const item = {
+      id: v.id,
+      reportDate: v.report_date,
+      totalAmount: Number(v.total_amount),
+      itemCount: v.item_count,
+    };
+    if (v.kind === "bonus") selfBList.push(item);
+    else selfVList.push(item);
+  }
+  const totalSelfViolation = selfVList.reduce((s, v) => s + v.totalAmount, 0);
+  const totalSelfBonus = selfBList.reduce((s, v) => s + v.totalAmount, 0);
+
+  const grandDeduction = totalLatePenalty + totalSelfViolation;
+  const grandEarning = basePay + otPay - grandDeduction + totalSelfBonus;
+
+  return {
+    hourlyRate,
+    overtimeRate,
+    shifts,
+    workedHours,
+    basePay,
+    approvedOTHours,
+    otPay,
+    lateEarlyViolations: allLateEarly,
+    totalLatePenalty,
+    selfViolations: selfVList,
+    selfBonuses: selfBList,
+    totalSelfViolation,
+    totalSelfBonus,
+    grandDeduction,
+    grandEarning,
+  };
+}
+
 function formatNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
 }
