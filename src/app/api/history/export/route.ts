@@ -25,6 +25,9 @@ export async function GET(request: NextRequest) {
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
   const officeId = url.searchParams.get("office");
+  // scope=self → chỉ data của chính NV (kể cả admin gọi từ trang /history NV).
+  // Mặc định: admin lấy all, NV lấy own.
+  const forceSelf = url.searchParams.get("scope") === "self";
   if (!fromStr || !toStr) {
     return NextResponse.json({ error: "Thiếu from/to" }, { status: 400 });
   }
@@ -36,8 +39,9 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  // Build queries — filter theo employee_id nếu NV, không filter nếu admin
-  const ownerFilter = isAdmin ? null : me.id;
+  // ownerFilter: null = lấy all (admin scope), id = chỉ NV này
+  const ownerFilter = isAdmin && !forceSelf ? null : me.id;
+  const includeEmployeeCols = ownerFilter == null;
 
   let qCheckIns = admin
     .from("check_ins")
@@ -160,11 +164,11 @@ export async function GET(request: NextRequest) {
     overtimes,
     leaves,
     violations,
-    includeEmployee: isAdmin,
+    includeEmployee: includeEmployeeCols,
     rangeLabel,
   });
 
-  const filename = `lich-su-${isAdmin ? "all" : "nv"}-${rangeLabel}.xlsx`;
+  const filename = `lich-su-${includeEmployeeCols ? "all" : "nv"}-${rangeLabel}.xlsx`;
 
   // Ép Uint8Array → BodyInit (NextResponse chấp nhận)
   return new NextResponse(buffer as BodyInit, {
