@@ -27,6 +27,7 @@ import {
   Wifi,
   Hourglass,
   ShieldAlert,
+  Download,
 } from "lucide-react";
 import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
@@ -247,7 +248,15 @@ export default async function MyHistoryPage({
           <DateField label="Từ"  name="from" defaultValue={from.toISOString().slice(0, 10)} />
           <DateField label="Đến" name="to"   defaultValue={to.toISOString().slice(0, 10)} />
         </div>
-        <Button size="sm" variant="secondary" type="submit" className="w-full">Lọc</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" type="submit" className="flex-1">Lọc</Button>
+          <a
+            href={`/api/history/export?from=${from.toISOString()}&to=${to.toISOString()}`}
+            className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-neutral-900 text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5"
+          >
+            <Download size={14} /> Excel
+          </a>
+        </div>
       </form>
 
       {rows.length === 0 ? (

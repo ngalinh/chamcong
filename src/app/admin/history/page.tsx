@@ -626,7 +626,7 @@ export default async function HistoryPage({
 
   const baseParams = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
   if (sp.office) baseParams.set("office", sp.office);
-  const csvHref = `/api/admin/check-ins/export?${baseParams.toString()}`;
+  const exportHref = `/api/history/export?${baseParams.toString()}`;
 
   return (
     <div className="space-y-4">
@@ -643,9 +643,9 @@ export default async function HistoryPage({
               ← Xem tất cả lịch sử
             </a>
           )}
-          <a href={csvHref}>
+          <a href={exportHref}>
             <Button size="sm" variant="secondary">
-              <Download size={14} /> CSV
+              <Download size={14} /> Excel
             </Button>
           </a>
         </div>
