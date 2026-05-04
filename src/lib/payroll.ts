@@ -1,11 +1,81 @@
 import type { LeaveCategory, LeaveStatus, WorkShift } from "@/types/db";
 import { dateVN, formatVN, timeToMinutes } from "@/lib/time";
 
-const LATE_PENALTY_FREE = 3;          // 3 lần đầu không phạt
-const LATE_PENALTY_AMOUNT = 50_000;   // VND/lần từ lần thứ 4
+const LATE_PENALTY_FREE = 3;          // 3 lần đầu không phạt (chỉ áp cho late ≤ 30p và early)
+const LATE_PENALTY_AMOUNT = 50_000;   // VND/lần — light late hoặc 30p đầu của heavy late
+const HEAVY_LATE_THRESHOLD = 30;      // late > 30p → heavy (KHÔNG miễn phạt)
+const HEAVY_BLOCK_MINUTES = 15;       // mỗi block 15p phụ trội bị tính lương
 const ONLINE_WFH_FREE_DAYS = 3;       // 3 ngày online_wfh đầu/tháng miễn phí
 const ONLINE_WFH_PHEP_RATIO = 0.5;    // 1 ngày online vượt = 0.5 phép
 const HOURS_PER_WORKDAY = 8;
+
+function heavyLatePenalty(lateMinutes: number, hourRate: number): number {
+  const beyondMin = Math.max(0, lateMinutes - HEAVY_LATE_THRESHOLD);
+  const blocks = Math.ceil(beyondMin / HEAVY_BLOCK_MINUTES); // 0 nếu beyond=0
+  const blockPay = hourRate * (HEAVY_BLOCK_MINUTES / 60);     // tiền lương cho 15p
+  return LATE_PENALTY_AMOUNT + blocks * blockPay;
+}
+
+/**
+ * Build danh sách late/early violations + tính tổng phạt + map id → penalty.
+ *
+ * Rules:
+ *   - Late ≤ 30p hoặc Early > 5p: light, vào pool 3 lần free, lần 4+ phạt 50k
+ *   - Late > 30p: heavy, KHÔNG free, mỗi lần phạt = 50k + ceil((late−30)/15) × (hourRate/4)
+ */
+function buildLateEarlyViolations(
+  checkIns: { id: string; kind: "in" | "out"; checked_in_at: string; dateVN: string; late_minutes: number | null; early_minutes: number | null; office: string | null }[],
+  excusedDays: Set<string>,
+  hourRate: number,
+): { violations: PayrollViolation[]; totalPenalty: number; penaltyByCheckInId: Map<string, number> } {
+  const all: PayrollViolation[] = [];
+  for (const ci of checkIns) {
+    if (excusedDays.has(ci.dateVN)) continue;
+    const lateMin = ci.kind === "in" ? (ci.late_minutes ?? 0) : 0;
+    const earlyMin = ci.kind === "out" ? (ci.early_minutes ?? 0) : 0;
+
+    if (lateMin > HEAVY_LATE_THRESHOLD) {
+      all.push({
+        id: ci.id,
+        at: ci.checked_in_at,
+        kind: "late",
+        minutes: lateMin,
+        office: ci.office,
+        countedForPenalty: true,
+        isHeavyLate: true,
+        penaltyAmount: heavyLatePenalty(lateMin, hourRate),
+      });
+    } else if (lateMin > 5) {
+      all.push({
+        id: ci.id, at: ci.checked_in_at, kind: "late", minutes: lateMin,
+        office: ci.office, countedForPenalty: false, isHeavyLate: false, penaltyAmount: 0,
+      });
+    } else if (earlyMin > 5) {
+      all.push({
+        id: ci.id, at: ci.checked_in_at, kind: "early", minutes: earlyMin,
+        office: ci.office, countedForPenalty: false, isHeavyLate: false, penaltyAmount: 0,
+      });
+    }
+  }
+
+  all.sort((a, b) => a.at.localeCompare(b.at));
+
+  // Apply 3-free pool to LIGHT items only (heavy đã có penalty rồi)
+  let lightCount = 0;
+  for (const v of all) {
+    if (v.isHeavyLate) continue;
+    lightCount++;
+    if (lightCount > LATE_PENALTY_FREE) {
+      v.countedForPenalty = true;
+      v.penaltyAmount = LATE_PENALTY_AMOUNT;
+    }
+  }
+
+  const map = new Map<string, number>();
+  for (const v of all) map.set(v.id, v.penaltyAmount);
+  const totalPenalty = all.reduce((s, v) => s + v.penaltyAmount, 0);
+  return { violations: all, totalPenalty, penaltyByCheckInId: map };
+}
 
 export type PayrollLeaveItem = {
   id: string;
@@ -31,7 +101,9 @@ export type PayrollViolation = {
   kind: "late" | "early";
   minutes: number;
   office: string | null;
-  countedForPenalty: boolean; // true nếu là lần >3 → bị phạt 50k
+  countedForPenalty: boolean; // true nếu bị phạt (light 4+ HOẶC heavy)
+  isHeavyLate: boolean;        // late > 30p
+  penaltyAmount: number;       // VND, 0 nếu miễn
 };
 
 export type SelfViolationItem = {
@@ -221,27 +293,7 @@ export function computePayroll(args: {
   }
 
   // Late/early violations
-  const allLateEarly: PayrollViolation[] = [];
-  for (const ci of checkIns) {
-    if (excusedDays.has(ci.dateVN)) continue;
-    const isLate = ci.kind === "in" && (ci.late_minutes ?? 0) > 5;
-    const isEarly = ci.kind === "out" && (ci.early_minutes ?? 0) > 5;
-    if (!isLate && !isEarly) continue;
-    allLateEarly.push({
-      id: ci.id,
-      at: ci.checked_in_at,
-      kind: isLate ? "late" : "early",
-      minutes: isLate ? (ci.late_minutes ?? 0) : (ci.early_minutes ?? 0),
-      office: ci.office,
-      countedForPenalty: false, // sẽ set sau khi sort
-    });
-  }
-  // Sort theo thời gian — 3 lần đầu free, từ lần thứ 4 phạt
-  allLateEarly.sort((a, b) => a.at.localeCompare(b.at));
-  for (let i = 0; i < allLateEarly.length; i++) {
-    if (i >= LATE_PENALTY_FREE) allLateEarly[i].countedForPenalty = true;
-  }
-  const totalLatePenalty = allLateEarly.filter((v) => v.countedForPenalty).length * LATE_PENALTY_AMOUNT;
+  const { violations: allLateEarly, totalPenalty: totalLatePenalty } = buildLateEarlyViolations(checkIns, excusedDays, hourRate);
 
   // Tách self-reported entries: bonus (cộng) vs violation (trừ)
   const selfVList: SelfViolationItem[] = [];
@@ -351,36 +403,11 @@ export function computeParttimePayroll(args: {
   // Sort 1 lần để dùng cho cả late/early detection và shift pairing
   const sorted = [...checkIns].sort((a, b) => a.checked_in_at.localeCompare(b.checked_in_at));
 
-  // Late/early violations — compute trước để biết check-in nào nằm trong 3 lần
-  // miễn phí (forgiven) vs lần thứ 4+ (counted for penalty).
-  const allLateEarly: PayrollViolation[] = [];
-  for (const ci of sorted) {
-    if (excusedDays.has(ci.dateVN)) continue;
-    const isLate = ci.kind === "in" && (ci.late_minutes ?? 0) > 5;
-    const isEarly = ci.kind === "out" && (ci.early_minutes ?? 0) > 5;
-    if (!isLate && !isEarly) continue;
-    allLateEarly.push({
-      id: ci.id,
-      at: ci.checked_in_at,
-      kind: isLate ? "late" : "early",
-      minutes: isLate ? (ci.late_minutes ?? 0) : (ci.early_minutes ?? 0),
-      office: ci.office,
-      countedForPenalty: false,
-    });
-  }
-  // allLateEarly đã sorted vì sorted đã sorted
-  for (let i = 0; i < allLateEarly.length; i++) {
-    if (i >= LATE_PENALTY_FREE) allLateEarly[i].countedForPenalty = true;
-  }
-  const totalLatePenalty = allLateEarly.filter((v) => v.countedForPenalty).length * LATE_PENALTY_AMOUNT;
+  // Late/early violations — compute trước để biết check-in nào miễn phạt (forgiven cho hours)
+  const { violations: allLateEarly, totalPenalty: totalLatePenalty, penaltyByCheckInId } =
+    buildLateEarlyViolations(sorted, excusedDays, hourlyRate);
 
-  // penaltyMap: id check-in → đã bị tính phạt chưa (true = lần 4+, false = miễn phí)
-  const penaltyMap = new Map<string, boolean>();
-  for (const v of allLateEarly) {
-    penaltyMap.set(v.id, v.countedForPenalty);
-  }
-
-  // Pair in+out → shifts (apply forgiveness cho late check-in trong 3 lần đầu)
+  // Pair in+out → shifts (apply forgiveness cho late check-in trong pool free)
   const shifts: ParttimeShift[] = [];
   let pendingIn: CheckInInput | null = null;
   let pendingInForgiven = false;
@@ -390,9 +417,9 @@ export function computeParttimePayroll(args: {
         shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
       }
       pendingIn = ci;
-      // Late + chưa bị tính phạt (trong 3 lần đầu HOẶC excused) → forgiven cho hours
+      // Forgiven cho hours = late nhưng không bị phạt (trong 3 lần free; heavy luôn bị phạt → never forgiven)
       const isLate = (ci.late_minutes ?? 0) > 5;
-      pendingInForgiven = isLate && penaltyMap.get(ci.id) !== true;
+      pendingInForgiven = isLate && (penaltyByCheckInId.get(ci.id) ?? 0) === 0;
     } else if (ci.kind === "out") {
       if (pendingIn) {
         const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();

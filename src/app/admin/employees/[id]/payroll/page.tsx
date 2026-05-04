@@ -464,11 +464,13 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
 // Shared sections
 // =============================================================================
 function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollResult["lateEarlyViolations"] } }) {
+  const penalizedCount = result.lateEarlyViolations.filter((v) => v.penaltyAmount > 0).length;
+  const heavyCount = result.lateEarlyViolations.filter((v) => v.isHeavyLate).length;
   return (
     <Section
       icon={Clock}
       title="Đi muộn / Về sớm"
-      subtitle={`${result.lateEarlyViolations.length} lần · ${result.lateEarlyViolations.filter((v) => v.countedForPenalty).length} lần phạt 50k`}
+      subtitle={`${result.lateEarlyViolations.length} lần · ${penalizedCount} lần phạt${heavyCount > 0 ? ` (${heavyCount} muộn nặng)` : ""}`}
       empty="Không có vi phạm đi muộn / về sớm."
     >
       {result.lateEarlyViolations.length > 0 && (
@@ -478,14 +480,16 @@ function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollRe
               <span className="text-xs font-mono text-neutral-400 tabular-nums w-8">#{idx + 1}</span>
               <span className={cn(
                 "text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                v.kind === "late" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700",
+                v.isHeavyLate
+                  ? "bg-rose-50 text-rose-700"
+                  : v.kind === "late" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700",
               )}>
-                {v.kind === "late" ? "Muộn" : "Về sớm"}
+                {v.isHeavyLate ? "Muộn nặng" : v.kind === "late" ? "Muộn" : "Về sớm"}
               </span>
               <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.at, "dd/MM HH:mm")}</span>
               <span className="text-xs text-neutral-500 truncate flex-1">{v.office ?? "—"} · {v.minutes}p</span>
-              {v.countedForPenalty ? (
-                <span className="text-rose-700 font-semibold tabular-nums shrink-0">−50,000</span>
+              {v.penaltyAmount > 0 ? (
+                <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.penaltyAmount).toLocaleString("en-US")}</span>
               ) : (
                 <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
               )}
