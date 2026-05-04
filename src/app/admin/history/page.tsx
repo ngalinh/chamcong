@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
+import EditCheckInModal from "@/components/admin/EditCheckInModal";
+import AddCheckInModal from "@/components/admin/AddCheckInModal";
 import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus, type ViolationStatus, type ViolationKind, type ViolationItem } from "@/types/db";
 import {
   Inbox,
@@ -52,6 +54,10 @@ type CheckInRow = {
   signedUrl: string;
   dateVN: string;
   isRemote: boolean;
+  edited_at: string | null;
+  edited_by: string | null;
+  edit_reason: string | null;
+  manual: boolean;
 };
 
 type LeaveRow = {
@@ -119,6 +125,170 @@ async function deleteCheckIn(formData: FormData) {
   if (selfiePath) await admin.storage.from("selfies").remove([selfiePath]);
   revalidatePath("/admin/history");
   revalidatePath("/admin");
+}
+
+/** Sửa giờ và/hoặc loại của 1 check-in hiện có. Recalc late/early. */
+async function updateCheckIn(formData: FormData) {
+  "use server";
+  const { timeToMinutes } = await import("@/lib/time");
+  const { computeLateEarly } = await import("@/lib/late-early");
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const dateStr = String(formData.get("date"));
+  const timeStr = String(formData.get("time"));
+  const kind = String(formData.get("kind"));
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error("Ngày không hợp lệ");
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(timeStr)) throw new Error("Giờ không hợp lệ");
+  if (kind !== "in" && kind !== "out") throw new Error("Loại không hợp lệ");
+
+  const admin = createAdminClient();
+  // Lấy thông tin check-in để biết employee + office
+  const { data: ci } = await admin
+    .from("check_ins")
+    .select("id, employee_id, office_id, employees(email, work_start_time, work_end_time, work_shifts), offices(work_start_time, work_end_time)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!ci) throw new Error("Không tìm thấy check-in");
+
+  // ISO timestamp với giờ VN (UTC+7)
+  const checkedInAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr + ":00" : timeStr}+07:00`).toISOString();
+
+  // Hourly leave override (nếu có)
+  const { data: hourlyLeave } = await admin
+    .from("leave_requests")
+    .select("start_time, end_time")
+    .eq("employee_id", ci.employee_id)
+    .eq("leave_date", dateStr)
+    .eq("category", "leave_hourly")
+    .eq("status", "approved")
+    .maybeSingle();
+
+  // @ts-expect-error nested join
+  const empJoin = ci.employees as { email: string | null; work_start_time: string | null; work_end_time: string | null; work_shifts: { start: string; end: string }[] | null } | null;
+  // @ts-expect-error nested join
+  const officeJoin = ci.offices as { work_start_time: string; work_end_time: string } | null;
+  if (!officeJoin) throw new Error("Check-in không có chi nhánh");
+
+  const [h, m] = timeStr.split(":").map(Number);
+  const { late_minutes, early_minutes } = computeLateEarly({
+    emp: empJoin ?? {},
+    office: officeJoin,
+    hourlyLeave: hourlyLeave ?? null,
+    kind: kind as "in" | "out",
+    timeMinutes: (h || 0) * 60 + (m || 0),
+  });
+  void timeToMinutes; // satisfy import
+
+  const { error } = await admin
+    .from("check_ins")
+    .update({
+      kind,
+      checked_in_at: checkedInAt,
+      late_minutes,
+      early_minutes,
+      edited_at: new Date().toISOString(),
+      edited_by: user.email,
+      edit_reason: reason,
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+  revalidatePath("/history");
+}
+
+/** Tạo 1 check-in thủ công (NV quên chấm). */
+async function createManualCheckIn(formData: FormData) {
+  "use server";
+  const { computeLateEarly } = await import("@/lib/late-early");
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.email) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const employeeId = String(formData.get("employee_id"));
+  const officeId = String(formData.get("office_id"));
+  const dateStr = String(formData.get("date"));
+  const timeStr = String(formData.get("time"));
+  const kind = String(formData.get("kind"));
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error("Ngày không hợp lệ");
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(timeStr)) throw new Error("Giờ không hợp lệ");
+  if (kind !== "in" && kind !== "out") throw new Error("Loại không hợp lệ");
+
+  const admin = createAdminClient();
+  const [{ data: emp }, { data: office }] = await Promise.all([
+    admin.from("employees").select("id, email, work_start_time, work_end_time, work_shifts").eq("id", employeeId).maybeSingle(),
+    admin.from("offices").select("id, work_start_time, work_end_time").eq("id", officeId).maybeSingle(),
+  ]);
+  if (!emp) throw new Error("Không tìm thấy nhân viên");
+  if (!office) throw new Error("Không tìm thấy chi nhánh");
+
+  const checkedInAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr + ":00" : timeStr}+07:00`).toISOString();
+
+  const { data: hourlyLeave } = await admin
+    .from("leave_requests")
+    .select("start_time, end_time")
+    .eq("employee_id", employeeId)
+    .eq("leave_date", dateStr)
+    .eq("category", "leave_hourly")
+    .eq("status", "approved")
+    .maybeSingle();
+
+  const [h, m] = timeStr.split(":").map(Number);
+  const { late_minutes, early_minutes } = computeLateEarly({
+    emp: {
+      email: emp.email,
+      work_start_time: emp.work_start_time,
+      work_end_time: emp.work_end_time,
+      work_shifts: (emp.work_shifts ?? null) as { start: string; end: string }[] | null,
+    },
+    office: { work_start_time: office.work_start_time, work_end_time: office.work_end_time },
+    hourlyLeave: hourlyLeave ?? null,
+    kind: kind as "in" | "out",
+    timeMinutes: (h || 0) * 60 + (m || 0),
+  });
+
+  const { error } = await admin.from("check_ins").insert({
+    employee_id: employeeId,
+    office_id: officeId,
+    kind,
+    checked_in_at: checkedInAt,
+    selfie_path: null,
+    latitude: null,
+    longitude: null,
+    distance_m: null,
+    face_match_score: null,
+    liveness_passed: null,
+    late_minutes,
+    early_minutes,
+    user_agent: null,
+    created_by_admin_email: user.email,
+    edit_reason: reason,
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/history");
+  revalidatePath("/admin");
+  revalidatePath("/history");
 }
 
 async function deleteLeave(formData: FormData) {
@@ -452,7 +622,7 @@ export default async function HistoryPage({
 
   const [{ data: offices }, { data: employeesList }] = await Promise.all([
     admin.from("offices").select("id, name").order("name"),
-    admin.from("employees").select("id, name, email").eq("is_active", true).order("name"),
+    admin.from("employees").select("id, name, email, home_office_id").eq("is_active", true).order("name"),
   ]);
   const employeeFilter = sp.employee || null;
 
@@ -461,7 +631,7 @@ export default async function HistoryPage({
   if ((type === "all" || type === "checkin") && !pendingOnly) {
     let q = admin
       .from("check_ins")
-      .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, employees(id, name, email), offices(name, is_remote)")
+      .select("id, kind, checked_in_at, distance_m, face_match_score, late_minutes, early_minutes, selfie_path, office_id, edited_at, edited_by, edit_reason, created_by_admin_email, employees(id, name, email), offices(name, is_remote)")
       .gte("checked_in_at", from.toISOString())
       .lte("checked_in_at", to.toISOString())
       .order("checked_in_at", { ascending: false })
@@ -500,6 +670,10 @@ export default async function HistoryPage({
         dateVN: dateInVN(at),
         // @ts-expect-error — join
         isRemote: !!r.offices?.is_remote,
+        edited_at: (r as { edited_at?: string | null }).edited_at ?? null,
+        edited_by: (r as { edited_by?: string | null }).edited_by ?? null,
+        edit_reason: (r as { edit_reason?: string | null }).edit_reason ?? null,
+        manual: !!(r as { created_by_admin_email?: string | null }).created_by_admin_email,
       });
     }
   }
@@ -653,6 +827,14 @@ export default async function HistoryPage({
               ← Xem tất cả lịch sử
             </a>
           )}
+          <AddCheckInModal
+            employees={(employeesList ?? []).map((e) => ({
+              id: e.id, name: e.name, email: e.email,
+              home_office_id: (e as { home_office_id?: string | null }).home_office_id ?? null,
+            }))}
+            offices={(offices ?? []).map((o) => ({ id: o.id, name: o.name }))}
+            action={createManualCheckIn}
+          />
           <a href={exportHref}>
             <Button size="sm" variant="secondary">
               <Download size={14} /> Excel
@@ -707,6 +889,7 @@ export default async function HistoryPage({
                   key={`c:${r.id}`}
                   row={r}
                   onDelete={deleteCheckIn}
+                  onEdit={updateCheckIn}
                   hasLeave={!!r.employee && leaveCoverSet.has(`${r.employee.id}|${r.dateVN}`)}
                 />
               );
@@ -777,10 +960,12 @@ function TypeTabs({
 function CheckInCard({
   row: r,
   onDelete,
+  onEdit,
   hasLeave,
 }: {
   row: CheckInRow;
   onDelete: (fd: FormData) => void;
+  onEdit: (fd: FormData) => void;
   hasLeave: boolean;
 }) {
   const matchOk = r.face_match_score != null && r.face_match_score < 0.5;
@@ -836,6 +1021,19 @@ function CheckInCard({
               Có đơn nghỉ
             </span>
           )}
+          {r.manual && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
+              Thủ công
+            </span>
+          )}
+          {r.edited_at && !r.manual && (
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600"
+              title={`Sửa bởi ${r.edited_by ?? "?"}${r.edit_reason ? ` · ${r.edit_reason}` : ""}`}
+            >
+              Đã sửa
+            </span>
+          )}
         </div>
         <div className="font-medium truncate mt-0.5">{r.employee?.name ?? "?"}</div>
         <div className="text-xs text-neutral-500 truncate">{r.employee?.email}</div>
@@ -846,11 +1044,20 @@ function CheckInCard({
           {r.distance_m != null && <><span>·</span><span>{Math.round(r.distance_m)}m</span></>}
         </div>
       </div>
-      <form action={onDelete} className="self-start">
-        <input type="hidden" name="id" value={r.id} />
-        <input type="hidden" name="selfie_path" value={r.selfie_path} />
-        <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
-      </form>
+      <div className="flex flex-col gap-1.5 self-start">
+        <EditCheckInModal
+          checkInId={r.id}
+          initialKind={r.kind}
+          initialAtIso={r.at}
+          employeeName={r.employee?.name ?? "?"}
+          action={onEdit}
+        />
+        <form action={onDelete}>
+          <input type="hidden" name="id" value={r.id} />
+          <input type="hidden" name="selfie_path" value={r.selfie_path} />
+          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+        </form>
+      </div>
     </div>
   );
 }

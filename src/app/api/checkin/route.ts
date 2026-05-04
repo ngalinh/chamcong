@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
 import { isAdminEmail } from "@/lib/utils";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
-import { effectiveWorkShifts } from "@/lib/workHours";
+import { computeLateEarly } from "@/lib/late-early";
 
 const Schema = z.object({
   office_id: z.string().uuid(),
@@ -143,63 +143,19 @@ export async function POST(request: NextRequest) {
     .eq("status", "approved")
     .maybeSingle();
 
-  // Tìm shift hiệu lực gần với hiện tại nhất (hỗ trợ multi-shift parttime).
-  // Cho check-in: closest theo start time. Cho check-out: closest theo end time.
-  const shifts = effectiveWorkShifts(
-    {
+  // Tính late/early via shared helper (hỗ trợ multi-shift, cross-midnight, hourly leave)
+  const { late_minutes, early_minutes } = computeLateEarly({
+    emp: {
       email: emp.email,
       work_start_time: emp.work_start_time,
       work_end_time: emp.work_end_time,
       work_shifts: (emp.work_shifts ?? null) as Array<{ start: string; end: string }> | null,
     },
-    office.work_start_time,
-    office.work_end_time,
-  );
-  const nowMinForShift = timeToMinutes(currentTimeVN());
-  const closest = shifts.reduce((best, s) => {
-    const t = timeToMinutes(kind === "in" ? s.start : s.end);
-    const distance = Math.abs(nowMinForShift - t);
-    if (!best || distance < best.dist) return { shift: s, dist: distance };
-    return best;
-  }, null as { shift: typeof shifts[0]; dist: number } | null)!;
-  let effectiveStart = closest.shift.start;
-  let effectiveEnd   = closest.shift.end;
-  if (hourlyLeave?.start_time && hourlyLeave?.end_time) {
-    const lStart = timeToMinutes(hourlyLeave.start_time);
-    const lEnd   = timeToMinutes(hourlyLeave.end_time);
-    const wStart = timeToMinutes(effectiveStart);
-    const wEnd   = timeToMinutes(effectiveEnd);
-    // Nghỉ ôm đầu ngày làm → dịch start
-    if (lStart <= wStart && lEnd > wStart) effectiveStart = hourlyLeave.end_time;
-    // Nghỉ ôm cuối ngày làm → dịch end
-    if (lEnd >= wEnd && lStart < wEnd) effectiveEnd = hourlyLeave.start_time;
-  }
-
-  // Tính late/early theo giờ làm hiệu lực (giờ VN), có hỗ trợ ca xuyên nửa đêm.
-  // Vd: NV ca đêm 21:00-06:00 → endMin (360) < startMin (1260) → isNightShift.
-  //   Check-out lúc 06:00 hôm sau: nowMin=360, expected = endMin+0 → diff=0, no early.
-  //   Check-out lúc 05:30 hôm sau: nowMin=330, diff = 360-330 = 30 → early=30.
-  //   Check-in lúc 02:00 hôm sau (rất muộn): nowMin=120, isNightShift, nowMin < endMin
-  //     → diff = nowMin + 1440 - startMin = 120+1440-1260 = 300 → late=300.
-  const nowMin = timeToMinutes(currentTimeVN());
-  const startMin = timeToMinutes(effectiveStart);
-  const endMin = timeToMinutes(effectiveEnd);
-  const isNightShift = endMin < startMin;
-  let late_minutes: number | null = null;
-  let early_minutes: number | null = null;
-  if (kind === "in") {
-    const diff =
-      isNightShift && nowMin < endMin
-        ? nowMin + 24 * 60 - startMin
-        : nowMin - startMin;
-    if (diff > 0) late_minutes = diff;
-  } else {
-    const diff =
-      isNightShift && nowMin >= startMin
-        ? endMin + 24 * 60 - nowMin
-        : endMin - nowMin;
-    if (diff > 0) early_minutes = diff;
-  }
+    office: { work_start_time: office.work_start_time, work_end_time: office.work_end_time },
+    hourlyLeave: hourlyLeave ?? null,
+    kind,
+    timeMinutes: timeToMinutes(currentTimeVN()),
+  });
 
   const { error: insErr } = await admin.from("check_ins").insert({
     employee_id: emp.id,

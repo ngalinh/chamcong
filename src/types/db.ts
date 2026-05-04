@@ -106,6 +106,10 @@ export type CheckIn = {
   late_minutes: number | null;
   early_minutes: number | null;
   user_agent: string | null;
+  edited_at: string | null;
+  edited_by: string | null;
+  edit_reason: string | null;
+  created_by_admin_email: string | null;
   created_at: string;
 };
 

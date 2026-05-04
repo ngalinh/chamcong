@@ -130,6 +130,12 @@ export type OvertimeEntry = {
   pay: number;         // VND
 };
 
+export type MissingDay = {
+  date: string;        // YYYY-MM-DD
+  dayValue: number;    // 1 cho T2-T6, 0.5 cho T7
+  amount: number;      // dayRate × dayValue
+};
+
 export type PayrollResult = {
   salary: number;
   workdays: number;
@@ -141,13 +147,15 @@ export type PayrollResult = {
   lateEarlyViolations: PayrollViolation[];
   selfViolations: SelfViolationItem[];
   selfBonuses: SelfBonusItem[];
-  overtimes: OvertimeEntry[];      // chi tiết từng đơn OT
+  overtimes: OvertimeEntry[];
+  missingDays: MissingDay[];        // ngày NV không chấm công + không có đơn nghỉ
   // Tổng các loại
   totalLatePenalty: number;
   totalSelfViolation: number;
   totalSelfBonus: number;
-  totalOTPay: number;              // OT pay cộng vào lương
+  totalOTPay: number;
   totalWageDeduction: number;
+  totalMissingDeduction: number;    // trừ lương từ vắng không phép
   grandTotal: number;              // tổng tiền bị TRỪ (chưa cộng bonus + OT)
 };
 
@@ -190,6 +198,7 @@ type OvertimeInput = {
 
 export function computePayroll(args: {
   workdays: number;
+  workingDaysInMonth: { date: string; value: number }[]; // mỗi ngày làm việc trong tháng (đã qua hôm nay) với value (1=T2-T6, 0.5=T7)
   salary: number;
   balanceStart: number;
   approvedLeaves: LeaveInput[];   // sorted by leave_date asc
@@ -198,7 +207,7 @@ export function computePayroll(args: {
   selfViolations: SelfViolationInput[]; // approved violation_reports (cả bonus + violation)
   overtimes: OvertimeInput[];      // approved overtime_requests trong tháng
 }): PayrollResult {
-  const { workdays, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations, overtimes } = args;
+  const { workdays, workingDaysInMonth, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations, overtimes } = args;
   const dayRate = workdays > 0 ? salary / workdays : 0;
   const hourRate = dayRate / HOURS_PER_WORKDAY;
 
@@ -324,6 +333,21 @@ export function computePayroll(args: {
   }));
   const totalOTPay = otEntries.reduce((s, o) => s + o.pay, 0);
 
+  // Vắng không phép — ngày làm việc mà NV không chấm công + không có đơn excused
+  const checkInDateSet = new Set<string>();
+  for (const ci of checkIns) checkInDateSet.add(ci.dateVN);
+  const missingDays: MissingDay[] = [];
+  for (const wd of workingDaysInMonth) {
+    if (checkInDateSet.has(wd.date)) continue;
+    if (excusedDays.has(wd.date)) continue;
+    missingDays.push({
+      date: wd.date,
+      dayValue: wd.value,
+      amount: wd.value * dayRate,
+    });
+  }
+  const totalMissingDeduction = missingDays.reduce((s, d) => s + d.amount, 0);
+
   return {
     salary,
     workdays,
@@ -336,12 +360,14 @@ export function computePayroll(args: {
     selfViolations: selfVList,
     selfBonuses: selfBList,
     overtimes: otEntries,
+    missingDays,
     totalLatePenalty,
     totalSelfViolation,
     totalOTPay,
     totalSelfBonus,
     totalWageDeduction,
-    grandTotal: totalLatePenalty + totalSelfViolation + totalWageDeduction,
+    totalMissingDeduction,
+    grandTotal: totalLatePenalty + totalSelfViolation + totalWageDeduction + totalMissingDeduction,
   };
 }
 

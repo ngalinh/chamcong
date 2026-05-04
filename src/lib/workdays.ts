@@ -19,6 +19,28 @@ export function countWorkdaysInMonth(year: number, month: number): number {
   return workdays;
 }
 
+/**
+ * Liệt kê tất cả ngày làm việc trong tháng (≤ today nếu tháng hiện tại) với value:
+ * 1 (T2-T6), 0.5 (T7), 0 (CN). Dùng để tính ngày vắng không phép.
+ */
+export function listWorkingDaysInMonth(year: number, month: number, todayVN?: Date): { date: string; value: number }[] {
+  const result: { date: string; value: number }[] = [];
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const today = todayVN ?? new Date();
+  const todayYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const isCurrentMonth = todayYM === `${year}-${String(month).padStart(2, "0")}`;
+  const lastDay = isCurrentMonth ? Math.min(daysInMonth, today.getDate() - 1) : daysInMonth;
+  // Chỉ tính ngày đã qua (hôm nay chưa kết thúc, không tính)
+  for (let d = 1; d <= lastDay; d++) {
+    const dow = new Date(year, month - 1, d).getDay();
+    if (dow === 0) continue; // CN
+    const value = dow === 6 ? 0.5 : 1;
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    result.push({ date: dateStr, value });
+  }
+  return result;
+}
+
 /** Convert "YYYY-MM" → { year, month } */
 export function parseYearMonth(s: string): { year: number; month: number } | null {
   const m = s.match(/^(\d{4})-(\d{2})$/);

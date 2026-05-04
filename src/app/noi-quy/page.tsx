@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Clock, CalendarOff, CloudRain, Home, Hourglass } from "lucide-react";
+import { ArrowLeft, Clock, CalendarOff, CloudRain, Home, Hourglass, AlertTriangle } from "lucide-react";
 
 export const dynamic = "force-static";
 
@@ -137,6 +137,26 @@ export default function PoliciesPage() {
             <li>Chỉ đơn <Code>approved</Code> mới trừ phép</li>
           </ul>
         </div>
+      </section>
+
+      {/* ===== Vắng không phép ===== */}
+      <section className="rounded-2xl glass border border-white/60 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+            <AlertTriangle size={18} />
+          </div>
+          <h2 className="text-lg font-semibold tracking-tight">Vắng không phép</h2>
+        </div>
+        <ul className="list-disc pl-5 text-sm text-neutral-700 space-y-1">
+          <li>
+            Ngày làm việc (T2–T6, sáng T7) mà NV <b>không chấm công</b> + <b>không có đơn xin nghỉ</b> → tự động <b>trừ lương 1 ngày làm việc</b> (T7 trừ 0.5 ngày)
+          </li>
+          <li>
+            Nếu NV thực tế đã làm nhưng quên chấm hoặc gặp lỗi app: <b>báo admin</b> để bổ sung chấm công cho ngày đó qua nút <Code>+ Thêm chấm công</Code>
+          </li>
+          <li>Sau khi admin thêm chấm công → ngày đó tự động không bị trừ lương nữa</li>
+          <li>Admin cũng có thể <b>sửa giờ chấm công</b> nếu lỡ trễ do app load chậm — bản ghi sẽ có nhãn <b>"Đã sửa"</b></li>
+        </ul>
       </section>
 
       <p className="text-xs text-neutral-400 text-center pt-2">

@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { LEAVE_CATEGORIES, type Employee, type LeaveCategory, type LeaveStatus } from "@/types/db";
 import { computePayroll, computeParttimePayroll, type PayrollResult, type ParttimePayrollResult } from "@/lib/payroll";
-import { countWorkdaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
+import { countWorkdaysInMonth, listWorkingDaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { dateVN, formatVN } from "@/lib/time";
 import { effectiveWorkShifts } from "@/lib/workHours";
 import { cn } from "@/lib/utils";
@@ -235,8 +235,10 @@ export default async function PayrollPage({
   }
 
   const workdays = countWorkdaysInMonth(ym.year, ym.month);
+  const workingDaysInMonth = listWorkingDaysInMonth(ym.year, ym.month);
   const result = computePayroll({
     workdays,
+    workingDaysInMonth,
     salary: Number(emp.salary),
     balanceStart: Number(emp.leave_balance),
     approvedLeaves: (leaves ?? []).map((l) => ({
@@ -430,6 +432,7 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
       <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
       <BonusSection bonuses={result.selfBonuses} />
       <ViolationSection violations={result.selfViolations} />
+      <MissingDaysSection missingDays={result.missingDays} dayRate={result.dayRate} />
 
       <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-5 space-y-2">
         <div className="flex items-center gap-2 text-rose-900 mb-2">
@@ -439,6 +442,9 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
         <TotalRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
         <TotalRow label="Trừ lương từ nghỉ vượt phép + nghỉ giờ + online" value={result.totalWageDeduction} />
         <TotalRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
+        {result.totalMissingDeduction > 0 && (
+          <TotalRow label="Vắng không phép" value={result.totalMissingDeduction} />
+        )}
         {result.totalOTPay > 0 && (
           <TotalRow label="Lương OT (đã duyệt)" value={result.totalOTPay} positive />
         )}
@@ -558,6 +564,38 @@ function ViolationSection({ violations }: { violations: PayrollResult["selfViola
               <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
               <span className="text-xs text-neutral-500 flex-1">{v.itemCount} lỗi</span>
               <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+function MissingDaysSection({ missingDays, dayRate }: { missingDays: PayrollResult["missingDays"]; dayRate: number }) {
+  return (
+    <Section
+      icon={AlertTriangle}
+      title="Vắng không phép"
+      subtitle={missingDays.length > 0
+        ? `${missingDays.length} ngày · ${fmtVnd(missingDays.reduce((s, d) => s + d.amount, 0))}`
+        : `0 ngày · trừ ${fmtVnd(dayRate)}/ngày T2-T6, ${fmtVnd(dayRate * 0.5)}/sáng T7`}
+      empty="Không có ngày nào vắng không phép. Admin có thể 'Thêm chấm công' nếu NV quên chấm."
+    >
+      {missingDays.length > 0 && (
+        <ul className="divide-y divide-neutral-200/60">
+          {missingDays.map((d) => (
+            <li key={d.date} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <AlertTriangle size={14} className="text-rose-600 shrink-0" />
+              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                {formatVN(d.date + "T00:00:00+07:00", "EEEE, dd/MM")}
+              </span>
+              <span className="text-xs text-neutral-500 flex-1">
+                {d.dayValue === 1 ? "Cả ngày" : "Sáng T7"}
+              </span>
+              <span className="text-rose-700 font-semibold tabular-nums shrink-0">
+                −{Math.round(d.amount).toLocaleString("en-US")}
+              </span>
             </li>
           ))}
         </ul>

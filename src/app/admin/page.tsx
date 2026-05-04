@@ -6,10 +6,8 @@ import {
   Building2,
   ArrowRight,
   Inbox,
-  AlertTriangle,
   Bell,
   CalendarOff,
-  CheckCircle2,
   LogIn,
   LogOut,
   Wifi,
@@ -17,7 +15,6 @@ import {
 import type { CheckInKind } from "@/types/db";
 import { cn } from "@/lib/utils";
 import { Empty } from "@/components/ui/Empty";
-import { RunAuditButton } from "@/components/RunAuditButton";
 import { LEAVE_CATEGORIES } from "@/types/db";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -60,7 +57,6 @@ export default async function AdminHome() {
     { data: offices },
     { data: recentCheckIns },
     { data: recentLeaves },
-    { data: alerts },
   ] = await Promise.all([
     admin.from("employees").select("*", { count: "exact", head: true }).eq("is_active", true),
     admin.from("check_ins").select("*", { count: "exact", head: true }).gte("checked_in_at", todayIso),
@@ -75,12 +71,6 @@ export default async function AdminHome() {
       .select("id, created_at, leave_date, category, duration, duration_unit, employees(name, email)")
       .order("created_at", { ascending: false })
       .limit(8),
-    admin
-      .from("alerts")
-      .select("id, alert_date, message, employees(name, email)")
-      .eq("resolved", false)
-      .order("alert_date", { ascending: false })
-      .limit(15),
   ]);
 
   const perOffice: { id: string; name: string; count: number }[] = [];
@@ -168,49 +158,6 @@ export default async function AdminHome() {
           </div>
         </section>
       )}
-
-      {/* Alerts */}
-      <section>
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">Alert</h2>
-            {alerts && alerts.length > 0 && (
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">
-                {alerts.length}
-              </span>
-            )}
-          </div>
-          <RunAuditButton />
-        </div>
-
-        <div className="rounded-2xl overflow-hidden border border-rose-100/50 bg-rose-50/40 backdrop-blur divide-y divide-rose-100/60">
-          {alerts?.length ? (
-            alerts.map((a) => {
-              // @ts-expect-error — supabase join
-              const emp = a.employees as { name: string; email: string } | null;
-              return (
-                <div key={a.id} className="p-3 flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                    <AlertTriangle size={16} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate">{emp?.name ?? "?"}</div>
-                    <div className="text-xs text-neutral-600">
-                      Vắng ngày {formatVN(a.alert_date + "T00:00:00+07:00", "EEEE, d 'tháng' M")} —{" "}
-                      không chấm công, không có đơn xin nghỉ
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="p-6 text-center text-sm text-emerald-700 flex flex-col items-center gap-2">
-              <CheckCircle2 size={24} className="text-emerald-500" />
-              Không có alert nào. Tất cả nhân viên đều có chấm công hoặc có đơn xin nghỉ.
-            </div>
-          )}
-        </div>
-      </section>
 
       {/* Notifications — unified feed */}
       <section>

@@ -49,6 +49,7 @@ type CheckInRow = {
   face_match_score: number | null;
   signedUrl: string;
   isRemote: boolean;
+  edited: boolean;
 };
 
 type LeaveRow = {
@@ -119,7 +120,7 @@ export default async function MyHistoryPage({
   if (type === "all" || type === "checkin") {
     const { data } = await admin
       .from("check_ins")
-      .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, offices(name, is_remote)")
+      .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, edited_at, created_by_admin_email, offices(name, is_remote)")
       .eq("employee_id", employee.id)
       .gte("checked_in_at", fromIso)
       .lte("checked_in_at", toIso)
@@ -137,6 +138,8 @@ export default async function MyHistoryPage({
     }
 
     for (const r of checkIns) {
+      const editedAt = (r as { edited_at?: string | null }).edited_at ?? null;
+      const manual = !!(r as { created_by_admin_email?: string | null }).created_by_admin_email;
       rows.push({
         type: "checkin",
         id: r.id,
@@ -149,6 +152,7 @@ export default async function MyHistoryPage({
         signedUrl: r.selfie_path ? signedMap.get(r.selfie_path) ?? "" : "",
         // @ts-expect-error — join
         isRemote: !!r.offices?.is_remote,
+        edited: !!editedAt || manual,
       });
     }
 
@@ -376,6 +380,11 @@ function CheckInCard({ row: r }: { row: CheckInRow }) {
           {r.isRemote && (
             <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">
               <Wifi size={10} /> Online
+            </span>
+          )}
+          {r.edited && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">
+              Đã sửa
             </span>
           )}
         </div>
