@@ -24,6 +24,7 @@ import {
   Wifi,
   TrendingUp,
   ShieldAlert,
+  BookOpen,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -255,6 +256,7 @@ export default async function Home() {
           <ActionTile href="/overtime"   Icon={Timer}       title="Làm OT"    subtitle="Ngoài giờ"        tone="violet" />
           <ActionTile href="/violations" Icon={ShieldAlert} title="Thưởng / Vi phạm" subtitle="Tự khai" tone="rose" />
           <ActionTile href="/history"    Icon={History}     title="Lịch sử"   subtitle="Chấm công"        tone="sky" />
+          <ActionTile href="/noi-quy"    Icon={BookOpen}    title="Nội quy"   subtitle="Quy định công ty" tone="emerald" className="col-span-2" />
         </div>
 
         {/* Thống kê tháng — bấm vào card xem chi tiết */}
@@ -405,24 +407,26 @@ function NotifRow({ item: n }: { item: NotifItem }) {
 }
 
 const TILE_TONE = {
-  amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600"  },
-  sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600"    },
-  violet: { iconBg: "bg-violet-50", iconText: "text-violet-600" },
-  rose:   { iconBg: "bg-rose-50",   iconText: "text-rose-600"   },
+  amber:   { iconBg: "bg-amber-50",   iconText: "text-amber-600"   },
+  sky:     { iconBg: "bg-sky-50",     iconText: "text-sky-600"     },
+  violet:  { iconBg: "bg-violet-50",  iconText: "text-violet-600"  },
+  rose:    { iconBg: "bg-rose-50",    iconText: "text-rose-600"    },
+  emerald: { iconBg: "bg-emerald-50", iconText: "text-emerald-600" },
 } as const;
 
 function ActionTile({
-  href, Icon, title, subtitle, tone,
+  href, Icon, title, subtitle, tone, className,
 }: {
   href: string;
   Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
   title: string;
   subtitle: string;
   tone: keyof typeof TILE_TONE;
+  className?: string;
 }) {
   const t = TILE_TONE[tone];
   return (
-    <Link href={href} className="rounded-2xl glass border border-white/60 p-3 hover:bg-white/80 transition">
+    <Link href={href} className={cn("rounded-2xl glass border border-white/60 p-3 hover:bg-white/80 transition", className)}>
       <div className={cn("h-10 w-10 rounded-xl flex items-center justify-center mb-2", t.iconBg, t.iconText)}>
         <Icon size={18} strokeWidth={1.8} />
       </div>
