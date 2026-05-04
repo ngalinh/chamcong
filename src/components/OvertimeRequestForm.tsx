@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { TimeInput } from "@/components/ui/TimeInput";
 import { Calendar, Clock, FileText, Loader2, CheckCircle2, Hourglass } from "lucide-react";
 
 function diffHours(start: string, end: string): number {
@@ -77,27 +78,23 @@ export default function OvertimeRequestForm() {
         </DateTimeBox>
       </Row>
 
-      <Row icon={Clock} label="Thời gian bắt đầu">
+      <Row icon={Clock} label="Thời gian bắt đầu (24h)">
         <DateTimeBox>
-          <input
-            type="time"
+          <TimeInput
             required
             value={start}
-            step={300}
-            onChange={(e) => setStart(e.target.value)}
+            onChange={setStart}
             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
           />
         </DateTimeBox>
       </Row>
 
-      <Row icon={Clock} label="Thời gian kết thúc">
+      <Row icon={Clock} label="Thời gian kết thúc (24h)">
         <DateTimeBox>
-          <input
-            type="time"
+          <TimeInput
             required
             value={end}
-            step={300}
-            onChange={(e) => setEnd(e.target.value)}
+            onChange={setEnd}
             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
           />
         </DateTimeBox>

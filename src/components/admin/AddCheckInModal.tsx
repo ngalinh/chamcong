@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, X, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TimeInput } from "@/components/ui/TimeInput";
 
 type EmployeeOpt = { id: string; name: string; email: string; home_office_id: string | null };
 type OfficeOpt = { id: string; name: string };
@@ -127,13 +128,11 @@ export default function AddCheckInModal({
                   className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
                 />
               </Field>
-              <Field label="Giờ">
-                <input
-                  type="time"
+              <Field label="Giờ (24h)">
+                <TimeInput
                   required
-                  step={60}
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={setTime}
                   className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
                 />
               </Field>

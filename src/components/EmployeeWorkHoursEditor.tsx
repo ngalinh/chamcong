@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Clock, Save, Loader2, RotateCcw, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkShift } from "@/types/db";
+import { TimeInput } from "@/components/ui/TimeInput";
 
 export default function EmployeeWorkHoursEditor({
   employeeId,
@@ -128,19 +129,15 @@ export default function EmployeeWorkHoursEditor({
               <span className="text-[10px] uppercase tracking-wider text-neutral-500 shrink-0 w-10">
                 Ca {i + 1}
               </span>
-              <input
-                type="time"
+              <TimeInput
                 value={s.start.slice(0, 5)}
-                step={300}
-                onChange={(e) => updateShift(i, { start: e.target.value })}
+                onChange={(v) => updateShift(i, { start: v })}
                 className="h-9 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 tabular-nums"
               />
               <span className="text-neutral-400 shrink-0">→</span>
-              <input
-                type="time"
+              <TimeInput
                 value={s.end.slice(0, 5)}
-                step={300}
-                onChange={(e) => updateShift(i, { end: e.target.value })}
+                onChange={(v) => updateShift(i, { end: v })}
                 className="h-9 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 tabular-nums"
               />
               {shifts.length > 1 && (

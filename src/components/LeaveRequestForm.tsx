@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { TimeInput } from "@/components/ui/TimeInput";
 import { LEAVE_CATEGORIES, ACTIVE_LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
 import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2, Plus, X } from "lucide-react";
 
@@ -167,26 +168,22 @@ export default function LeaveRequestForm({
 
       {isHourly ? (
         <>
-          <Row icon={Clock} label="Thời gian bắt đầu">
+          <Row icon={Clock} label="Thời gian bắt đầu (24h)">
             <DateTimeBox>
-              <input
-                type="time"
+              <TimeInput
                 required
                 value={startTime}
-                step={300}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={setStartTime}
                 className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
               />
             </DateTimeBox>
           </Row>
-          <Row icon={Clock} label="Thời gian kết thúc">
+          <Row icon={Clock} label="Thời gian kết thúc (24h)">
             <DateTimeBox>
-              <input
-                type="time"
+              <TimeInput
                 required
                 value={endTime}
-                step={300}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={setEndTime}
                 className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm font-mono tabular-nums"
               />
             </DateTimeBox>

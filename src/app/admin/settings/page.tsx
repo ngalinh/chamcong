@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
+import { TimeInput } from "@/components/ui/TimeInput";
 import Link from "next/link";
 import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, Wifi, Mail } from "lucide-react";
 import type { Office } from "@/types/db";
@@ -285,14 +286,11 @@ function TimeField({
   return (
     <label className="block text-sm">
       <div className="text-xs font-medium text-neutral-600 mb-1.5">{label}</div>
-      <input
+      <TimeInput
         name={name}
-        type="time"
         required
         defaultValue={defaultValue}
-        step={60}
-        className="w-full h-11 rounded-xl border border-neutral-200 bg-white px-3 text-[15px] font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5 appearance-none"
-        style={{ WebkitAppearance: "none" }}
+        className="w-full h-11 rounded-xl border border-neutral-200 bg-white px-3 text-[15px] font-mono tabular-nums outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
       />
     </label>
   );
