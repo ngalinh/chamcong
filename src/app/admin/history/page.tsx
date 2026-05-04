@@ -11,6 +11,7 @@ import {
   Trash2,
   Calendar,
   MapPin,
+  Users,
   Fingerprint,
   CalendarOff,
   Download,
@@ -432,7 +433,7 @@ async function decideViolation(formData: FormData) {
 export default async function HistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; office?: string; type?: RowType | "all"; status?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; office?: string; employee?: string; type?: RowType | "all"; status?: string }>;
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
@@ -449,7 +450,11 @@ export default async function HistoryPage({
   const to = sp.to ? new Date(sp.to) : new Date();
   to.setHours(23, 59, 59, 999);
 
-  const { data: offices } = await admin.from("offices").select("id, name").order("name");
+  const [{ data: offices }, { data: employeesList }] = await Promise.all([
+    admin.from("offices").select("id, name").order("name"),
+    admin.from("employees").select("id, name, email").eq("is_active", true).order("name"),
+  ]);
+  const employeeFilter = sp.employee || null;
 
   // Check-ins — bỏ qua khi đang lọc pending (check-in không có khái niệm pending)
   const checkInsRows: CheckInRow[] = [];
@@ -462,6 +467,7 @@ export default async function HistoryPage({
       .order("checked_in_at", { ascending: false })
       .limit(300);
     if (sp.office) q = q.eq("office_id", sp.office);
+    if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
 
     const checkIns = data ?? [];
@@ -509,6 +515,7 @@ export default async function HistoryPage({
       .order("created_at", { ascending: false })
       .limit(300);
     if (pendingOnly) q = q.eq("status", "pending");
+    if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
     for (const r of data ?? []) {
       // @ts-expect-error — supabase nested join
@@ -541,6 +548,7 @@ export default async function HistoryPage({
       .order("created_at", { ascending: false })
       .limit(200);
     if (pendingOnly) q = q.eq("status", "pending");
+    if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
     for (const r of data ?? []) {
       // @ts-expect-error — supabase nested join
@@ -576,6 +584,7 @@ export default async function HistoryPage({
       .order("created_at", { ascending: false })
       .limit(300);
     if (pendingOnly) q = q.eq("status", "pending");
+    if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
     for (const r of data ?? []) {
       // @ts-expect-error — supabase nested join
@@ -626,6 +635,7 @@ export default async function HistoryPage({
 
   const baseParams = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
   if (sp.office) baseParams.set("office", sp.office);
+  if (employeeFilter) baseParams.set("employee", employeeFilter);
   const exportHref = `/api/history/export?${baseParams.toString()}`;
 
   return (
@@ -657,6 +667,19 @@ export default async function HistoryPage({
         <input type="hidden" name="type" value={type} />
         <FilterInput icon={Calendar} name="from" type="date" defaultValue={from.toISOString().slice(0, 10)} />
         <FilterInput icon={Calendar} name="to" type="date" defaultValue={to.toISOString().slice(0, 10)} />
+        <div className="relative flex-1 min-w-[160px]">
+          <Users size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <select
+            name="employee"
+            defaultValue={sp.employee ?? ""}
+            className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-8 pr-2 text-sm outline-none focus:border-neutral-900"
+          >
+            <option value="">Tất cả nhân viên</option>
+            {employeesList?.map((e) => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+        </div>
         {(type === "checkin" || type === "all") && (
           <div className="relative flex-1 min-w-[140px]">
             <MapPin size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -707,7 +730,7 @@ function TypeTabs({
   sp,
 }: {
   current: string;
-  sp: { from?: string; to?: string; office?: string };
+  sp: { from?: string; to?: string; office?: string; employee?: string };
 }) {
   const tabs = [
     { key: "all", label: "Tất cả", icon: Inbox },
@@ -721,6 +744,7 @@ function TypeTabs({
     if (sp.from) p.set("from", sp.from);
     if (sp.to) p.set("to", sp.to);
     if (sp.office && (k === "checkin" || k === "all")) p.set("office", sp.office);
+    if (sp.employee) p.set("employee", sp.employee);
     return `/admin/history${p.toString() ? "?" + p.toString() : ""}`;
   };
   return (

@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
   const officeId = url.searchParams.get("office");
+  const employeeId = url.searchParams.get("employee");
   // scope=self → chỉ data của chính NV (kể cả admin gọi từ trang /history NV).
   // Mặc định: admin lấy all, NV lấy own.
   const forceSelf = url.searchParams.get("scope") === "self";
@@ -40,7 +41,8 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
 
   // ownerFilter: null = lấy all (admin scope), id = chỉ NV này
-  const ownerFilter = isAdmin && !forceSelf ? null : me.id;
+  // Admin filter theo employee qua query param "employee" cũng coi như scope cá nhân
+  const ownerFilter = isAdmin && !forceSelf ? (employeeId || null) : me.id;
   const includeEmployeeCols = ownerFilter == null;
 
   let qCheckIns = admin
