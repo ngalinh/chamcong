@@ -256,7 +256,6 @@ export default async function Home() {
           <ActionTile href="/overtime"   Icon={Timer}       title="Làm OT"    subtitle="Ngoài giờ"        tone="violet" />
           <ActionTile href="/violations" Icon={ShieldAlert} title="Thưởng / Vi phạm" subtitle="Tự khai" tone="rose" />
           <ActionTile href="/history"    Icon={History}     title="Lịch sử"   subtitle="Chấm công"        tone="sky" />
-          <ActionTile href="/noi-quy"    Icon={BookOpen}    title="Nội quy"   subtitle="Quy định công ty" tone="emerald" className="col-span-2" />
         </div>
 
         {/* Thống kê tháng — bấm vào card xem chi tiết */}
@@ -347,6 +346,21 @@ export default async function Home() {
             </div>
           )}
         </section>
+
+        {/* Nội quy — đặt cuối trang */}
+        <Link
+          href="/noi-quy"
+          className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition flex items-center gap-3"
+        >
+          <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+            <BookOpen size={18} strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm leading-tight">Nội quy</p>
+            <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">Quy định công ty</p>
+          </div>
+          <ArrowRight size={16} className="text-neutral-400 shrink-0" />
+        </Link>
       </div>
 
       {isAdmin && (
