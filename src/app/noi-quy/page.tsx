@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Clock, CalendarOff } from "lucide-react";
+import { ArrowLeft, Clock, CalendarOff, CloudRain, Home, Hourglass } from "lucide-react";
 
 export const dynamic = "force-static";
 
@@ -82,42 +82,49 @@ export default function PoliciesPage() {
 
         <div>
           <h3 className="font-semibold text-sm mb-2">Các loại nghỉ</h3>
-          <div className="rounded-xl border border-neutral-200 overflow-hidden text-sm">
-            <table className="w-full">
-              <thead className="bg-neutral-50">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium text-xs uppercase tracking-wider text-neutral-600">Loại</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs uppercase tracking-wider text-neutral-600">Mô tả</th>
-                  <th className="text-left px-3 py-2 font-medium text-xs uppercase tracking-wider text-neutral-600">Tính chất</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200/60">
-                <tr>
-                  <td className="px-3 py-2.5 font-medium align-top">Làm online — trời mưa</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Mưa to, không tới VP được</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Luôn miễn phí</td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2.5 font-medium align-top">Làm online — WFH</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Work from home</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">
-                    3 ngày đầu/tháng miễn phí; sau đó <b>0.5 ngày phép/ngày</b>; hết phép → trừ <b>0.5 lương ngày</b>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2.5 font-medium align-top">Nghỉ theo giờ</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Đi việc riêng vài tiếng</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Trừ lương: <b>lương/giờ × số giờ</b></td>
-                </tr>
-                <tr>
-                  <td className="px-3 py-2.5 font-medium align-top">Nghỉ theo ngày</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">Nghỉ trọn ngày</td>
-                  <td className="px-3 py-2.5 text-neutral-700 align-top">
-                    Trừ phép. Hết phép → trừ <b>lương ngày × số ngày vượt</b>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            <LeaveCard
+              icon={CloudRain}
+              tone="sky"
+              title="Làm online — trời mưa"
+              desc="Mưa to, không tới VP được"
+            >
+              <p>Luôn <b>miễn phí</b> — không trừ phép, không trừ lương</p>
+            </LeaveCard>
+
+            <LeaveCard
+              icon={Home}
+              tone="violet"
+              title="Làm online — WFH"
+              desc="Work from home"
+            >
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li><b>3 ngày đầu/tháng</b> miễn phí</li>
+                <li>Sau đó: <b>0.5 ngày phép</b> / ngày</li>
+                <li>Hết phép → trừ <b>0.5 lương ngày</b> / ngày</li>
+              </ul>
+            </LeaveCard>
+
+            <LeaveCard
+              icon={Hourglass}
+              tone="amber"
+              title="Nghỉ theo giờ"
+              desc="Đi việc riêng vài tiếng"
+            >
+              <p>Trừ lương: <b>lương/giờ × số giờ</b></p>
+            </LeaveCard>
+
+            <LeaveCard
+              icon={CalendarOff}
+              tone="rose"
+              title="Nghỉ theo ngày"
+              desc="Nghỉ trọn ngày"
+            >
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Trừ vào <b>ngày phép</b></li>
+                <li>Hết phép → trừ <b>lương ngày × số ngày vượt</b></li>
+              </ul>
+            </LeaveCard>
           </div>
         </div>
 
@@ -144,5 +151,44 @@ function Code({ children }: { children: React.ReactNode }) {
     <code className="px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 text-[0.85em] font-mono">
       {children}
     </code>
+  );
+}
+
+const LEAVE_TONE = {
+  sky:    { iconBg: "bg-sky-50",    iconText: "text-sky-600",    border: "border-sky-100" },
+  violet: { iconBg: "bg-violet-50", iconText: "text-violet-600", border: "border-violet-100" },
+  amber:  { iconBg: "bg-amber-50",  iconText: "text-amber-600",  border: "border-amber-100" },
+  rose:   { iconBg: "bg-rose-50",   iconText: "text-rose-600",   border: "border-rose-100" },
+} as const;
+
+function LeaveCard({
+  icon: Icon,
+  tone,
+  title,
+  desc,
+  children,
+}: {
+  icon: React.ComponentType<{ size?: number }>;
+  tone: keyof typeof LEAVE_TONE;
+  title: string;
+  desc: string;
+  children: React.ReactNode;
+}) {
+  const t = LEAVE_TONE[tone];
+  return (
+    <div className={`rounded-xl border ${t.border} bg-white p-3`}>
+      <div className="flex items-start gap-3">
+        <div className={`h-10 w-10 rounded-xl ${t.iconBg} ${t.iconText} flex items-center justify-center shrink-0`}>
+          <Icon size={18} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm leading-snug">{title}</h4>
+          <p className="text-xs text-neutral-500 mt-0.5">{desc}</p>
+        </div>
+      </div>
+      <div className="mt-3 pt-3 border-t border-neutral-200/60 text-sm text-neutral-700">
+        {children}
+      </div>
+    </div>
   );
 }
