@@ -110,13 +110,17 @@ Supabase free không có DB backup tự động → tự backup về server côn
 
 **Script**: [scripts/backup.sh](scripts/backup.sh) (gọi pg_dump + [scripts/backup-storage.mjs](scripts/backup-storage.mjs) + cleanup endpoint + rotate).
 
-**Cài cron 1 lần (trên server)**:
+**Cài cron 1 lần (trên server)** — 3:00 sáng Chủ nhật hàng tuần:
 ```bash
 ssh -i ~/.ssh/chamcong_deploy vmadmin@103.140.249.232
-sudo apt install -y postgresql-client            # pg_dump
+bash /opt/chamcong/scripts/setup-backup.sh   # auto cài Docker + cron + env
+```
+
+Hoặc thủ công:
+```bash
 crontab -e
-# Thêm dòng:
-30 2 * * * /opt/chamcong/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1
+# Thêm dòng (chạy mỗi Chủ nhật 3h sáng):
+0 3 * * 0 /opt/chamcong/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1
 ```
 
 **Env phụ cần thêm vào `/opt/chamcong/.env`**:

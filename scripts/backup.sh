@@ -7,8 +7,8 @@
 #   3. Gọi /api/admin/cleanup-history để xoá data >300 ngày + selfie file
 #   4. Rotate: xoá .sql.gz cũ hơn 30 ngày
 #
-# Cài đặt cron (crontab -e của user vmadmin):
-#   30 2 * * * /opt/chamcong/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1
+# Cài đặt cron (crontab -e của user vmadmin) — 3:00 sáng Chủ nhật hàng tuần:
+#   0 3 * * 0 /opt/chamcong/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1
 #
 # Env required (đọc từ /opt/chamcong/.env):
 #   DATABASE_URL                        — Postgres direct URL (Supabase Settings > Database)
