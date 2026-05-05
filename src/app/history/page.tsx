@@ -105,7 +105,7 @@ export default async function MyHistoryPage({
   const { data: employee } = await admin
     .from("employees")
     .select("id")
-    .eq("email", user.email)
+    .ilike("email", user.email)
     .maybeSingle();
   if (!employee) redirect("/enroll");
 

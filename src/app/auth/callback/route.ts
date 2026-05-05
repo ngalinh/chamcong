@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       const { data: emp } = await admin
         .from("employees")
         .select("is_admin")
-        .eq("email", user.email)
+        .ilike("email", user.email)
         .maybeSingle();
       if (emp?.is_admin) dest = "/admin";
     }

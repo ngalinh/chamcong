@@ -15,7 +15,7 @@ export default async function EnrollPage() {
   const { data: employee } = await admin
     .from("employees")
     .select("id, name, face_descriptor")
-    .eq("email", user.email)
+    .ilike("email", user.email)
     .maybeSingle();
 
   // Đã enroll xong → về home, không cho vào lại

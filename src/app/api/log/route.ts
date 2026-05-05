@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       const { data: emp } = await admin
         .from("employees")
         .select("id")
-        .eq("email", user.email)
+        .ilike("email", user.email)
         .maybeSingle();
       employee_id = emp?.id ?? null;
     }

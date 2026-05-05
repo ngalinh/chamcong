@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Empty } from "@/components/ui/Empty";
 import { TimeInput } from "@/components/ui/TimeInput";
 import Link from "next/link";
-import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, Wifi, Mail } from "lucide-react";
+import { Building2, Plus, Trash2, MapPin, AlertTriangle, CheckCircle2, Wifi, Mail, ScrollText } from "lucide-react";
 import type { Office } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +115,17 @@ export default async function SettingsPage({
         💡 Lấy tọa độ chính xác: mở Google Maps → click chuột phải vào toà nhà → copy dãy số lat, lng → paste vào đây.
         Bán kính khuyến nghị <b>100m</b> cân bằng giữa độ chặt và sai số GPS.
       </p>
+
+      <div className="pt-4 border-t border-neutral-200/60">
+        <Link
+          href="/admin/logs"
+          className="inline-flex items-center gap-2 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-900 text-sm font-medium h-10 px-4"
+        >
+          <ScrollText size={16} className="text-neutral-500" />
+          Log app
+          <span className="text-xs text-neutral-400">— xem lỗi gần đây</span>
+        </Link>
+      </div>
     </div>
   );
 }
