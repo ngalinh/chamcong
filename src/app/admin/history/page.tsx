@@ -171,7 +171,8 @@ async function updateCheckIn(formData: FormData) {
     .select("start_time, end_time")
     .eq("employee_id", ci.employee_id)
     .eq("leave_date", dateStr)
-    .eq("category", "leave_hourly")
+    .in("category", ["leave_hourly", "online_wfh"])
+    .not("start_time", "is", null)
     .eq("status", "approved")
     .maybeSingle();
 
@@ -352,9 +353,10 @@ async function decideLeave(formData: FormData) {
   // Recalc late/early cho các check-in trong ngày khi duyệt đơn nghỉ theo giờ
   // (lúc check-in, đơn còn pending nên đã tính theo giờ làm gốc — giờ duyệt rồi
   // thì cập nhật lại để bỏ/giảm label vi phạm).
+  // Áp dụng cho cả leave_hourly và online_wfh ca sáng/chiều (start_time có).
   if (
     decision === "approved" &&
-    leave.category === "leave_hourly" &&
+    (leave.category === "leave_hourly" || leave.category === "online_wfh") &&
     leave.start_time &&
     leave.end_time
   ) {
@@ -795,13 +797,15 @@ export default async function HistoryPage({
     if (dates.length > 0 && empIds.length > 0) {
       const { data: covers } = await admin
         .from("leave_requests")
-        .select("employee_id, leave_date, status, category")
+        .select("employee_id, leave_date, status, category, start_time")
         .in("employee_id", empIds)
         .gte("leave_date", dates[0])
         .lte("leave_date", dates[dates.length - 1])
         .eq("status", "approved")
         .neq("category", "leave_hourly"); // hourly không auto-excuse
       for (const c of covers ?? []) {
+        // online_wfh ca sáng/chiều (start_time có) cũng không cover full day
+        if (c.category === "online_wfh" && c.start_time) continue;
         leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
       }
     }
