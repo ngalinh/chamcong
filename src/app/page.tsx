@@ -61,7 +61,7 @@ export default async function Home() {
   const { data: employee } = await admin
     .from("employees")
     .select("*")
-    .eq("email", user.email)
+    .ilike("email", user.email)
     .maybeSingle();
 
   if (!employee) redirect("/enroll");

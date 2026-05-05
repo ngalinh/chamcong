@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   const { data: emp } = await admin
     .from("employees")
     .select("id")
-    .eq("email", user.email)
+    .ilike("email", user.email)
     .maybeSingle();
   if (!emp) return NextResponse.json({ error: "Chưa có tài khoản nhân viên" }, { status: 400 });
 

@@ -27,10 +27,13 @@ export async function POST(request: NextRequest) {
   if (!user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const admin = createAdminClient();
+  // Email lookup case-insensitive — Google OAuth có thể trả email lowercase
+  // trong khi row cũ trong DB lưu hỗn hợp case → eq() miss → INSERT trùng email
+  // → unique violation. ilike() tránh trường hợp đó.
   const { data: existing } = await admin
     .from("employees")
     .select("id, face_descriptor")
-    .eq("email", user.email)
+    .ilike("email", user.email)
     .maybeSingle();
 
   // Đã enroll xong → không cho enroll lại. Admin phải xoá trước.

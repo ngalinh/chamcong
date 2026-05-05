@@ -625,7 +625,8 @@ export default async function HistoryPage({
 
   const [{ data: offices }, { data: employeesList }] = await Promise.all([
     admin.from("offices").select("id, name").order("name"),
-    admin.from("employees").select("id, name, email, home_office_id").eq("is_active", true).order("name"),
+    // Hiện cả NV đã soft-delete để admin tìm history của họ; sort active lên trước.
+    admin.from("employees").select("id, name, email, home_office_id, is_active").order("is_active", { ascending: false }).order("name"),
   ]);
   const employeeFilter = sp.employee || null;
 
@@ -861,7 +862,7 @@ export default async function HistoryPage({
           >
             <option value="">Tất cả nhân viên</option>
             {employeesList?.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
+              <option key={e.id} value={e.id}>{e.name}{!e.is_active && " (đã xoá)"}</option>
             ))}
           </select>
         </div>
