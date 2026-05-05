@@ -26,6 +26,21 @@ echo ""
 echo "[1/5] Kiểm tra pg_dump..."
 if ! command -v pg_dump >/dev/null 2>&1; then
   echo "      Đang cài postgresql-client..."
+  # Đợi unattended-upgrades / apt khác xong (Ubuntu hay chạy auto update background)
+  WAIT=0
+  while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+        sudo fuser /var/lib/dpkg/lock         >/dev/null 2>&1 || \
+        sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    if [ "$WAIT" -eq 0 ]; then
+      echo "      ⏳ Đợi process apt khác (unattended-upgrades?) xong..."
+    fi
+    WAIT=$((WAIT + 1))
+    if [ "$WAIT" -gt 120 ]; then
+      echo "      ✗ Đợi 10 phút mà apt vẫn lock — kill thủ công: sudo kill \$(pgrep -x unattended-upgr)"
+      exit 1
+    fi
+    sleep 5
+  done
   sudo apt-get update -qq
   sudo apt-get install -y postgresql-client
   echo "      ✓ Đã cài $(pg_dump --version)"
