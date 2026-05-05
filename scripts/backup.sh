@@ -49,14 +49,29 @@ if [ -z "${DATABASE_URL:-}" ]; then
   exit 1
 fi
 
-if ! command -v pg_dump >/dev/null 2>&1; then
-  echo "$LOG_PREFIX ERROR: pg_dump không có. Cài: sudo apt install -y postgresql-client"
+# Supabase chạy Postgres 17, Ubuntu apt chỉ có postgresql-client 16 → version
+# mismatch. Dùng Docker postgres:17 để có pg_dump phiên bản tương thích.
+PG_IMAGE="${PG_DUMP_IMAGE:-postgres:17}"
+if ! command -v docker >/dev/null 2>&1; then
+  echo "$LOG_PREFIX ERROR: docker không có. Cài Docker hoặc PostgreSQL client v17+."
   exit 1
 fi
 
 DB_FILE="$BACKUP_DIR/db-$TS.sql.gz"
-echo "$LOG_PREFIX [1/4] pg_dump → $DB_FILE"
-pg_dump "$DATABASE_URL" --no-owner --no-privileges --clean --if-exists | gzip -9 > "$DB_FILE"
+echo "$LOG_PREFIX [1/4] pg_dump (qua $PG_IMAGE) → $DB_FILE"
+# Pull image lần đầu (idempotent — không re-download nếu đã có)
+docker image inspect "$PG_IMAGE" >/dev/null 2>&1 || docker pull "$PG_IMAGE" >/dev/null
+docker run --rm -e PGCONNECT_TIMEOUT=15 "$PG_IMAGE" \
+  pg_dump "$DATABASE_URL" --no-owner --no-privileges --clean --if-exists \
+  | gzip -9 > "$DB_FILE"
+
+# Kiểm tra dump không rỗng (dump fail -> file gzip ~20 byte chỉ chứa header)
+DB_SIZE_BYTES=$(stat -c%s "$DB_FILE")
+if [ "$DB_SIZE_BYTES" -lt 1024 ]; then
+  echo "$LOG_PREFIX ERROR: dump quá nhỏ ($DB_SIZE_BYTES bytes) — pg_dump chắc fail."
+  rm -f "$DB_FILE"
+  exit 1
+fi
 DB_SIZE=$(du -h "$DB_FILE" | cut -f1)
 echo "$LOG_PREFIX       OK ($DB_SIZE)"
 
