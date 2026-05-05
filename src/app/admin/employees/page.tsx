@@ -30,28 +30,19 @@ async function deleteEmployee(formData: FormData) {
   const id = String(formData.get("id"));
   if (me?.id === id) throw new Error("Không thể tự xoá tài khoản của chính mình");
 
+  // Soft delete: giữ row để history (check_ins, leave_requests, violations…) còn ref được.
+  // Clear user_id để re-login Google không tự attach lại; clear face_descriptor để
+  // không match được trên flow check-in nữa. Lịch sử + ảnh selfie giữ nguyên.
   const admin = createAdminClient();
-
-  const { data: emp } = await admin
+  const { error } = await admin
     .from("employees")
-    .select("reference_photo")
-    .eq("id", id)
-    .maybeSingle();
-  const { data: selfies } = await admin
-    .from("check_ins")
-    .select("selfie_path")
-    .eq("employee_id", id);
-
-  const { error } = await admin.from("employees").delete().eq("id", id);
+    .update({
+      is_active: false,
+      user_id: null,
+      face_descriptor: null,
+    })
+    .eq("id", id);
   if (error) throw new Error(error.message);
-
-  if (emp?.reference_photo) {
-    await admin.storage.from("faces").remove([emp.reference_photo]);
-  }
-  const selfiePaths = (selfies ?? []).map((s) => s.selfie_path).filter(Boolean) as string[];
-  if (selfiePaths.length) {
-    await admin.storage.from("selfies").remove(selfiePaths);
-  }
 
   revalidatePath("/admin/employees");
   revalidatePath("/admin");
@@ -223,7 +214,14 @@ export default async function EmployeesPage() {
   const { data: { user } } = await supabase.auth.getUser();
   const admin = createAdminClient();
   const [{ data: employees }, { data: offices }] = await Promise.all([
-    admin.from("employees").select("*").order("created_at", { ascending: false }),
+    // Ẩn NV đã soft-delete (user_id null + is_active false). NV chưa login lần nào
+    // (user_id null nhưng is_active vẫn true) hoặc bị khoá thường (is_active false
+    // nhưng user_id còn) thì vẫn hiện.
+    admin
+      .from("employees")
+      .select("*")
+      .or("user_id.not.is.null,is_active.eq.true")
+      .order("created_at", { ascending: false }),
     admin.from("offices").select("*").eq("is_active", true).order("is_remote").order("name"),
   ]);
 
@@ -370,7 +368,7 @@ export default async function EmployeesPage() {
 
       <p className="text-xs text-neutral-500 max-w-2xl">
         💡 Nhân viên có chi nhánh <b>Làm online</b> sẽ chấm công không cần selfie/định vị, chỉ ghi nhận thời điểm.
-        Xoá tài khoản sẽ xoá luôn <b>toàn bộ lịch sử check-in + ảnh selfie</b>.
+        Xoá tài khoản sẽ <b>khoá</b> và ẩn NV khỏi danh sách, nhưng <b>lịch sử check-in vẫn được giữ</b> để admin tham chiếu.
       </p>
     </div>
   );

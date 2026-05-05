@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
+import { SubmitButton } from "@/components/SubmitButton";
 import EditCheckInModal from "@/components/admin/EditCheckInModal";
 import AddCheckInModal from "@/components/admin/AddCheckInModal";
 import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind, type OvertimeStatus, type ViolationStatus, type ViolationKind, type ViolationItem } from "@/types/db";
@@ -381,10 +382,10 @@ async function decideLeave(formData: FormData) {
     const lStart = timeToMinutes(leave.start_time);
     const lEnd = timeToMinutes(leave.end_time);
 
-    for (const ci of dayCheckIns ?? []) {
+    await Promise.all((dayCheckIns ?? []).map(async (ci) => {
       // @ts-expect-error — supabase join
       const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
-      if (!office) continue;
+      if (!office) return;
       // Apply per-employee override trước rồi mới dịch theo leave window
       const base = effectiveWorkHours(empForHours, office.work_start_time, office.work_end_time);
       let effStart = base.start;
@@ -392,8 +393,8 @@ async function decideLeave(formData: FormData) {
       const wStart = timeToMinutes(base.start);
       const wEnd = timeToMinutes(base.end);
 
-      if (lStart <= wStart && lEnd > wStart) effStart = leave.end_time;
-      if (lEnd >= wEnd && lStart < wEnd) effEnd = leave.start_time;
+      if (lStart <= wStart && lEnd > wStart) effStart = leave.end_time!;
+      if (lEnd >= wEnd && lStart < wEnd) effEnd = leave.start_time!;
 
       const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
       let late_minutes: number | null = null;
@@ -409,7 +410,7 @@ async function decideLeave(formData: FormData) {
         .from("check_ins")
         .update({ late_minutes, early_minutes })
         .eq("id", ci.id);
-    }
+    }));
   }
 
   // Push notification cho nhân viên (fire-and-forget)
@@ -424,36 +425,38 @@ async function decideLeave(formData: FormData) {
     }).catch((e) => console.error("[push] employee notify failed", e));
   }
 
-  // Gửi email nếu duyệt
+  // Gửi email nếu duyệt — fire-and-forget để không chặn response (Gmail SMTP 1-3s)
   if (decision === "approved") {
     // @ts-expect-error — supabase join
     const emp = leave.employees as { name: string; email: string } | null;
     if (emp?.email) {
-      const { sendMail } = await import("@/lib/email");
-      const { LEAVE_CATEGORIES } = await import("@/types/db");
-      const { formatVN } = await import("@/lib/time");
-      const htmlEscape = (s: string) =>
-        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      const dateStr = formatVN(leave.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy");
-      const html = `
-        <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
-          <h2 style="margin: 0 0 8px; font-size: 20px;">Đơn xin nghỉ của bạn đã được duyệt ✅</h2>
-          <p style="color: #555; margin: 0 0 16px;">Xin chào <b>${htmlEscape(emp.name)}</b>,</p>
-          <p style="color: #555; margin: 0 0 20px;">Đơn xin nghỉ của bạn vừa được quản lý duyệt. Chi tiết bên dưới:</p>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #fafafa; border-radius: 8px; overflow: hidden;">
-            <tr><td style="padding: 12px 16px; color: #666; width: 120px;">Ngày nghỉ</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(dateStr)}</td></tr>
-            <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Loại</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(LEAVE_CATEGORIES[leave.category as keyof typeof LEAVE_CATEGORIES])}</td></tr>
-            <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Thời gian</td><td style="padding: 12px 16px; font-weight: 500;">${leave.duration} ${leave.duration_unit === "day" ? "ngày" : "giờ"}</td></tr>
-            ${leave.reason ? `<tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Lý do</td><td style="padding: 12px 16px;">${htmlEscape(leave.reason)}</td></tr>` : ""}
-          </table>
-          <p style="color: #999; font-size: 13px; margin: 24px 0 0;">Email tự động — vui lòng không reply.<br/>Chấm công Basso</p>
-        </div>
-      `;
-      await sendMail({
-        to: emp.email,
-        subject: "✅ Đơn xin nghỉ đã được duyệt",
-        html,
-      }).catch((e) => console.error("[email] failed", e));
+      (async () => {
+        const { sendMail } = await import("@/lib/email");
+        const { LEAVE_CATEGORIES } = await import("@/types/db");
+        const { formatVN } = await import("@/lib/time");
+        const htmlEscape = (s: string) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const dateStr = formatVN(leave.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy");
+        const html = `
+          <div style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #111;">
+            <h2 style="margin: 0 0 8px; font-size: 20px;">Đơn xin nghỉ của bạn đã được duyệt ✅</h2>
+            <p style="color: #555; margin: 0 0 16px;">Xin chào <b>${htmlEscape(emp.name)}</b>,</p>
+            <p style="color: #555; margin: 0 0 20px;">Đơn xin nghỉ của bạn vừa được quản lý duyệt. Chi tiết bên dưới:</p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #fafafa; border-radius: 8px; overflow: hidden;">
+              <tr><td style="padding: 12px 16px; color: #666; width: 120px;">Ngày nghỉ</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(dateStr)}</td></tr>
+              <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Loại</td><td style="padding: 12px 16px; font-weight: 500;">${htmlEscape(LEAVE_CATEGORIES[leave.category as keyof typeof LEAVE_CATEGORIES])}</td></tr>
+              <tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Thời gian</td><td style="padding: 12px 16px; font-weight: 500;">${leave.duration} ${leave.duration_unit === "day" ? "ngày" : "giờ"}</td></tr>
+              ${leave.reason ? `<tr style="border-top: 1px solid #eee"><td style="padding: 12px 16px; color: #666;">Lý do</td><td style="padding: 12px 16px;">${htmlEscape(leave.reason)}</td></tr>` : ""}
+            </table>
+            <p style="color: #999; font-size: 13px; margin: 24px 0 0;">Email tự động — vui lòng không reply.<br/>Chấm công Basso</p>
+          </div>
+        `;
+        await sendMail({
+          to: emp.email,
+          subject: "✅ Đơn xin nghỉ đã được duyệt",
+          html,
+        });
+      })().catch((e) => console.error("[email] failed", e));
     }
   }
 
@@ -1055,7 +1058,9 @@ function CheckInCard({
         <form action={onDelete}>
           <input type="hidden" name="id" value={r.id} />
           <input type="hidden" name="selfie_path" value={r.selfie_path} />
-          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+          <SubmitButton className="inline-flex items-center justify-center gap-2 h-8 px-3 text-xs rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50 font-medium transition select-none disabled:cursor-not-allowed">
+            <Trash2 size={14} />
+          </SubmitButton>
         </form>
       </div>
     </div>
@@ -1103,7 +1108,9 @@ function LeaveCard({
         </div>
         <form action={onDelete} className="self-start">
           <input type="hidden" name="id" value={r.id} />
-          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+          <SubmitButton className="inline-flex items-center justify-center gap-2 h-8 px-3 text-xs rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50 font-medium transition select-none disabled:cursor-not-allowed">
+            <Trash2 size={14} />
+          </SubmitButton>
         </form>
       </div>
 
@@ -1113,16 +1120,16 @@ function LeaveCard({
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="approved" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed">
                 <Check size={14} /> Duyệt
-              </button>
+              </SubmitButton>
             </form>
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="rejected" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-60">
                 <X size={14} /> Từ chối
-              </button>
+              </SubmitButton>
             </form>
           </div>
         ) : (
@@ -1176,7 +1183,9 @@ function OvertimeCard({
         </div>
         <form action={onDelete} className="self-start">
           <input type="hidden" name="id" value={r.id} />
-          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+          <SubmitButton className="inline-flex items-center justify-center gap-2 h-8 px-3 text-xs rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50 font-medium transition select-none disabled:cursor-not-allowed">
+            <Trash2 size={14} />
+          </SubmitButton>
         </form>
       </div>
 
@@ -1186,16 +1195,16 @@ function OvertimeCard({
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="approved" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed">
                 <Check size={14} /> Duyệt
-              </button>
+              </SubmitButton>
             </form>
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="rejected" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-60">
                 <X size={14} /> Từ chối
-              </button>
+              </SubmitButton>
             </form>
           </div>
         ) : (
@@ -1266,7 +1275,9 @@ function ViolationCard({
         </div>
         <form action={onDelete} className="self-start">
           <input type="hidden" name="id" value={r.id} />
-          <Button size="sm" variant="danger" type="submit"><Trash2 size={14} /></Button>
+          <SubmitButton className="inline-flex items-center justify-center gap-2 h-8 px-3 text-xs rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:opacity-50 font-medium transition select-none disabled:cursor-not-allowed">
+            <Trash2 size={14} />
+          </SubmitButton>
         </form>
       </div>
 
@@ -1276,16 +1287,16 @@ function ViolationCard({
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="approved" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed">
                 <Check size={14} /> Duyệt
-              </button>
+              </SubmitButton>
             </form>
             <form action={onDecide} className="flex-1">
               <input type="hidden" name="id" value={r.id} />
               <input type="hidden" name="decision" value="rejected" />
-              <button type="submit" className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition">
+              <SubmitButton className="w-full h-9 rounded-lg bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-sm font-medium inline-flex items-center justify-center gap-1.5 transition disabled:cursor-not-allowed disabled:opacity-60">
                 <X size={14} /> Từ chối
-              </button>
+              </SubmitButton>
             </form>
           </div>
         ) : (
