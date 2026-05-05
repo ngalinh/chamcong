@@ -32,6 +32,10 @@ const Schema = z.object({
 ).refine(
   (d) => d.category !== "leave_hourly" || d.leave_dates.length === 1,
   { message: "Nghỉ theo giờ chỉ áp dụng cho 1 ngày" },
+).refine(
+  // WFH ca sáng/chiều = online_wfh có start_time → ràng buộc 1 ngày + đủ 2 mốc
+  (d) => !(d.category === "online_wfh" && d.start_time) || (d.end_time && d.leave_dates.length === 1),
+  { message: "WFH ca sáng/chiều cần đủ thời gian và chỉ áp dụng cho 1 ngày" },
 );
 
 export async function POST(request: NextRequest) {
@@ -78,14 +82,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
+  // Lưu start/end_time cho leave_hourly + online_wfh half-day (cả 2 đều dùng để
+  // shift effective work hours khi check-in)
+  const hasShiftTimes = data.category === "leave_hourly"
+    || (data.category === "online_wfh" && !!data.start_time);
   const rows = data.leave_dates.map((d) => ({
     employee_id: emp.id,
     leave_date: d,
     category: data.category,
     duration: data.duration,
     duration_unit: data.duration_unit,
-    start_time: data.category === "leave_hourly" ? data.start_time ?? null : null,
-    end_time:   data.category === "leave_hourly" ? data.end_time   ?? null : null,
+    start_time: hasShiftTimes ? data.start_time ?? null : null,
+    end_time:   hasShiftTimes ? data.end_time   ?? null : null,
     reason: data.reason ?? null,
   }));
 

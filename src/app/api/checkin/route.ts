@@ -131,15 +131,16 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Tìm đơn nghỉ theo giờ đã duyệt trong ngày — nếu có thì dịch giờ làm hiệu lực.
-  // Vd: office 9h-18h, NV nghỉ 9-10h → effective_start = 10h (NV được đến muộn tới 10h
-  // mà không tính late). NV nghỉ 16-17:30 → effective_end = 16h.
+  // Tìm đơn nghỉ theo giờ HOẶC WFH ca sáng/chiều đã duyệt — cả 2 đều shift giờ làm
+  // hiệu lực. Vd: office 9h-18h, NV nghỉ 9-10h hoặc WFH ca sáng 9-12:30 →
+  // effective_start dịch theo, NV chỉ phải có mặt ca còn lại.
   const { data: hourlyLeave } = await admin
     .from("leave_requests")
     .select("start_time, end_time")
     .eq("employee_id", emp.id)
     .eq("leave_date", dayStr)
-    .eq("category", "leave_hourly")
+    .in("category", ["leave_hourly", "online_wfh"])
+    .not("start_time", "is", null)
     .eq("status", "approved")
     .maybeSingle();
 
