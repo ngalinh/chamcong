@@ -41,8 +41,27 @@ if ! command -v pg_dump >/dev/null 2>&1; then
     fi
     sleep 5
   done
-  sudo apt-get update -qq
-  sudo apt-get install -y postgresql-client
+
+  # apt-get update có thể fail do Ubuntu mirror tạm flaky (HTTP 520, "no longer signed", ...)
+  # → retry 3 lần. Nếu vẫn fail, vẫn thử install (apt cache cũ có thể đủ).
+  for i in 1 2 3; do
+    if sudo apt-get update -qq; then
+      break
+    fi
+    if [ "$i" -lt 3 ]; then
+      echo "      ⚠ apt-get update fail (lần $i/3), thử lại sau 10s..."
+      sleep 10
+    else
+      echo "      ⚠ apt-get update vẫn fail — thử install bằng cache cũ..."
+    fi
+  done
+
+  if ! sudo apt-get install -y postgresql-client; then
+    echo "      ✗ apt-get install fail. Thử thủ công khi mạng ổn:"
+    echo "        sudo apt-get update && sudo apt-get install -y postgresql-client"
+    echo "        rồi chạy lại: bash $APP_DIR/scripts/setup-backup.sh"
+    exit 1
+  fi
   echo "      ✓ Đã cài $(pg_dump --version)"
 else
   echo "      ✓ Đã có $(pg_dump --version)"
