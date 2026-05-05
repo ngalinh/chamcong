@@ -93,12 +93,15 @@ if ! grep -q "^DATABASE_URL=" "$ENV_FILE"; then
   echo "  ⚠ DATABASE_URL chưa có — lấy từ Supabase Dashboard:"
   echo ""
   echo "    1. https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/settings/database"
-  echo "    2. Connection string → Mode 'Direct connection' (port 5432)"
-  echo "    3. Copy URI dạng: postgresql://postgres:[YOUR-PASSWORD]@db.tmrtgriopaczpxrpxmpu.supabase.co:5432/postgres"
-  echo "    4. Thay [YOUR-PASSWORD] bằng password DB thật"
+  echo "    2. Cuộn xuống mục 'Connection pooling' (KHÔNG dùng Direct connection ở free tier"
+  echo "       vì Supabase chỉ cho IPv6, server công ty thường không có IPv6)"
+  echo "    3. Mode: 'Session' (port 5432 — pg_dump cần Session, không dùng được Transaction)"
+  echo "    4. Copy URI dạng:"
+  echo "         postgresql://postgres.tmrtgriopaczpxrpxmpu:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres"
+  echo "    5. Thay [YOUR-PASSWORD] bằng password DB thật"
   echo ""
-  echo "  Lưu ý: nếu password có @ # & / : ? = + → URL-encode trước (vd @ → %40),"
-  echo "  hoặc đổi password trên Supabase sang chỉ chữ cái + số."
+  echo "  Lưu ý: nếu password có @ # & / : ? = + → URL-encode (vd @ → %40)"
+  echo "  hoặc đổi password sang chỉ chữ + số."
   echo ""
   read -r -p "  Paste DATABASE_URL ở đây: " DB_URL
   if [ -z "$DB_URL" ]; then
@@ -109,10 +112,16 @@ if ! grep -q "^DATABASE_URL=" "$ENV_FILE"; then
   # Test connection trước khi save (tránh lưu URL sai)
   echo "      → Test connection..."
   if ! pg_isready -d "$DB_URL" -t 10 >/dev/null 2>&1; then
-    echo "      ✗ Connect fail. Kiểm tra:"
-    echo "         - Format đúng: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres"
-    echo "         - Password có ký tự đặc biệt? URL-encode hoặc đổi password."
-    echo "         - Host: db.<project-ref>.supabase.co (KHÔNG có 'https://' hay path /postgres ở host)"
+    echo "      ✗ Connect fail. Có thể:"
+    echo "         (a) Đang dùng Direct connection 'db.xxx.supabase.co' — free tier chỉ IPv6,"
+    echo "             server không có IPv6 → Đổi sang URL Pooler Session mode."
+    echo "         (b) Password sai hoặc có ký tự đặc biệt chưa URL-encode."
+    echo "         (c) Format URL sai (thiếu @ giữa password và host)."
+    echo ""
+    echo "      Verify nhanh:"
+    echo "         host db.tmrtgriopaczpxrpxmpu.supabase.co   # nếu chỉ AAAA, không A → không IPv4"
+    echo "         psql 'PASTE_DB_URL_HERE' -c 'select 1'    # test trực tiếp"
+    echo ""
     echo "      Chạy lại script khi đã sửa."
     exit 1
   fi
