@@ -67,7 +67,8 @@ export function DeleteEmployeeButton({
                 <h2 className="font-semibold">Xoá tài khoản nhân viên?</h2>
                 <p className="text-sm text-neutral-600 mt-1">
                   Bạn có chắc muốn xoá <b className="break-words">{employeeName}</b>?
-                  Hành động này sẽ xoá <b>toàn bộ lịch sử check-in và ảnh selfie</b> và không thể hoàn tác.
+                  Tài khoản sẽ bị <b>khoá</b> và NV không thể đăng nhập lại.
+                  Lịch sử check-in, đơn nghỉ, OT... vẫn được giữ lại để tham chiếu.
                 </p>
               </div>
             </div>
