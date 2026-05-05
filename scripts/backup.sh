@@ -85,9 +85,11 @@ if ! command -v node >/dev/null 2>&1; then
 else
   # Cài @supabase/supabase-js 1 lần (project lẽ ra đã có node_modules sau npm ci/install,
   # nhưng /opt/chamcong là source code, không build trên host → tạo node_modules tối thiểu).
-  if [ ! -d node_modules/@supabase ]; then
-    echo "$LOG_PREFIX       Install @supabase/supabase-js lần đầu..."
-    npm install --no-audit --no-fund --silent --no-save --omit=dev @supabase/supabase-js 2>&1 | tail -3 || true
+  # Cài @supabase/supabase-js + ws (Node <22 không có native WebSocket,
+  # supabase-js realtime client require ws). Cài cả 2 lần đầu duy nhất.
+  if [ ! -d node_modules/@supabase ] || [ ! -d node_modules/ws ]; then
+    echo "$LOG_PREFIX       Install @supabase/supabase-js + ws lần đầu..."
+    npm install --no-audit --no-fund --silent --no-save --omit=dev @supabase/supabase-js ws 2>&1 | tail -3 || true
   fi
   node scripts/backup-storage.mjs --dest="$BACKUP_DIR/storage" --buckets=selfies,faces || {
     echo "$LOG_PREFIX WARN: storage sync có file fail (xem log trên)"
