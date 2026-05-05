@@ -13,7 +13,7 @@ set -euo pipefail
 
 APP_DIR="/opt/chamcong"
 ENV_FILE="$APP_DIR/.env"
-CRON_LINE="30 2 * * * $APP_DIR/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1"
+CRON_LINE="0 3 * * 0 $APP_DIR/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1"
 
 cd "$APP_DIR"
 
@@ -125,11 +125,22 @@ fi
 
 # ── 5. Cài cron entry ──
 echo ""
-echo "[5/5] Cài cron 2:30 sáng..."
+echo "[5/5] Cài cron 3:00 sáng Chủ nhật hàng tuần..."
 EXISTING_CRON=$(crontab -l 2>/dev/null || true)
-if echo "$EXISTING_CRON" | grep -F "$APP_DIR/scripts/backup.sh" >/dev/null; then
-  echo "      ✓ Cron đã có sẵn:"
-  echo "        $(echo "$EXISTING_CRON" | grep -F "$APP_DIR/scripts/backup.sh")"
+EXISTING_LINE=$(echo "$EXISTING_CRON" | grep -F "$APP_DIR/scripts/backup.sh" || true)
+if [ -n "$EXISTING_LINE" ]; then
+  if [ "$EXISTING_LINE" = "$CRON_LINE" ]; then
+    echo "      ✓ Cron đã đúng: $CRON_LINE"
+  else
+    # Replace dòng cron cũ bằng dòng mới
+    echo "$EXISTING_CRON" | grep -vF "$APP_DIR/scripts/backup.sh" > /tmp/cc-cron.tmp
+    echo "$CRON_LINE" >> /tmp/cc-cron.tmp
+    crontab /tmp/cc-cron.tmp
+    rm -f /tmp/cc-cron.tmp
+    echo "      ✓ Đã cập nhật cron:"
+    echo "        Cũ: $EXISTING_LINE"
+    echo "        Mới: $CRON_LINE"
+  fi
 else
   (echo "$EXISTING_CRON"; echo "$CRON_LINE") | crontab -
   echo "      ✓ Đã thêm: $CRON_LINE"
