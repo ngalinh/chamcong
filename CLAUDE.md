@@ -104,6 +104,37 @@ Mỗi office có `approver_email` (cột trong DB). Admin chỉ duyệt được
 
 Logic ở `decideLeave` + `decideOvertime` trong [src/app/admin/history/page.tsx](src/app/admin/history/page.tsx).
 
+### Backup + cleanup history (cron nightly)
+
+Supabase free không có DB backup tự động → tự backup về server công ty.
+
+**Script**: [scripts/backup.sh](scripts/backup.sh) (gọi pg_dump + [scripts/backup-storage.mjs](scripts/backup-storage.mjs) + cleanup endpoint + rotate).
+
+**Cài cron 1 lần (trên server)**:
+```bash
+ssh -i ~/.ssh/chamcong_deploy vmadmin@103.140.249.232
+sudo apt install -y postgresql-client            # pg_dump
+crontab -e
+# Thêm dòng:
+30 2 * * * /opt/chamcong/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1
+```
+
+**Env phụ cần thêm vào `/opt/chamcong/.env`**:
+- `DATABASE_URL` — Supabase Settings → Database → Connection string → URI (Direct connection)
+- `AUDIT_CRON_SECRET` — random string, dùng cho cả audit-absences + cleanup-history
+
+**Retention**:
+- DB dump: giữ 30 ngày (rotate auto trong script)
+- Data nghiệp vụ (check_ins, leave, OT, violations, alerts): xoá >300 ngày qua `/api/admin/cleanup-history`. Selfie file trong Storage cũng bị xoá theo.
+- Error logs: xoá >30 ngày.
+
+**Restore từ backup**:
+```bash
+gunzip -c /opt/chamcong/backups/db-20260505-023000.sql.gz | \
+  psql "$DATABASE_URL"
+# Storage: rsync /opt/chamcong/backups/storage/ về Supabase qua API (script chưa có)
+```
+
 ## Cấu trúc thư mục
 
 ```
