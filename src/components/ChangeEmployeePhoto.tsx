@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { loadFaceModels, detectDescriptor } from "@/lib/face";
 import { Button } from "@/components/ui/Button";
@@ -14,7 +15,12 @@ export function ChangeEmployeePhoto({
   employeeName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const imgRef = useRef<HTMLImageElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -101,7 +107,7 @@ export function ChangeEmployeePhoto({
         <Camera size={14} />
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in"
           onClick={() => !loading && setOpen(false)}
@@ -191,7 +197,8 @@ export function ChangeEmployeePhoto({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

@@ -79,18 +79,14 @@ ngrok http 3000
 3. Browser sẽ trích descriptor 128-d ngay trên client (không upload raw ảnh lên AI server nào), lưu vào DB
 4. Nhân viên đăng nhập magic link → `/checkin` → flow chấm công
 
-## Deploy (Vercel + Supabase)
+## Deploy (Docker + server công ty + Supabase)
 
-1. Push repo lên GitHub
-2. Import vào Vercel, thêm env vars (copy từ `.env.local`)
-3. Vào Supabase → Auth → URL Configuration → thêm URL production vào **Redirect URLs**:
-   - `https://your-domain.vercel.app/auth/callback`
-4. Deploy
+Production chạy trên server công ty `103.140.249.232` (`/opt/chamcong`), CI/CD qua GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — push lên `main` → typecheck → SSH build & restart container. Xem [CLAUDE.md](CLAUDE.md) cho chi tiết hosting + nginx + redirect URL Supabase.
 
 ## Chi phí
 
 - Supabase free tier: 500MB DB + 1GB storage + 50k MAU — đủ cho <100 nhân viên
-- Vercel free tier: đủ cho traffic nội bộ
+- Server công ty (Docker self-host) — không phát sinh phí riêng cho app
 - Total: **0đ/tháng** cho team nhỏ
 
 ## Mở rộng (TODO phases tiếp theo)

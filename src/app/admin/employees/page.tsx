@@ -4,10 +4,11 @@ import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { Users, Check, CircleSlash, Trash2, Building2, Wifi, Plus } from "lucide-react";
+import { Users, Check, CircleSlash, Building2, Wifi, Plus } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
+import { DeleteEmployeeButton } from "@/components/DeleteEmployeeButton";
 import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
 import EmployeeWorkHoursEditor from "@/components/EmployeeWorkHoursEditor";
 import { yearMonthVN } from "@/lib/workdays";
@@ -288,12 +289,13 @@ export default async function EmployeesPage() {
                     <div className="text-xs text-neutral-500 truncate">{e.email}</div>
                   </div>
                   {canDelete && (
-                    <form action={deleteEmployee} className="shrink-0">
-                      <input type="hidden" name="id" value={e.id} />
-                      <Button size="sm" variant="danger" type="submit" title="Xoá tài khoản">
-                        <Trash2 size={14} />
-                      </Button>
-                    </form>
+                    <div className="shrink-0">
+                      <DeleteEmployeeButton
+                        employeeId={e.id}
+                        employeeName={e.name}
+                        action={deleteEmployee}
+                      />
+                    </div>
                   )}
                 </div>
 

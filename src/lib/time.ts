@@ -9,7 +9,7 @@ export const APP_TZ = "Asia/Ho_Chi_Minh";
 /**
  * Format 1 thời điểm (Date | ISO string) theo giờ Việt Nam.
  * Dùng thay cho `date-fns` format() để đảm bảo không bị lệch sang UTC khi
- * chạy server-side trên Vercel.
+ * chạy server-side.
  */
 export function formatVN(date: Date | string, pattern: string) {
   return formatInTimeZone(new Date(date), APP_TZ, pattern, { locale: vi });

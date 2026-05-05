@@ -57,15 +57,23 @@ Nếu rebuild server từ zero, phải set lại 2 cái này.
 
 ## Convention quan trọng
 
-### Auto-commit + push lên main
+### Auto-commit + auto-merge + auto-deploy
 
-**Sau mỗi đợt sửa code, tự commit + push lên `main` mà không hỏi.** Vercel + ai.basso.vn cùng auto-deploy từ main, nên cần push để thay đổi có hiệu lực. Group commit theo logical change (1-2 commit / lần).
+**Sau mỗi đợt sửa code, tự thực hiện toàn bộ chuỗi mà không hỏi:**
+1. Commit + push lên branch hiện tại (group theo logical change, 1-2 commit / lần).
+2. Nếu đang trên branch feature có PR → **tự merge (squash) PR vào `main`** ngay sau khi typecheck pass + CI xanh.
+3. CI/CD ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) tự build + SSH deploy lên server công ty (`/opt/chamcong`) khi push tới `main` — không cần thao tác thủ công.
+
+Không cần hỏi user "có muốn merge không" — cứ làm. User chỉ can thiệp nếu muốn dừng.
+
+**KHÔNG dùng Vercel** (đã bỏ từ lâu). Repo chỉ deploy qua server công ty `103.140.249.232` bằng Docker. Nếu thấy file/comment/integration nhắc Vercel thì xoá luôn.
 
 Git Safety vẫn phải tuân thủ:
 - KHÔNG `git add -A` (có thể vô tình commit secret) — luôn add file cụ thể
 - KHÔNG commit `.env*`
 - KHÔNG amend commit cũ (làm commit MỚI)
 - KHÔNG `--no-verify` skip hook
+- Force push / reset --hard chỉ khi user yêu cầu rõ ràng
 
 ### Commit message style
 
@@ -149,7 +157,7 @@ Logic ở `decideLeave` + `decideOvertime` trong [src/app/admin/history/page.tsx
 │   └── types/db.ts                # Office, Employee, CheckIn, LeaveRequest, OvertimeRequest
 ├── supabase/migrations/           # Các file SQL (apply qua Supabase Dashboard)
 ├── public/
-│   ├── models/                    # face-api weights (~7MB) — committed vì Vercel cần serve
+│   ├── models/                    # face-api weights (~7MB) — committed để serve qua Next.js public/
 │   ├── icons/                     # PWA icons (gen bằng `npm run generate-icons`)
 │   ├── manifest.json
 │   └── sw.js                      # Service worker (push handler + cache-first models)

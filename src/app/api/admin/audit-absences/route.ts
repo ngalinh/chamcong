@@ -12,7 +12,7 @@ import { isAdminEmail } from "@/lib/utils";
  * Query params:
  *   - month=YYYY-MM (default: tháng trước)
  *
- * Có thể gọi thủ công từ admin UI, hoặc qua cron (vd Vercel cron) với header
+ * Có thể gọi thủ công từ admin UI, hoặc qua cron (vd systemd timer / GH Actions) với header
  *   X-Admin-Secret: $AUDIT_CRON_SECRET
  */
 
