@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { loadFaceModels, detectDescriptor, distance } from "@/lib/face";
 import { getCurrentCoords, haversine } from "@/lib/geo";
 import { cn } from "@/lib/utils";
+import { logError } from "@/lib/log";
 import { Button } from "@/components/ui/Button";
 import {
   MapPin,
@@ -75,11 +76,13 @@ export default function CheckInFlow({
     setScore(null);
     setMatchedOffice(null);
     cancelledRef.current = false;
+    let currentStep: Step = "idle";
+    const goStep = (s: Step) => { currentStep = s; setStep(s); };
 
     try {
       if (offices.length === 0) throw new Error("Chưa có chi nhánh nào được cấu hình.");
 
-      setStep("geo");
+      goStep("geo");
       setMessage("Đang kiểm tra vị trí...");
       const pos = await getCurrentCoords();
       if (cancelledRef.current) return;
@@ -97,12 +100,22 @@ export default function CheckInFlow({
       }
       setMatchedOffice({ name: nearest.office.name, distM: nearest.distM });
 
-      setStep("camera");
+      goStep("camera");
       setMessage("Đang mở camera...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
+      // Timeout 15s — iOS Safari nhiều khi treo getUserMedia khi permission đã bị deny
+      // mà OS không re-prompt; fail nhanh để hiển thị lỗi cho user.
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        }),
+        new Promise<MediaStream>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Camera không phản hồi (timeout 15s). Vào Cài đặt → Safari → Camera, cho phép truy cập rồi thử lại.")),
+            15000,
+          ),
+        ),
+      ]);
       if (cancelledRef.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -115,7 +128,7 @@ export default function CheckInFlow({
       await loadFaceModels();
       if (cancelledRef.current) return;
 
-      setStep("match");
+      goStep("match");
       setMessage("Nhìn thẳng vào camera...");
       const deadline = Date.now() + 10000;
       let lastDescriptor: Float32Array | null = null;
@@ -154,7 +167,7 @@ export default function CheckInFlow({
 
       stopCamera();
 
-      setStep("uploading");
+      goStep("uploading");
       setMessage("Đang gửi dữ liệu...");
       const form = new FormData();
       form.append("selfie", blob, "selfie.jpg");
@@ -172,7 +185,7 @@ export default function CheckInFlow({
         throw new Error(respData.error ?? "Server từ chối");
       }
 
-      setStep("done");
+      goStep("done");
       if (respData.kind === "in" && respData.late_minutes) {
         setLateEarly(`⚠️ Bạn đã đi làm muộn ${respData.late_minutes} phút`);
       } else if (respData.kind === "out" && respData.early_minutes) {
@@ -183,8 +196,10 @@ export default function CheckInFlow({
       setTimeout(() => router.push("/"), respData.late_minutes || respData.early_minutes ? 3500 : 1800);
     } catch (e: unknown) {
       stopCamera();
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
       setStep("error");
+      logError(e, { where: "CheckInFlow.run", step: currentStep });
     }
   }
 
