@@ -75,11 +75,20 @@ fi
 DB_SIZE=$(du -h "$DB_FILE" | cut -f1)
 echo "$LOG_PREFIX       OK ($DB_SIZE)"
 
-# 2. Storage sync (Node script — incremental)
+# 2. Storage sync — Node 20+ + node_modules (chạy npm install --silent --omit=dev
+# 1 lần bên dưới). Nếu vẫn fail, in hướng dẫn rõ.
 echo "$LOG_PREFIX [2/4] Sync Supabase Storage → $BACKUP_DIR/storage/"
 if ! command -v node >/dev/null 2>&1; then
-  echo "$LOG_PREFIX WARN: node không có, bỏ qua storage sync. Cài node v20+ để dùng."
+  echo "$LOG_PREFIX WARN: node không có. Cài để dùng storage sync:"
+  echo "$LOG_PREFIX        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+  echo "$LOG_PREFIX        sudo apt-get install -y nodejs"
 else
+  # Cài @supabase/supabase-js 1 lần (project lẽ ra đã có node_modules sau npm ci/install,
+  # nhưng /opt/chamcong là source code, không build trên host → tạo node_modules tối thiểu).
+  if [ ! -d node_modules/@supabase ]; then
+    echo "$LOG_PREFIX       Install @supabase/supabase-js lần đầu..."
+    npm install --no-audit --no-fund --silent --no-save --omit=dev @supabase/supabase-js 2>&1 | tail -3 || true
+  fi
   node scripts/backup-storage.mjs --dest="$BACKUP_DIR/storage" --buckets=selfies,faces || {
     echo "$LOG_PREFIX WARN: storage sync có file fail (xem log trên)"
   }

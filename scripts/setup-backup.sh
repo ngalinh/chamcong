@@ -109,11 +109,15 @@ fi
 echo ""
 echo "[4/5] Restart Docker container để load env mới..."
 if [ "${RESTART_NEEDED:-0}" = "1" ]; then
-  if docker ps --format '{{.Names}}' | grep -q "^chamcong$"; then
-    docker restart chamcong
-    echo "      ✓ Restart container chamcong"
+  # Match cả "chamcong" exact và "chamcong-a"/"chamcong-b" (blue-green deploy)
+  CONTAINERS=$(docker ps --format '{{.Names}}' | grep -E '^chamcong(-[a-z])?$' || true)
+  if [ -n "$CONTAINERS" ]; then
+    for c in $CONTAINERS; do
+      docker restart "$c" >/dev/null
+      echo "      ✓ Restart $c"
+    done
   else
-    echo "      ! Không thấy container 'chamcong' đang chạy — bạn restart thủ công nếu cần."
+    echo "      ! Không thấy container nào tên chamcong* đang chạy — restart thủ công nếu cần."
   fi
 else
   echo "      ✓ Không có thay đổi env, bỏ qua restart"
