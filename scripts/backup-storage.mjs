@@ -37,8 +37,22 @@ const DEST = args.dest || process.env.BACKUP_DIR
   : "/opt/chamcong/backups/storage";
 const BUCKETS = (args.buckets ?? "selfies,faces").split(",");
 
+// Supabase JS auto-imports realtime client, cần WebSocket. Node <22 không có
+// native WebSocket → poly-fill bằng ws package nếu có.
+if (typeof globalThis.WebSocket === "undefined") {
+  try {
+    const { default: WebSocket } = await import("ws");
+    globalThis.WebSocket = WebSocket;
+  } catch {
+    // ws không cài — backup chỉ dùng storage API (REST), không cần realtime
+    // → set stub để không crash
+    globalThis.WebSocket = class {};
+  }
+}
+
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false },
+  realtime: { params: { eventsPerSecond: 1 } }, // không dùng realtime, giảm overhead
 });
 
 /**

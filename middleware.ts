@@ -13,7 +13,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/icons") ||
     pathname === "/api/health" ||
-    pathname === "/api/admin/audit-absences";
+    pathname === "/api/admin/audit-absences" ||
+    pathname === "/api/admin/cleanup-history";
   if (isPublic) return NextResponse.next();
 
   const isAuthRoute =
