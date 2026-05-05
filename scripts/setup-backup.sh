@@ -94,33 +94,32 @@ if ! grep -q "^DATABASE_URL=" "$ENV_FILE"; then
   echo ""
   echo "    1. https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/settings/database"
   echo "    2. Connection string → Mode 'Direct connection' (port 5432)"
-  echo "    3. Copy password ở mục 'Database password' (hoặc Reset rồi copy)"
+  echo "    3. Copy URI dạng: postgresql://postgres:[YOUR-PASSWORD]@db.tmrtgriopaczpxrpxmpu.supabase.co:5432/postgres"
+  echo "    4. Thay [YOUR-PASSWORD] bằng password DB thật"
   echo ""
-  echo "  Nhập riêng để script tự URL-encode password (tránh lỗi @ # & / : trong password):"
+  echo "  Lưu ý: nếu password có @ # & / : ? = + → URL-encode trước (vd @ → %40),"
+  echo "  hoặc đổi password trên Supabase sang chỉ chữ cái + số."
   echo ""
-  read -r -p "  DB host (default: db.tmrtgriopaczpxrpxmpu.supabase.co): " DB_HOST
-  DB_HOST="${DB_HOST:-db.tmrtgriopaczpxrpxmpu.supabase.co}"
-  read -r -s -p "  DB password (input ẩn): " DB_PASS
-  echo ""
-  if [ -z "$DB_PASS" ]; then
-    echo "      ✗ Password trống — bỏ qua."
+  read -r -p "  Paste DATABASE_URL ở đây: " DB_URL
+  if [ -z "$DB_URL" ]; then
+    echo "      ✗ Trống — bỏ qua. Chạy lại script khi có DATABASE_URL."
     exit 1
   fi
 
-  # URL-encode password — Python3 có sẵn trên mọi server Ubuntu
-  DB_PASS_ENC=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASS")
-  DB_URL="postgresql://postgres:${DB_PASS_ENC}@${DB_HOST}:5432/postgres"
-
-  # Test thử connection trước khi save (tránh lưu URL sai)
+  # Test connection trước khi save (tránh lưu URL sai)
   echo "      → Test connection..."
   if ! pg_isready -d "$DB_URL" -t 10 >/dev/null 2>&1; then
-    echo "      ✗ Connect fail. Kiểm tra password hoặc host. Chạy lại script."
+    echo "      ✗ Connect fail. Kiểm tra:"
+    echo "         - Format đúng: postgresql://postgres:PASSWORD@db.xxx.supabase.co:5432/postgres"
+    echo "         - Password có ký tự đặc biệt? URL-encode hoặc đổi password."
+    echo "         - Host: db.<project-ref>.supabase.co (KHÔNG có 'https://' hay path /postgres ở host)"
+    echo "      Chạy lại script khi đã sửa."
     exit 1
   fi
   echo "      ✓ Connect OK"
 
   echo "DATABASE_URL=$DB_URL" >> "$ENV_FILE"
-  echo "      ✓ Đã thêm DATABASE_URL (password đã URL-encode an toàn)"
+  echo "      ✓ Đã thêm DATABASE_URL"
   RESTART_NEEDED=1
 else
   echo "      ✓ Đã có DATABASE_URL"
