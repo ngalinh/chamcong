@@ -21,51 +21,21 @@ echo "════════════════════════�
 echo "  Setup backup nightly Chấm công"
 echo "═══════════════════════════════════════════════════════"
 
-# ── 1. Cài postgresql-client (cần pg_dump) ──
+# ── 1. Đảm bảo Docker có (backup.sh dùng docker run postgres:17 cho pg_dump) ──
 echo ""
-echo "[1/5] Kiểm tra pg_dump..."
-if ! command -v pg_dump >/dev/null 2>&1; then
-  echo "      Đang cài postgresql-client..."
-  # Đợi unattended-upgrades / apt khác xong (Ubuntu hay chạy auto update background)
-  WAIT=0
-  while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
-        sudo fuser /var/lib/dpkg/lock         >/dev/null 2>&1 || \
-        sudo fuser /var/cache/apt/archives/lock >/dev/null 2>&1; do
-    if [ "$WAIT" -eq 0 ]; then
-      echo "      ⏳ Đợi process apt khác (unattended-upgrades?) xong..."
-    fi
-    WAIT=$((WAIT + 1))
-    if [ "$WAIT" -gt 120 ]; then
-      echo "      ✗ Đợi 10 phút mà apt vẫn lock — kill thủ công: sudo kill \$(pgrep -x unattended-upgr)"
-      exit 1
-    fi
-    sleep 5
-  done
-
-  # apt-get update có thể fail do Ubuntu mirror tạm flaky (HTTP 520, "no longer signed", ...)
-  # → retry 3 lần. Nếu vẫn fail, vẫn thử install (apt cache cũ có thể đủ).
-  for i in 1 2 3; do
-    if sudo apt-get update -qq; then
-      break
-    fi
-    if [ "$i" -lt 3 ]; then
-      echo "      ⚠ apt-get update fail (lần $i/3), thử lại sau 10s..."
-      sleep 10
-    else
-      echo "      ⚠ apt-get update vẫn fail — thử install bằng cache cũ..."
-    fi
-  done
-
-  if ! sudo apt-get install -y postgresql-client; then
-    echo "      ✗ apt-get install fail. Thử thủ công khi mạng ổn:"
-    echo "        sudo apt-get update && sudo apt-get install -y postgresql-client"
-    echo "        rồi chạy lại: bash $APP_DIR/scripts/setup-backup.sh"
-    exit 1
-  fi
-  echo "      ✓ Đã cài $(pg_dump --version)"
-else
-  echo "      ✓ Đã có $(pg_dump --version)"
+echo "[1/5] Kiểm tra Docker..."
+if ! command -v docker >/dev/null 2>&1; then
+  echo "      ✗ docker không có. Cài Docker rồi chạy lại script:"
+  echo "        curl -fsSL https://get.docker.com | sh"
+  echo "        sudo usermod -aG docker \$USER && newgrp docker"
+  exit 1
 fi
+# Pre-pull postgres:17 để backup chạy nhanh lần đầu
+if ! docker image inspect postgres:17 >/dev/null 2>&1; then
+  echo "      Đang pull postgres:17 image (~150MB, 1 lần duy nhất)..."
+  docker pull postgres:17
+fi
+echo "      ✓ Docker $(docker --version | awk '{print $3}' | tr -d ',') + postgres:17 image"
 
 # ── 2. Đảm bảo có AUDIT_CRON_SECRET ──
 echo ""
@@ -109,9 +79,10 @@ if ! grep -q "^DATABASE_URL=" "$ENV_FILE"; then
     exit 1
   fi
 
-  # Test connection trước khi save (tránh lưu URL sai)
+  # Test connection trước khi save (tránh lưu URL sai) — dùng docker postgres:17
   echo "      → Test connection..."
-  if ! pg_isready -d "$DB_URL" -t 10 >/dev/null 2>&1; then
+  if ! docker run --rm -e PGCONNECT_TIMEOUT=10 postgres:17 \
+       psql "$DB_URL" -c 'select 1' >/dev/null 2>&1; then
     echo "      ✗ Connect fail. Có thể:"
     echo "         (a) Đang dùng Direct connection 'db.xxx.supabase.co' — free tier chỉ IPv6,"
     echo "             server không có IPv6 → Đổi sang URL Pooler Session mode."
