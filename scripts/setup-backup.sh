@@ -90,21 +90,37 @@ echo ""
 echo "[3/5] Kiểm tra DATABASE_URL trong .env..."
 if ! grep -q "^DATABASE_URL=" "$ENV_FILE"; then
   echo ""
-  echo "  ⚠ DATABASE_URL chưa có — cần lấy từ Supabase Dashboard:"
+  echo "  ⚠ DATABASE_URL chưa có — lấy từ Supabase Dashboard:"
   echo ""
-  echo "    1. Vào https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu"
-  echo "    2. Settings → Database → Connection string"
-  echo "    3. Mode: 'Direct connection' (port 5432, KHÔNG phải pooler)"
-  echo "    4. Copy URI dạng: postgresql://postgres:[YOUR-PASSWORD]@db.tmrtgriopaczpxrpxmpu.supabase.co:5432/postgres"
-  echo "    5. Thay [YOUR-PASSWORD] bằng password DB thật của bạn"
+  echo "    1. https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/settings/database"
+  echo "    2. Connection string → Mode 'Direct connection' (port 5432)"
+  echo "    3. Copy password ở mục 'Database password' (hoặc Reset rồi copy)"
   echo ""
-  read -r -p "  Paste DATABASE_URL ở đây (sẽ lưu vào .env): " DB_URL
-  if [ -z "$DB_URL" ]; then
-    echo "      ✗ Trống — bỏ qua. Chạy lại script này khi có DATABASE_URL."
+  echo "  Nhập riêng để script tự URL-encode password (tránh lỗi @ # & / : trong password):"
+  echo ""
+  read -r -p "  DB host (default: db.tmrtgriopaczpxrpxmpu.supabase.co): " DB_HOST
+  DB_HOST="${DB_HOST:-db.tmrtgriopaczpxrpxmpu.supabase.co}"
+  read -r -s -p "  DB password (input ẩn): " DB_PASS
+  echo ""
+  if [ -z "$DB_PASS" ]; then
+    echo "      ✗ Password trống — bỏ qua."
     exit 1
   fi
+
+  # URL-encode password — Python3 có sẵn trên mọi server Ubuntu
+  DB_PASS_ENC=$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DB_PASS")
+  DB_URL="postgresql://postgres:${DB_PASS_ENC}@${DB_HOST}:5432/postgres"
+
+  # Test thử connection trước khi save (tránh lưu URL sai)
+  echo "      → Test connection..."
+  if ! pg_isready -d "$DB_URL" -t 10 >/dev/null 2>&1; then
+    echo "      ✗ Connect fail. Kiểm tra password hoặc host. Chạy lại script."
+    exit 1
+  fi
+  echo "      ✓ Connect OK"
+
   echo "DATABASE_URL=$DB_URL" >> "$ENV_FILE"
-  echo "      ✓ Đã thêm DATABASE_URL"
+  echo "      ✓ Đã thêm DATABASE_URL (password đã URL-encode an toàn)"
   RESTART_NEEDED=1
 else
   echo "      ✓ Đã có DATABASE_URL"
