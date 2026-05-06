@@ -22,6 +22,11 @@ export function logError(
 
     if (typeof window === "undefined") return;
 
+    // Bỏ qua React error #418/#419/#421/#422/#423/#425 — đều là cảnh báo
+    // hydration / Suspense fail trên mạng yếu, React tự fallback client-render.
+    // Không phải bug app, log vào noisy không có giá trị.
+    if (/Minified React error #(418|419|421|422|423|425)\b/.test(message)) return;
+
     fetch("/api/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
