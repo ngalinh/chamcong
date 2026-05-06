@@ -61,7 +61,7 @@ export default function AddCheckInModal({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 inline-flex items-center gap-1.5"
+        className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
       >
         <Plus size={14} /> Thêm chấm công
       </button>
