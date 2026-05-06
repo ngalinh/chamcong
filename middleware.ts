@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
+async function run(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Skip auth hoàn toàn cho các static/public paths — không gọi Supabase
@@ -42,7 +42,10 @@ export async function middleware(request: NextRequest) {
 
   // Dùng getUser() nhưng Supabase SSR cache phiên trong cookies — chỉ network call
   // khi token gần hết hạn. Page sẽ tự getUser() lại để verify bảo mật.
+  const tAuth0 = Date.now();
   const { data: { user } } = await supabase.auth.getUser();
+  const authMs = Date.now() - tAuth0;
+  response.headers.set("X-Mw-Auth-Ms", String(authMs));
 
   if (!user && !isAuthRoute) {
     // Build redirect URL từ X-Forwarded-* (nginx) thay vì request.nextUrl
@@ -54,6 +57,28 @@ export async function middleware(request: NextRequest) {
     const url = new URL("/login", base);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  return response;
+}
+
+export async function middleware(request: NextRequest) {
+  const t0 = Date.now();
+  const response = await run(request);
+  const mwMs = Date.now() - t0;
+  const authMs = Number(response.headers.get("X-Mw-Auth-Ms") ?? 0);
+
+  // Server-Timing header — DevTools Network tab → request → Timing → "mw" / "auth"
+  const prev = response.headers.get("Server-Timing");
+  const timing = `mw;dur=${mwMs}, auth;dur=${authMs}`;
+  response.headers.set("Server-Timing", prev ? `${prev}, ${timing}` : timing);
+
+  // Log request chậm vào docker logs (visible qua `docker logs chamcong-a`)
+  // Ngưỡng 500ms cho mw + 1500ms cho cả request (bao gồm SSR sau middleware
+  // không đo được ở đây — chỉ thấy phần mw + auth).
+  if (mwMs > 500) {
+    const path = request.nextUrl.pathname + request.nextUrl.search;
+    console.warn(`[slow-mw] ${request.method} ${path} mw=${mwMs}ms auth=${authMs}ms`);
   }
 
   return response;
