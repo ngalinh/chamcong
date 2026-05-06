@@ -826,11 +826,11 @@ export default async function HistoryPage({
         <h1 className="text-2xl font-semibold tracking-tight">
           {pendingOnly ? "Đơn chờ duyệt" : "Lịch sử"}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {pendingOnly && (
             <a
               href="/admin/history"
-              className="text-xs font-medium text-neutral-500 hover:text-neutral-700 underline underline-offset-2"
+              className="text-xs font-medium text-neutral-500 hover:text-neutral-700 underline underline-offset-2 whitespace-nowrap"
             >
               ← Xem tất cả lịch sử
             </a>
