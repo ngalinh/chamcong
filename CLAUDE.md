@@ -61,7 +61,7 @@ Nếu rebuild server từ zero, phải set lại 2 cái này.
 
 **Sau mỗi đợt sửa code, tự thực hiện toàn bộ chuỗi mà không hỏi:**
 1. Commit + push lên branch hiện tại (group theo logical change, 1-2 commit / lần).
-2. Nếu đang trên branch feature có PR → **tự merge (squash) PR vào `main`** ngay sau khi typecheck pass + CI xanh.
+2. Nếu đang trên branch feature có PR → chạy `npx tsc --noEmit` local, nếu pass thì **tự mark draft → ready (nếu đang draft) + tự merge (squash) PR vào `main`** ngay. KHÔNG ngồi đợi GitHub Actions: workflow `deploy.yml` chỉ chạy trên `push: branches:[main]`, KHÔNG trigger trên PR — nên `get_check_runs` luôn trả về rỗng cho PR. Coi typecheck local pass = "CI xanh" cho PR.
 3. CI/CD ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) tự build + SSH deploy lên server công ty (`/opt/chamcong`) khi push tới `main` — không cần thao tác thủ công.
 
 Không cần hỏi user "có muốn merge không" — cứ làm. User chỉ can thiệp nếu muốn dừng.
