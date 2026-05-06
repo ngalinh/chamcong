@@ -156,11 +156,41 @@ export default function CheckInFlow({
         throw new Error(`Khuôn mặt không khớp (độ khác ${d.toFixed(3)} > ${threshold}).`);
       }
 
+      // iOS Safari 17.x đôi khi resolve play() + cho face-api detect được mặt nhưng
+      // drawImage(video) vẫn ra khung đen (GPU buffer chưa sync về CPU). Đợi
+      // requestVideoFrameCallback để chắc 1 frame đã paint, rồi sanity-check pixel.
+      for (let i = 0; i < 10 && (!v.videoWidth || v.readyState < 2); i++) {
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      if (!v.videoWidth) throw new Error("Camera chưa sẵn sàng, vui lòng thử lại.");
+
+      type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
+      const waitFrame = () =>
+        new Promise<void>((resolve) => {
+          const ext = v as RVFC;
+          if (ext.requestVideoFrameCallback) ext.requestVideoFrameCallback(() => resolve());
+          else requestAnimationFrame(() => resolve());
+        });
+      await waitFrame();
+      await waitFrame();
+
       const canvas = canvasRef.current!;
       canvas.width = v.videoWidth;
       canvas.height = v.videoHeight;
       const ctx = canvas.getContext("2d")!;
       ctx.drawImage(v, 0, 0);
+
+      const sample = ctx.getImageData(canvas.width >> 1, canvas.height >> 1, 8, 8).data;
+      let isBlack = true;
+      for (let i = 0; i < sample.length; i += 4) {
+        if (sample[i] > 8 || sample[i + 1] > 8 || sample[i + 2] > 8) { isBlack = false; break; }
+      }
+      if (isBlack) {
+        await waitFrame();
+        await waitFrame();
+        ctx.drawImage(v, 0, 0);
+      }
+
       const blob: Blob = await new Promise((resolve) =>
         canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.85),
       );
