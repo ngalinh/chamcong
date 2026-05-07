@@ -608,7 +608,7 @@ async function decideViolation(formData: FormData) {
 export default async function HistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; office?: string; employee?: string; type?: RowType | "all"; status?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; office?: string; employee?: string; type?: RowType | "all"; status?: string; page?: string }>;
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
@@ -617,6 +617,14 @@ export default async function HistoryPage({
   const { data: { user: viewer } } = await supabase.auth.getUser();
   const viewerEmail = viewer?.email?.toLowerCase() ?? "";
   const admin = createAdminClient();
+
+  // Phân trang per-source (mỗi loại record fetch độc lập). Tab cụ thể = exact;
+  // tab "all" = mỗi source page riêng → mix thời gian gần đúng (chấp nhận được
+  // vì admin thường lọc theo tab cụ thể khi cần xem sâu).
+  const PAGE_SIZE = pendingOnly ? 100 : 50;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const rangeFrom = (page - 1) * PAGE_SIZE;
+  const rangeTo = rangeFrom + PAGE_SIZE - 1;
 
   // Khi xem pending → mở rộng range tìm đơn cũ chưa duyệt (3 tháng)
   const from = sp.from
@@ -641,7 +649,7 @@ export default async function HistoryPage({
       .gte("checked_in_at", from.toISOString())
       .lte("checked_in_at", to.toISOString())
       .order("checked_in_at", { ascending: false })
-      .limit(300);
+      .range(rangeFrom, rangeTo);
     if (sp.office) q = q.eq("office_id", sp.office);
     if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
@@ -693,7 +701,7 @@ export default async function HistoryPage({
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
-      .limit(300);
+      .range(rangeFrom, rangeTo);
     if (pendingOnly) q = q.eq("status", "pending");
     if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
@@ -726,7 +734,7 @@ export default async function HistoryPage({
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
-      .limit(200);
+      .range(rangeFrom, rangeTo);
     if (pendingOnly) q = q.eq("status", "pending");
     if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
@@ -762,7 +770,7 @@ export default async function HistoryPage({
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
-      .limit(300);
+      .range(rangeFrom, rangeTo);
     if (pendingOnly) q = q.eq("status", "pending");
     if (employeeFilter) q = q.eq("employee_id", employeeFilter);
     const { data } = await q;
@@ -815,10 +823,30 @@ export default async function HistoryPage({
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
   );
 
+  // Có thể còn page tiếp nếu BẤT KỲ source nào trả về đủ PAGE_SIZE record.
+  // Conservative: hiện "Trang sau" — nếu sang trang trống thì NV biết hết data.
+  const hasMore =
+    checkInsRows.length === PAGE_SIZE ||
+    leaveRows.length === PAGE_SIZE ||
+    overtimeRows.length === PAGE_SIZE ||
+    violationRows.length === PAGE_SIZE;
+
   const baseParams = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
   if (sp.office) baseParams.set("office", sp.office);
   if (employeeFilter) baseParams.set("employee", employeeFilter);
   const exportHref = `/api/history/export?${baseParams.toString()}`;
+
+  const pageHref = (p: number) => {
+    const u = new URLSearchParams();
+    if (sp.from) u.set("from", sp.from);
+    if (sp.to) u.set("to", sp.to);
+    if (sp.office) u.set("office", sp.office);
+    if (sp.employee) u.set("employee", sp.employee);
+    if (sp.type) u.set("type", sp.type);
+    if (sp.status) u.set("status", sp.status);
+    if (p > 1) u.set("page", String(p));
+    return `/admin/history${u.toString() ? "?" + u.toString() : ""}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -887,7 +915,11 @@ export default async function HistoryPage({
       </form>
 
       {rows.length === 0 ? (
-        <Empty icon={Inbox} title="Không có dữ liệu" description="Điều chỉnh bộ lọc hoặc thời gian." />
+        page > 1 ? (
+          <Empty icon={Inbox} title="Hết dữ liệu" description="Đã xem hết các trang trước." />
+        ) : (
+          <Empty icon={Inbox} title="Không có dữ liệu" description="Điều chỉnh bộ lọc hoặc thời gian." />
+        )
       ) : (
         <div className="space-y-2">
           {rows.map((r) => {
@@ -910,6 +942,30 @@ export default async function HistoryPage({
             }
             return <ViolationCard key={`v:${r.id}`} row={r} onDelete={deleteViolation} onDecide={decideViolation} viewerEmail={viewerEmail} />;
           })}
+        </div>
+      )}
+
+      {(page > 1 || hasMore) && (
+        <div className="flex items-center justify-between gap-3 pt-2">
+          {page > 1 ? (
+            <Link
+              href={pageHref(page - 1)}
+              prefetch={false}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-lg text-sm font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
+            >
+              ← Trang trước
+            </Link>
+          ) : <span />}
+          <span className="text-xs text-neutral-500">Trang {page}</span>
+          {hasMore ? (
+            <Link
+              href={pageHref(page + 1)}
+              prefetch={false}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-lg text-sm font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
+            >
+              Trang sau →
+            </Link>
+          ) : <span />}
         </div>
       )}
     </div>
