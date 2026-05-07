@@ -92,7 +92,7 @@ type Row = CheckInRow | LeaveRow | OvertimeRow | ViolationRow;
 export default async function MyHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: RowType | "all"; from?: string; to?: string }>;
+  searchParams: Promise<{ type?: RowType | "all"; from?: string; to?: string; page?: string }>;
 }) {
   const sp = await searchParams;
   const type = sp.type ?? "all";
@@ -109,6 +109,13 @@ export default async function MyHistoryPage({
     .maybeSingle();
   if (!employee) redirect("/enroll");
 
+  // Phân trang per-source 50/trang. NV xem history của chính mình → volume
+  // thấp hơn admin nhiều, nhưng vẫn áp pattern này cho consistency + load nhanh.
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, Number(sp.page) || 1);
+  const rangeFrom = (page - 1) * PAGE_SIZE;
+  const rangeTo = rangeFrom + PAGE_SIZE - 1;
+
   // Date range filter — default 30 ngày qua đến hôm nay
   const from = sp.from ? new Date(sp.from + "T00:00:00+07:00") : new Date(Date.now() - 30 * 86400_000);
   const to = sp.to ? new Date(sp.to + "T23:59:59.999+07:00") : new Date();
@@ -116,6 +123,10 @@ export default async function MyHistoryPage({
   const toIso = to.toISOString();
 
   const rows: Row[] = [];
+  let checkInsCount = 0;
+  let overtimeCount = 0;
+  let leaveCount = 0;
+  let violationCount = 0;
 
   if (type === "all" || type === "checkin") {
     const { data } = await admin
@@ -125,9 +136,10 @@ export default async function MyHistoryPage({
       .gte("checked_in_at", fromIso)
       .lte("checked_in_at", toIso)
       .order("checked_in_at", { ascending: false })
-      .limit(100);
+      .range(rangeFrom, rangeTo);
 
     const checkIns = data ?? [];
+    checkInsCount = checkIns.length;
     const paths = checkIns.map((r) => r.selfie_path).filter(Boolean) as string[];
     const signedMap = new Map<string, string>();
     if (paths.length > 0) {
@@ -163,7 +175,8 @@ export default async function MyHistoryPage({
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(rangeFrom, rangeTo);
+    overtimeCount = (ots ?? []).length;
     for (const r of ots ?? []) {
       rows.push({
         type: "overtime",
@@ -187,7 +200,8 @@ export default async function MyHistoryPage({
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(rangeFrom, rangeTo);
+    leaveCount = (data ?? []).length;
     for (const r of data ?? []) {
       rows.push({
         type: "leave",
@@ -211,7 +225,8 @@ export default async function MyHistoryPage({
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(rangeFrom, rangeTo);
+    violationCount = (data ?? []).length;
     for (const r of data ?? []) {
       const items = (r as { violation_items?: unknown[] }).violation_items ?? [];
       rows.push({
@@ -228,6 +243,21 @@ export default async function MyHistoryPage({
   }
 
   rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+  const hasMore =
+    checkInsCount === PAGE_SIZE ||
+    overtimeCount === PAGE_SIZE ||
+    leaveCount === PAGE_SIZE ||
+    violationCount === PAGE_SIZE;
+
+  const pageHref = (p: number) => {
+    const u = new URLSearchParams();
+    if (sp.type) u.set("type", sp.type);
+    if (sp.from) u.set("from", sp.from);
+    if (sp.to) u.set("to", sp.to);
+    if (p > 1) u.set("page", String(p));
+    return `/history${u.toString() ? "?" + u.toString() : ""}`;
+  };
 
   return (
     <main className="mx-auto max-w-md min-h-dvh px-safe pt-safe pb-safe flex flex-col gap-4">
@@ -264,7 +294,11 @@ export default async function MyHistoryPage({
       </form>
 
       {rows.length === 0 ? (
-        <Empty icon={Inbox} title="Chưa có gì" description="Các hoạt động của bạn sẽ hiện ở đây." />
+        page > 1 ? (
+          <Empty icon={Inbox} title="Hết dữ liệu" description="Đã xem hết các trang trước." />
+        ) : (
+          <Empty icon={Inbox} title="Chưa có gì" description="Các hoạt động của bạn sẽ hiện ở đây." />
+        )
       ) : (
         <div className="flex flex-col gap-2">
           {rows.map((r) => {
@@ -273,6 +307,30 @@ export default async function MyHistoryPage({
             if (r.type === "overtime") return <OvertimeCard key={`o:${r.id}`} row={r} />;
             return <ViolationCard key={`v:${r.id}`} row={r} />;
           })}
+        </div>
+      )}
+
+      {(page > 1 || hasMore) && (
+        <div className="flex items-center justify-between gap-3 pt-2">
+          {page > 1 ? (
+            <Link
+              href={pageHref(page - 1)}
+              prefetch={false}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-lg text-sm font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
+            >
+              ← Trang trước
+            </Link>
+          ) : <span />}
+          <span className="text-xs text-neutral-500">Trang {page}</span>
+          {hasMore ? (
+            <Link
+              href={pageHref(page + 1)}
+              prefetch={false}
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-lg text-sm font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
+            >
+              Trang sau →
+            </Link>
+          ) : <span />}
         </div>
       )}
     </main>
