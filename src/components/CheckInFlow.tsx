@@ -175,10 +175,15 @@ export default function CheckInFlow({
       await waitFrame();
 
       const canvas = canvasRef.current!;
-      canvas.width = v.videoWidth;
-      canvas.height = v.videoHeight;
+      // Cap 480px max chiều dài lớn nhất + quality 0.7 → ~12-25KB/ảnh thay vì
+      // 50-200KB. Đủ chất lượng face match (0.30 đã đo trên ảnh resize) và đủ
+      // sắc nét cho thumbnail 64x64 trên admin list.
+      const MAX_DIM = 480;
+      const scale = Math.min(1, MAX_DIM / Math.max(v.videoWidth, v.videoHeight));
+      canvas.width = Math.round(v.videoWidth * scale);
+      canvas.height = Math.round(v.videoHeight * scale);
       const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(v, 0, 0);
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
 
       const sample = ctx.getImageData(canvas.width >> 1, canvas.height >> 1, 8, 8).data;
       let isBlack = true;
@@ -188,11 +193,11 @@ export default function CheckInFlow({
       if (isBlack) {
         await waitFrame();
         await waitFrame();
-        ctx.drawImage(v, 0, 0);
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       }
 
       const blob: Blob = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.85),
+        canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.7),
       );
 
       stopCamera();
