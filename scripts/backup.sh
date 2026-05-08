@@ -4,7 +4,7 @@
 # Làm 3 việc theo thứ tự:
 #   1. pg_dump → /opt/chamcong/backups/db-YYYYMMDD-HHMMSS.sql.gz
 #   2. Sync Storage buckets (selfies, faces) → /opt/chamcong/backups/storage/
-#   3. Gọi /api/admin/cleanup-history để xoá data >300 ngày + selfie file
+#   3. Gọi /api/admin/cleanup-history để snapshot bảng lương + xoá data >100 ngày + selfie >50 ngày
 #   4. Rotate: xoá .sql.gz cũ hơn 30 ngày
 #
 # Cài đặt cron (crontab -e của user vmadmin) — 3:00 sáng Chủ nhật hàng tuần:
@@ -96,15 +96,18 @@ else
   }
 fi
 
-# 3. Cleanup data >300 ngày qua API (chạy SAU khi backup xong để không mất data)
-echo "$LOG_PREFIX [3/4] Cleanup history >300 ngày qua $APP_URL/api/admin/cleanup-history"
+# 3. Cleanup qua API (sau khi backup xong để dump giữ snapshot trước cleanup):
+#    - Snapshot bảng lương cho mọi (NV, tháng) sắp bị xoá
+#    - Selfie >50 ngày: xoá file Storage + clear selfie_path (giữ row check_ins)
+#    - Data >100 ngày (làm tròn xuống biên tháng): xoá check_ins/leave/OT/violations/alerts
+echo "$LOG_PREFIX [3/4] Cleanup qua $APP_URL/api/admin/cleanup-history (history>100d, selfie>50d)"
 if [ -z "${AUDIT_CRON_SECRET:-}" ]; then
   echo "$LOG_PREFIX WARN: AUDIT_CRON_SECRET chưa set, bỏ qua cleanup"
 else
   CLEANUP_RES=$(curl -fsS -X POST "$APP_URL/api/admin/cleanup-history" \
     -H "X-Admin-Secret: $AUDIT_CRON_SECRET" \
     -H "Content-Type: application/json" \
-    -d '{"history_days":300,"log_days":30}' || echo '{"error":"curl failed"}')
+    -d '{"history_days":100,"selfie_days":50,"log_days":30}' || echo '{"error":"curl failed"}')
   echo "$LOG_PREFIX       $CLEANUP_RES"
 fi
 

@@ -3,11 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
-import { LEAVE_CATEGORIES, type Employee, type LeaveCategory, type LeaveStatus } from "@/types/db";
-import { computePayroll, computeParttimePayroll, type PayrollResult, type ParttimePayrollResult } from "@/lib/payroll";
-import { countWorkdaysInMonth, listWorkingDaysInMonth, monthRangeVN, parseYearMonth, yearMonthVN } from "@/lib/workdays";
-import { dateVN, formatVN } from "@/lib/time";
-import { effectiveWorkShifts } from "@/lib/workHours";
+import { LEAVE_CATEGORIES, type Employee, type LeaveCategory } from "@/types/db";
+import type { PayrollResult, ParttimePayrollResult } from "@/lib/payroll";
+import { parseYearMonth, yearMonthVN } from "@/lib/workdays";
+import { formatVN } from "@/lib/time";
+import { computePayrollForMonth, type PayrollSnapshotPayload } from "@/lib/payroll-snapshot";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -53,7 +53,6 @@ export default async function PayrollPage({
 
   const monthStr = sp.month && parseYearMonth(sp.month) ? sp.month : yearMonthVN();
   const ym = parseYearMonth(monthStr)!;
-  const { startIso, endIso } = monthRangeVN(ym.year, ym.month);
 
   const admin = createAdminClient();
   const { data: emp } = await admin
@@ -65,81 +64,18 @@ export default async function PayrollPage({
 
   const isParttime = emp.employment_type === "parttime";
 
-  const [{ data: checkIns }, { data: violations }, { data: otRequests }, { data: leaves }] = await Promise.all([
-    admin
-      .from("check_ins")
-      .select("id, kind, checked_in_at, late_minutes, early_minutes, offices(name)")
-      .eq("employee_id", emp.id)
-      .gte("checked_in_at", startIso)
-      .lt("checked_in_at", endIso)
-      .order("checked_in_at", { ascending: true }),
-    admin
-      .from("violation_reports")
-      .select("id, kind, report_date, total_amount, violation_items(id)")
-      .eq("employee_id", emp.id)
-      .eq("status", "approved")
-      .gte("report_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
-      .lt("report_date", monthEndDate(ym.year, ym.month))
-      .order("report_date", { ascending: true }),
-    admin
-      .from("overtime_requests")
-      .select("id, ot_date, start_time, end_time, hours, reason")
-      .eq("employee_id", emp.id)
-      .eq("status", "approved")
-      .gte("ot_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
-      .lt("ot_date", monthEndDate(ym.year, ym.month))
-      .order("ot_date", { ascending: true }),
-    isParttime
-      ? Promise.resolve({ data: [] })
-      : admin
-          .from("leave_requests")
-          .select("id, leave_date, category, status, duration, duration_unit, reason")
-          .eq("employee_id", emp.id)
-          .eq("status", "approved")
-          .gte("leave_date", `${ym.year}-${String(ym.month).padStart(2, "0")}-01`)
-          .lt("leave_date", monthEndDate(ym.year, ym.month))
-          .order("leave_date", { ascending: true }),
-  ]);
-
-  const otInputs = (otRequests ?? []).map((r) => ({
-    id: r.id,
-    ot_date: r.ot_date as string,
-    start_time: r.start_time as string,
-    end_time: r.end_time as string,
-    hours: Number(r.hours ?? 0),
-    reason: (r.reason ?? null) as string | null,
-  }));
-
-  // excused days = ngày NV không có mặt ở văn phòng (chỉ áp cho fulltime)
-  const excusedDays = new Set<string>();
-  for (const lv of leaves ?? []) {
-    if (
-      lv.category === "leave_paid" ||
-      lv.category === "online_wfh" ||
-      lv.category === "online_rain"
-    ) {
-      excusedDays.add(lv.leave_date);
-    }
-  }
-
-  const checkInsForCalc = (checkIns ?? []).map((ci) => ({
-    id: ci.id,
-    kind: (ci.kind ?? "in") as "in" | "out",
-    checked_in_at: ci.checked_in_at as string,
-    dateVN: dateVN(ci.checked_in_at as string),
-    late_minutes: ci.late_minutes,
-    early_minutes: ci.early_minutes,
-    // @ts-expect-error — supabase nested join
-    office: ci.offices?.name ?? null,
-  }));
-
-  const selfViolationsInput = (violations ?? []).map((v) => ({
-    id: v.id,
-    kind: ((v.kind ?? "violation") as "bonus" | "violation"),
-    report_date: v.report_date,
-    total_amount: Number(v.total_amount),
-    item_count: ((v as { violation_items?: unknown[] }).violation_items ?? []).length,
-  }));
+  // Tháng cũ có thể đã bị cleanup-history xoá raw data → đọc snapshot trước.
+  // Tháng hiện tại / chưa snapshot → compute live như cũ.
+  const { data: snapshotRow } = await admin
+    .from("payroll_snapshots")
+    .select("data")
+    .eq("employee_id", emp.id)
+    .eq("year_month", monthStr)
+    .maybeSingle();
+  const payload: PayrollSnapshotPayload = snapshotRow?.data
+    ? (snapshotRow.data as PayrollSnapshotPayload)
+    : await computePayrollForMonth(admin, emp, monthStr);
+  const fromSnapshot = !!snapshotRow?.data;
 
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
@@ -193,73 +129,30 @@ export default async function PayrollPage({
     </>
   );
 
-  if (isParttime) {
-    // Tính work shifts hiệu lực để cap giờ làm parttime
-    let officeWorkStart = "09:00:00";
-    let officeWorkEnd = "18:00:00";
-    if (emp.home_office_id) {
-      const { data: office } = await admin
-        .from("offices")
-        .select("work_start_time, work_end_time")
-        .eq("id", emp.home_office_id)
-        .maybeSingle();
-      officeWorkStart = office?.work_start_time ?? "09:00:00";
-      officeWorkEnd = office?.work_end_time ?? "18:00:00";
-    }
-    const workShifts = effectiveWorkShifts(
-      {
-        email: emp.email,
-        work_start_time: emp.work_start_time,
-        work_end_time: emp.work_end_time,
-        work_shifts: emp.work_shifts ?? null,
-      },
-      officeWorkStart,
-      officeWorkEnd,
-    );
-
-    const result = computeParttimePayroll({
-      hourlyRate: Number(emp.hourly_rate),
-      overtimeRate: Number(emp.overtime_rate),
-      workShifts,
-      checkIns: checkInsForCalc,
-      overtimes: otInputs,
-      excusedDays,
-      selfViolations: selfViolationsInput,
-    });
+  if (payload.kind === "parttime") {
     return (
       <div className="space-y-5">
         {header}
-        <ParttimeView result={result} monthStr={monthStr} workShifts={workShifts} />
+        {fromSnapshot && <SnapshotBanner />}
+        <ParttimeView result={payload.result} monthStr={monthStr} workShifts={payload.workShifts} />
       </div>
     );
   }
 
-  const workdays = countWorkdaysInMonth(ym.year, ym.month);
-  const workingDaysInMonth = listWorkingDaysInMonth(ym.year, ym.month);
-  const result = computePayroll({
-    workdays,
-    workingDaysInMonth,
-    salary: Number(emp.salary),
-    balanceStart: Number(emp.leave_balance),
-    approvedLeaves: (leaves ?? []).map((l) => ({
-      id: l.id,
-      leave_date: l.leave_date,
-      category: l.category as LeaveCategory,
-      status: l.status as LeaveStatus,
-      duration: Number(l.duration),
-      duration_unit: l.duration_unit as "day" | "hour",
-      reason: l.reason,
-    })),
-    checkIns: checkInsForCalc,
-    excusedDays,
-    selfViolations: selfViolationsInput,
-    overtimes: otInputs,
-  });
-
   return (
     <div className="space-y-5">
       {header}
-      <FulltimeView result={result} monthStr={monthStr} />
+      {fromSnapshot && <SnapshotBanner />}
+      <FulltimeView result={payload.result} monthStr={monthStr} />
+    </div>
+  );
+}
+
+function SnapshotBanner() {
+  return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-xs text-sky-800">
+      Bảng lương hiển thị từ snapshot — raw data tháng này đã được cleanup
+      sau {">"} 100 ngày. Nội dung không thay đổi nữa.
     </div>
   );
 }
@@ -608,11 +501,6 @@ function MissingDaysSection({ missingDays, dayRate }: { missingDays: PayrollResu
 // Helpers
 // =============================================================================
 const ONLINE_WFH_FREE_DAYS = 3;
-
-function monthEndDate(year: number, month: number): string {
-  const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
-  return `${next.y}-${String(next.m).padStart(2, "0")}-01`;
-}
 
 function formatNum(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
