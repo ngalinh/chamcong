@@ -103,10 +103,10 @@ export default function EmployeePayrollEditor({
           <Field icon={Wallet} label="Lương cứng (VND)">
             <NumInput value={salary} onChange={setSalary} />
           </Field>
-          <Field icon={CalendarOff} label="Ngày phép (có thể .5)">
+          <Field icon={CalendarOff} label="Ngày phép (có thể .25/.5/.75)">
             <input
               type="number"
-              step="0.5"
+              step="0.25"
               min="0"
               max="100"
               value={balance}
