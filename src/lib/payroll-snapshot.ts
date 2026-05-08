@@ -50,6 +50,7 @@ export async function computePayrollForMonth(
     { data: violations },
     { data: otRequests },
     { data: leaves },
+    { data: excusedAbsences },
   ] = await Promise.all([
     admin
       .from("check_ins")
@@ -84,6 +85,12 @@ export async function computePayrollForMonth(
           .gte("leave_date", dayStart)
           .lt("leave_date", dayEnd)
           .order("leave_date", { ascending: true }),
+    admin
+      .from("excused_absences")
+      .select("absence_date")
+      .eq("employee_id", employee.id)
+      .gte("absence_date", dayStart)
+      .lt("absence_date", dayEnd),
   ]);
 
   const otInputs = (otRequests ?? []).map((r) => ({
@@ -101,6 +108,12 @@ export async function computePayrollForMonth(
     if (cat === "leave_paid" || cat === "online_wfh" || cat === "online_rain") {
       excusedDays.add((lv as { leave_date: string }).leave_date);
     }
+  }
+  // Admin có thể "miễn trừ" 1 ngày vắng không phép (vd NV nghỉ bù, công tác,
+  // quên check-in mà không kịp duyệt đơn). Insert vào excused_absences →
+  // ngày đó cũng vào excusedDays Set, không bị tính vắng + không trừ lương.
+  for (const ea of excusedAbsences ?? []) {
+    excusedDays.add((ea as { absence_date: string }).absence_date);
   }
 
   const checkInsForCalc = (checkIns ?? []).map((ci) => ({

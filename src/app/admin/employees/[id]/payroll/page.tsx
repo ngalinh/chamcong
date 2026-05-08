@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
@@ -24,7 +25,52 @@ import {
   ChevronLeft,
   ChevronRight,
   Briefcase,
+  Trash2,
 } from "lucide-react";
+
+async function excuseAbsence(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("id, is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const date = String(formData.get("absence_date") ?? "");
+  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Dữ liệu không hợp lệ");
+  }
+
+  const admin = createAdminClient();
+  // Insert excused absence (idempotent qua UNIQUE)
+  const { error: insErr } = await admin
+    .from("excused_absences")
+    .insert({
+      employee_id: employeeId,
+      absence_date: date,
+      excused_by: me?.id ?? null,
+    });
+  if (insErr && insErr.code !== "23505") throw new Error(insErr.message);
+
+  // Invalidate snapshot tháng đó (nếu có) để bảng lương recompute live ra
+  // số mới — nhưng chỉ làm khi tháng đó chưa bị cleanup data thật. Cleanup
+  // chỉ động vào tháng <100 ngày, mà nút xoá cũng chỉ hiện cho tháng chưa
+  // snapshot → trong trường hợp UI flow chuẩn, snapshot sẽ không tồn tại.
+  // Vẫn delete cho chắc nếu race.
+  const ym = date.slice(0, 7); // YYYY-MM
+  await admin
+    .from("payroll_snapshots")
+    .delete()
+    .eq("employee_id", employeeId)
+    .eq("year_month", ym);
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +161,7 @@ export default async function PayrollPage({
           <input
             type="month"
             name="month"
+            key={monthStr}
             defaultValue={monthStr}
             className="h-9 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
           />
@@ -143,7 +190,7 @@ export default async function PayrollPage({
     <div className="space-y-5">
       {header}
       {fromSnapshot && <SnapshotBanner />}
-      <FulltimeView result={payload.result} monthStr={monthStr} />
+      <FulltimeView result={payload.result} monthStr={monthStr} employeeId={emp.id} editable={!fromSnapshot} />
     </div>
   );
 }
@@ -277,7 +324,17 @@ function ParttimeView({
 // =============================================================================
 // FULLTIME VIEW
 // =============================================================================
-function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: string }) {
+function FulltimeView({
+  result,
+  monthStr,
+  employeeId,
+  editable,
+}: {
+  result: PayrollResult;
+  monthStr: string;
+  employeeId: string;
+  editable: boolean;
+}) {
   // Group leaves theo loại
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -325,7 +382,12 @@ function FulltimeView({ result, monthStr }: { result: PayrollResult; monthStr: s
       <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
       <BonusSection bonuses={result.selfBonuses} />
       <ViolationSection violations={result.selfViolations} />
-      <MissingDaysSection missingDays={result.missingDays} dayRate={result.dayRate} />
+      <MissingDaysSection
+        missingDays={result.missingDays}
+        dayRate={result.dayRate}
+        employeeId={employeeId}
+        editable={editable}
+      />
 
       <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-5 space-y-2">
         <div className="flex items-center gap-2 text-rose-900 mb-2">
@@ -465,7 +527,17 @@ function ViolationSection({ violations }: { violations: PayrollResult["selfViola
   );
 }
 
-function MissingDaysSection({ missingDays, dayRate }: { missingDays: PayrollResult["missingDays"]; dayRate: number }) {
+function MissingDaysSection({
+  missingDays,
+  dayRate,
+  employeeId,
+  editable,
+}: {
+  missingDays: PayrollResult["missingDays"];
+  dayRate: number;
+  employeeId: string;
+  editable: boolean;
+}) {
   return (
     <Section
       icon={AlertTriangle}
@@ -489,6 +561,19 @@ function MissingDaysSection({ missingDays, dayRate }: { missingDays: PayrollResu
               <span className="text-rose-700 font-semibold tabular-nums shrink-0">
                 −{Math.round(d.amount).toLocaleString("en-US")}
               </span>
+              {editable && (
+                <form action={excuseAbsence}>
+                  <input type="hidden" name="employee_id" value={employeeId} />
+                  <input type="hidden" name="absence_date" value={d.date} />
+                  <button
+                    type="submit"
+                    title="Miễn trừ ngày này (không trừ lương, không tính vắng)"
+                    className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>
