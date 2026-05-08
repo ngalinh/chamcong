@@ -104,15 +104,7 @@ export default function EmployeePayrollEditor({
             <NumInput value={salary} onChange={setSalary} />
           </Field>
           <Field icon={CalendarOff} label="Ngày phép (có thể .25/.5/.75)">
-            <input
-              type="number"
-              step="0.25"
-              min="0"
-              max="100"
-              value={balance}
-              onChange={(e) => setBalance(Number(e.target.value) || 0)}
-              className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-            />
+            <LeaveBalanceInput value={balance} onChange={setBalance} />
           </Field>
           <SaveButton dirty={dirty} saving={saving} />
           <ViewPayrollLink employeeId={employeeId} />
@@ -161,6 +153,45 @@ function NumInput({
       className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
     />
   );
+}
+
+// Tách thành component riêng để giữ raw text khi user gõ "2." (chưa nhập 25)
+// — không bị React format ngược về số làm rớt mất dấu chấm. Cũng accept dấu phẩy
+// để NV gõ "2,25" trên bàn phím VN cũng hiểu.
+function LeaveBalanceInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+}) {
+  const [text, setText] = useState<string>(() => formatDecimal(value));
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      onChange={(e) => {
+        const raw = e.target.value.replace(/[^\d.,]/g, "");
+        setText(raw);
+        onChange(parseDecimal(raw));
+      }}
+      onBlur={() => setText(formatDecimal(value))}
+      placeholder="0"
+      className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
+    />
+  );
+}
+
+function parseDecimal(s: string): number {
+  const normalized = s.replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+function formatDecimal(n: number): string {
+  if (!n) return "";
+  return String(n);
 }
 
 function SaveButton({ dirty, saving }: { dirty: boolean; saving: boolean }) {
