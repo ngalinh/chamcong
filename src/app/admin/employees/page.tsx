@@ -317,7 +317,7 @@ export default async function EmployeesPage({
             Nhân viên tự đăng ký khi đăng nhập lần đầu. Chi nhánh tự gán khi chấm công lần đầu — admin có thể chỉnh.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex items-center gap-2 flex-wrap">
           <Link
             href={showHolidays ? "/admin/employees" : "/admin/employees?holidays=open"}
             className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5 select-none"
@@ -342,79 +342,79 @@ export default async function EmployeesPage({
               {accruedCount > 0 && <span className="text-[10px] text-neutral-500 ml-1">({accruedCount}/{eligibleCount})</span>}
             </Button>
           </form>
+
+          {showHolidays && (
+            <section className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-neutral-200 bg-white shadow-xl p-3 z-20">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h2 className="text-xs font-semibold flex items-center gap-1.5">
+                  <CalendarOff size={13} /> Ngày nghỉ chung công ty
+                </h2>
+                <Link
+                  href="/admin/employees"
+                  scroll={false}
+                  className="text-xs text-neutral-500 hover:text-neutral-900"
+                >
+                  Đóng
+                </Link>
+              </div>
+              <p className="text-[11px] text-neutral-500 mb-2 leading-snug">
+                Áp cho mọi NV: không yêu cầu check-in, không tính vắng. NV vẫn nhận đủ lương tháng.
+              </p>
+
+              <form action={addCompanyHoliday} className="flex flex-col gap-1.5 mb-2">
+                <input
+                  type="date"
+                  name="holiday_date"
+                  required
+                  className="h-8 w-full rounded-md border border-neutral-200 bg-white px-2 text-xs outline-none focus:border-neutral-900"
+                />
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    name="reason"
+                    placeholder="Lý do (tuỳ chọn)"
+                    className="h-8 flex-1 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-xs outline-none focus:border-neutral-900"
+                  />
+                  <button
+                    type="submit"
+                    className="h-8 px-2.5 rounded-md bg-neutral-900 text-white text-xs font-medium hover:bg-neutral-800 shrink-0"
+                  >
+                    Thêm
+                  </button>
+                </div>
+              </form>
+
+              {(holidays ?? []).length === 0 ? (
+                <p className="text-xs text-neutral-400 text-center py-2">Chưa có ngày nghỉ nào trong năm.</p>
+              ) : (
+                <ul className="max-h-60 overflow-y-auto rounded-md border border-neutral-200/60 divide-y divide-neutral-200/60 bg-white/60">
+                  {(holidays ?? []).map((h) => (
+                    <li key={h.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+                      <span className="font-mono tabular-nums text-neutral-700 w-20 shrink-0">
+                        {h.holiday_date}
+                      </span>
+                      <span className="text-neutral-700 flex-1 truncate">
+                        {h.reason ?? <span className="text-neutral-400">(chưa ghi lý do)</span>}
+                      </span>
+                      <form action={removeCompanyHoliday}>
+                        <input type="hidden" name="id" value={h.id} />
+                        <input type="hidden" name="holiday_date" value={h.holiday_date} />
+                        <button
+                          type="submit"
+                          title="Xoá ngày này"
+                          className="h-6 w-6 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </div>
       </div>
-
-      {showHolidays && (
-        <section className="rounded-2xl border border-white/60 glass p-3 w-full max-w-sm ml-auto">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <h2 className="text-xs font-semibold flex items-center gap-1.5">
-              <CalendarOff size={13} /> Ngày nghỉ chung công ty
-            </h2>
-            <Link
-              href="/admin/employees"
-              scroll={false}
-              className="text-xs text-neutral-500 hover:text-neutral-900"
-            >
-              Đóng
-            </Link>
-          </div>
-          <p className="text-[11px] text-neutral-500 mb-2 leading-snug">
-            Áp cho mọi NV: không yêu cầu check-in, không tính vắng. NV vẫn nhận đủ lương tháng.
-          </p>
-
-          <form action={addCompanyHoliday} className="flex flex-col gap-1.5 mb-2">
-            <input
-              type="date"
-              name="holiday_date"
-              required
-              className="h-8 rounded-md border border-neutral-200 bg-white px-2 text-xs outline-none focus:border-neutral-900"
-            />
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                name="reason"
-                placeholder="Lý do (tuỳ chọn)"
-                className="h-8 flex-1 min-w-0 rounded-md border border-neutral-200 bg-white px-2 text-xs outline-none focus:border-neutral-900"
-              />
-              <button
-                type="submit"
-                className="h-8 px-2.5 rounded-md bg-neutral-900 text-white text-xs font-medium hover:bg-neutral-800 shrink-0"
-              >
-                Thêm
-              </button>
-            </div>
-          </form>
-
-          {(holidays ?? []).length === 0 ? (
-            <p className="text-xs text-neutral-400 text-center py-2">Chưa có ngày nghỉ nào trong năm.</p>
-          ) : (
-            <ul className="max-h-60 overflow-y-auto rounded-md border border-neutral-200/60 divide-y divide-neutral-200/60 bg-white/60">
-              {(holidays ?? []).map((h) => (
-                <li key={h.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-                  <span className="font-mono tabular-nums text-neutral-700 w-20 shrink-0">
-                    {h.holiday_date}
-                  </span>
-                  <span className="text-neutral-700 flex-1 truncate">
-                    {h.reason ?? <span className="text-neutral-400">(chưa ghi lý do)</span>}
-                  </span>
-                  <form action={removeCompanyHoliday}>
-                    <input type="hidden" name="id" value={h.id} />
-                    <input type="hidden" name="holiday_date" value={h.holiday_date} />
-                    <button
-                      type="submit"
-                      title="Xoá ngày này"
-                      className="h-6 w-6 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
 
       {!employees?.length ? (
         <Empty
