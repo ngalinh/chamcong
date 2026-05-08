@@ -4,7 +4,7 @@ import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { Users, Check, CircleSlash, Building2, Wifi, Plus } from "lucide-react";
+import { Users, Check, CircleSlash, Building2, Wifi, Plus, CalendarOff, Trash2 } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
@@ -134,6 +134,63 @@ async function accrueLeaveThisMonth() {
   revalidatePath("/admin/employees");
 }
 
+async function addCompanyHoliday(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("id, is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const date = String(formData.get("holiday_date") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Ngày không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("company_holidays")
+    .insert({ holiday_date: date, reason, created_by: me?.id ?? null });
+  if (error && error.code !== "23505") throw new Error(error.message);
+
+  // Invalidate snapshot tháng tương ứng để recompute
+  const ym = date.slice(0, 7);
+  await admin.from("payroll_snapshots").delete().eq("year_month", ym);
+
+  revalidatePath("/admin/employees");
+}
+
+async function removeCompanyHoliday(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id") ?? "");
+  const date = String(formData.get("holiday_date") ?? "");
+  if (!id) throw new Error("Thiếu id");
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("company_holidays").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const ym = date.slice(0, 7);
+    await admin.from("payroll_snapshots").delete().eq("year_month", ym);
+  }
+
+  revalidatePath("/admin/employees");
+}
+
 async function updateEmployeeWorkHours(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -225,6 +282,15 @@ export default async function EmployeesPage() {
     admin.from("offices").select("*").eq("is_active", true).order("is_remote").order("name"),
   ]);
 
+  // Lấy ngày nghỉ chung từ đầu năm hiện tại trở đi (không hiện ngày quá khứ
+  // năm cũ để list khỏi dài). Sort tăng dần.
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const { data: holidays } = await admin
+    .from("company_holidays")
+    .select("id, holiday_date, reason")
+    .gte("holiday_date", yearStart)
+    .order("holiday_date", { ascending: true });
+
   const meEmail = user?.email ?? "";
   const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
 
@@ -244,19 +310,83 @@ export default async function EmployeesPage() {
             Nhân viên tự đăng ký khi đăng nhập lần đầu. Chi nhánh tự gán khi chấm công lần đầu — admin có thể chỉnh.
           </p>
         </div>
-        <form action={accrueLeaveThisMonth}>
-          <Button
-            size="sm"
-            variant="secondary"
-            type="submit"
-            title={`Cộng +1 ngày phép cho ${eligibleCount} NV (NV mới vào tháng ${currentMonth} sẽ bị bỏ qua)`}
-            disabled={accruedCount === eligibleCount && eligibleCount > 0}
-          >
-            <Plus size={14} />
-            Cộng phép tháng {currentMonth}
-            {accruedCount > 0 && <span className="text-[10px] text-neutral-500 ml-1">({accruedCount}/{eligibleCount})</span>}
-          </Button>
-        </form>
+        <div className="flex items-center gap-2 flex-wrap">
+          <details className="relative">
+            <summary className="list-none cursor-pointer h-8 px-3 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5 select-none">
+              <CalendarOff size={14} />
+              Ngày nghỉ
+              {(holidays?.length ?? 0) > 0 && (
+                <span className="text-[10px] text-neutral-500 ml-1">({holidays?.length ?? 0})</span>
+              )}
+            </summary>
+            <div className="absolute right-0 mt-2 w-80 rounded-xl border border-neutral-200 bg-white shadow-lg p-3 z-20">
+              <p className="text-xs text-neutral-500 mb-2">
+                Ngày nghỉ chung công ty (lễ/tết/off): áp cho mọi NV, không yêu cầu check-in,
+                không tính vắng. NV vẫn nhận đủ lương tháng.
+              </p>
+              <form action={addCompanyHoliday} className="flex items-center gap-1.5 mb-3">
+                <input
+                  type="date"
+                  name="holiday_date"
+                  required
+                  className="h-8 flex-1 rounded-md border border-neutral-200 px-2 text-sm outline-none focus:border-neutral-900"
+                />
+                <input
+                  type="text"
+                  name="reason"
+                  placeholder="Lý do (optional)"
+                  className="h-8 w-28 rounded-md border border-neutral-200 px-2 text-xs outline-none focus:border-neutral-900"
+                />
+                <button
+                  type="submit"
+                  className="h-8 px-3 rounded-md bg-neutral-900 text-white text-xs font-medium hover:bg-neutral-800"
+                >
+                  Thêm
+                </button>
+              </form>
+              <ul className="max-h-72 overflow-y-auto divide-y divide-neutral-100">
+                {(holidays ?? []).length === 0 ? (
+                  <li className="text-xs text-neutral-400 text-center py-3">Chưa có ngày nghỉ nào</li>
+                ) : (
+                  (holidays ?? []).map((h) => (
+                    <li key={h.id} className="flex items-center gap-2 py-1.5 text-sm">
+                      <span className="font-mono tabular-nums text-xs text-neutral-700">
+                        {h.holiday_date}
+                      </span>
+                      <span className="text-xs text-neutral-500 flex-1 truncate">
+                        {h.reason ?? ""}
+                      </span>
+                      <form action={removeCompanyHoliday}>
+                        <input type="hidden" name="id" value={h.id} />
+                        <input type="hidden" name="holiday_date" value={h.holiday_date} />
+                        <button
+                          type="submit"
+                          title="Xoá ngày này"
+                          className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </form>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </details>
+          <form action={accrueLeaveThisMonth}>
+            <Button
+              size="sm"
+              variant="secondary"
+              type="submit"
+              title={`Cộng +1 ngày phép cho ${eligibleCount} NV (NV mới vào tháng ${currentMonth} sẽ bị bỏ qua)`}
+              disabled={accruedCount === eligibleCount && eligibleCount > 0}
+            >
+              <Plus size={14} />
+              Cộng phép tháng {currentMonth}
+              {accruedCount > 0 && <span className="text-[10px] text-neutral-500 ml-1">({accruedCount}/{eligibleCount})</span>}
+            </Button>
+          </form>
+        </div>
       </div>
 
       {!employees?.length ? (

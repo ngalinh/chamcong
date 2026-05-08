@@ -51,6 +51,7 @@ export async function computePayrollForMonth(
     { data: otRequests },
     { data: leaves },
     { data: excusedAbsences },
+    { data: holidays },
   ] = await Promise.all([
     admin
       .from("check_ins")
@@ -91,6 +92,11 @@ export async function computePayrollForMonth(
       .eq("employee_id", employee.id)
       .gte("absence_date", dayStart)
       .lt("absence_date", dayEnd),
+    admin
+      .from("company_holidays")
+      .select("holiday_date")
+      .gte("holiday_date", dayStart)
+      .lt("holiday_date", dayEnd),
   ]);
 
   const otInputs = (otRequests ?? []).map((r) => ({
@@ -114,6 +120,12 @@ export async function computePayrollForMonth(
   // ngày đó cũng vào excusedDays Set, không bị tính vắng + không trừ lương.
   for (const ea of excusedAbsences ?? []) {
     excusedDays.add((ea as { absence_date: string }).absence_date);
+  }
+  // Ngày nghỉ chung công ty (lễ/tết/off): áp cho mọi NV, không yêu cầu
+  // check-in. Không động vào workdays để tính dayRate → NV vẫn nhận
+  // đủ lương full month (giống logic T7 làm online).
+  for (const h of holidays ?? []) {
+    excusedDays.add((h as { holiday_date: string }).holiday_date);
   }
 
   const checkInsForCalc = (checkIns ?? []).map((ci) => ({
