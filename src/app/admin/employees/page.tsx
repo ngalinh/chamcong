@@ -319,30 +319,32 @@ export default async function EmployeesPage() {
                 <span className="text-[10px] text-neutral-500 ml-1">({holidays?.length ?? 0})</span>
               )}
             </summary>
-            <div className="absolute right-0 mt-2 w-80 rounded-xl border border-neutral-200 bg-white shadow-lg p-3 z-20">
+            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-neutral-200 bg-white shadow-lg p-3 z-20">
               <p className="text-xs text-neutral-500 mb-2">
                 Ngày nghỉ chung công ty (lễ/tết/off): áp cho mọi NV, không yêu cầu check-in,
                 không tính vắng. NV vẫn nhận đủ lương tháng.
               </p>
-              <form action={addCompanyHoliday} className="flex items-center gap-1.5 mb-3">
+              <form action={addCompanyHoliday} className="flex flex-col gap-1.5 mb-3">
                 <input
                   type="date"
                   name="holiday_date"
                   required
-                  className="h-8 flex-1 rounded-md border border-neutral-200 px-2 text-sm outline-none focus:border-neutral-900"
+                  className="h-8 w-full rounded-md border border-neutral-200 px-2 text-sm outline-none focus:border-neutral-900"
                 />
-                <input
-                  type="text"
-                  name="reason"
-                  placeholder="Lý do (optional)"
-                  className="h-8 w-28 rounded-md border border-neutral-200 px-2 text-xs outline-none focus:border-neutral-900"
-                />
-                <button
-                  type="submit"
-                  className="h-8 px-3 rounded-md bg-neutral-900 text-white text-xs font-medium hover:bg-neutral-800"
-                >
-                  Thêm
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    name="reason"
+                    placeholder="Lý do (tuỳ chọn)"
+                    className="h-8 flex-1 min-w-0 rounded-md border border-neutral-200 px-2 text-xs outline-none focus:border-neutral-900"
+                  />
+                  <button
+                    type="submit"
+                    className="h-8 px-3 rounded-md bg-neutral-900 text-white text-xs font-medium hover:bg-neutral-800 shrink-0"
+                  >
+                    Thêm
+                  </button>
+                </div>
               </form>
               <ul className="max-h-72 overflow-y-auto divide-y divide-neutral-100">
                 {(holidays ?? []).length === 0 ? (
