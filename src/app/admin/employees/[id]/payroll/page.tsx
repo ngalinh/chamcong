@@ -544,7 +544,7 @@ function MissingDaysSection({
       title="Vắng không phép"
       subtitle={missingDays.length > 0
         ? `${missingDays.length} ngày · ${fmtVnd(missingDays.reduce((s, d) => s + d.amount, 0))}`
-        : `0 ngày · trừ ${fmtVnd(dayRate)}/ngày T2-T6, ${fmtVnd(dayRate * 0.5)}/sáng T7`}
+        : `0 ngày · trừ ${fmtVnd(dayRate)}/ngày T2-T6 (T7+CN nghỉ)`}
       empty="Không có ngày nào vắng không phép. Admin có thể 'Thêm chấm công' nếu NV quên chấm."
     >
       {missingDays.length > 0 && (

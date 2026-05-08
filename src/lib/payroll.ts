@@ -132,7 +132,7 @@ export type OvertimeEntry = {
 
 export type MissingDay = {
   date: string;        // YYYY-MM-DD
-  dayValue: number;    // 1 cho T2-T6, 0.5 cho T7
+  dayValue: number;    // 1 cho T2-T6 (post 2026-05). Snapshot cũ có thể còn 0.5 cho T7.
   amount: number;      // dayRate × dayValue
 };
 
@@ -198,7 +198,7 @@ type OvertimeInput = {
 
 export function computePayroll(args: {
   workdays: number;
-  workingDaysInMonth: { date: string; value: number }[]; // mỗi ngày làm việc trong tháng (đã qua hôm nay) với value (1=T2-T6, 0.5=T7)
+  workingDaysInMonth: { date: string; value: number }[]; // mỗi ngày T2-T6 đã qua trong tháng, value=1 (post 2026-05).
   salary: number;
   balanceStart: number;
   approvedLeaves: LeaveInput[];   // sorted by leave_date asc
