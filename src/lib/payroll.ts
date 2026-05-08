@@ -167,6 +167,7 @@ type LeaveInput = {
   duration: number;
   duration_unit: "day" | "hour";
   reason: string | null;
+  wage_deduction_override?: number | null;
 };
 
 type CheckInInput = {
@@ -273,9 +274,12 @@ export function computePayroll(args: {
       else if (phepConsumed === 0) label = "wage";
       else label = "phep_wage";
     } else if (lv.category === "leave_hourly") {
-      // Không trừ phép, chỉ trừ lương theo giờ
+      // Không trừ phép, chỉ trừ lương theo giờ.
+      // Admin có thể override số tiền trừ qua wage_deduction_override (set 0 để miễn).
       wageHours = hours;
-      wageDeduction = hours * hourRate;
+      wageDeduction = lv.wage_deduction_override != null
+        ? Number(lv.wage_deduction_override)
+        : hours * hourRate;
       label = "wage";
     } else {
       // online_paid / leave_unpaid (deprecated) — fallback: chỉ hiển thị, không trừ
