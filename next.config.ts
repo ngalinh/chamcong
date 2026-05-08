@@ -19,6 +19,14 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
         ],
       },
+      {
+        // Face-api weights — content-addressed (đổi file = đổi tên), an toàn để cache vĩnh viễn.
+        // Backup cho SW cache: nếu SW miss / bị uninstall, browser HTTP cache vẫn giữ.
+        source: "/models/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
     ];
   },
 };

@@ -1,7 +1,10 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v9";
+const VERSION = "v10";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const HTML_CACHE = `cham-cong-html-${VERSION}`;
+// Models cache tách khỏi VERSION: bump SW không wipe ~7MB models đã tải.
+// Chỉ bump MODELS_CACHE khi thực sự thay file face-api weights trong public/models/.
+const MODELS_CACHE = "cham-cong-models-v1";
 const BADGE_CACHE = "badge-state";
 const BADGE_KEY = "/__badge_count";
 
@@ -55,7 +58,7 @@ self.addEventListener("install", () => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     const names = await caches.keys();
-    const keep = new Set([CACHE_NAME, HTML_CACHE, BADGE_CACHE]);
+    const keep = new Set([CACHE_NAME, HTML_CACHE, MODELS_CACHE, BADGE_CACHE]);
     await Promise.all(
       names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)),
     );
@@ -69,8 +72,15 @@ self.addEventListener("fetch", (e) => {
 
   const url = new URL(req.url);
 
-  // 1. Static assets: cache-first (models 7MB + icons không đổi)
-  if (url.pathname.startsWith("/models/") || url.pathname.startsWith("/icons/")) {
+  // 1a. Face-api models (~7MB): cache-first vào MODELS_CACHE riêng
+  // → survive qua mọi lần bump VERSION (deploy mới không wipe).
+  if (url.pathname.startsWith("/models/")) {
+    e.respondWith(cacheFirst(req, MODELS_CACHE));
+    return;
+  }
+
+  // 1b. PWA icons: cache-first theo VERSION (đổi icon thì bump VERSION là OK).
+  if (url.pathname.startsWith("/icons/")) {
     e.respondWith(cacheFirst(req, CACHE_NAME));
     return;
   }
