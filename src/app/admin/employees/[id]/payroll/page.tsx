@@ -72,6 +72,55 @@ async function excuseAbsence(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function setLeaveWageOverride(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const leaveId = String(formData.get("leave_id") ?? "");
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const leaveDate = String(formData.get("leave_date") ?? "");
+  const overrideRaw = String(formData.get("override") ?? "").trim();
+
+  if (!leaveId || !employeeId) throw new Error("Dữ liệu không hợp lệ");
+
+  // Empty → reset về NULL (compute lại). Số → set override.
+  let override: number | null;
+  if (overrideRaw === "") {
+    override = null;
+  } else {
+    const n = Number(overrideRaw.replace(/,/g, "").replace(/\s/g, ""));
+    if (!Number.isFinite(n) || n < 0) throw new Error("Số tiền không hợp lệ");
+    override = n;
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("leave_requests")
+    .update({ wage_deduction_override: override })
+    .eq("id", leaveId);
+  if (error) throw new Error(error.message);
+
+  // Invalidate snapshot tháng đó (nếu có) để bảng lương recompute
+  if (/^\d{4}-\d{2}-\d{2}$/.test(leaveDate)) {
+    const ym = leaveDate.slice(0, 7);
+    await admin
+      .from("payroll_snapshots")
+      .delete()
+      .eq("employee_id", employeeId)
+      .eq("year_month", ym);
+  }
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 export const dynamic = "force-dynamic";
 
 const fmtVnd = (n: number) => `${Math.round(n).toLocaleString("en-US")} VND`;
@@ -370,7 +419,13 @@ function FulltimeView({
       </Section>
 
       <Section icon={Hourglass} title="Nghỉ theo giờ" subtitle={`${(leavesByCat.leave_hourly ?? []).length} đơn`} empty="Không có đơn nghỉ theo giờ.">
-        {leavesByCat.leave_hourly && <LeaveList items={leavesByCat.leave_hourly} />}
+        {leavesByCat.leave_hourly && (
+          <LeaveList
+            items={leavesByCat.leave_hourly}
+            employeeId={employeeId}
+            editable={editable}
+          />
+        )}
       </Section>
 
       <Section icon={Wifi} title="Làm online" subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`} empty="Không có đơn làm online.">
@@ -649,18 +704,26 @@ function Section({
   );
 }
 
-function LeaveList({ items }: { items: Array<{
-  id: string;
-  date: string;
-  category: LeaveCategory;
-  durationLabel: string;
-  phepUsed: number;
-  wageDays: number;
-  wageHours: number;
-  freeDays: number;
-  wageDeduction: number;
-  label: "free" | "phep" | "wage" | "phep_wage";
-}>}) {
+function LeaveList({
+  items,
+  employeeId,
+  editable,
+}: {
+  items: Array<{
+    id: string;
+    date: string;
+    category: LeaveCategory;
+    durationLabel: string;
+    phepUsed: number;
+    wageDays: number;
+    wageHours: number;
+    freeDays: number;
+    wageDeduction: number;
+    label: "free" | "phep" | "wage" | "phep_wage";
+  }>;
+  employeeId?: string;
+  editable?: boolean;
+}) {
   return (
     <ul className="divide-y divide-neutral-200/60">
       {items.map((it) => (
@@ -670,12 +733,59 @@ function LeaveList({ items }: { items: Array<{
           <span className="text-xs font-medium text-neutral-700 shrink-0">{it.durationLabel}</span>
           <div className="flex-1" />
           <LeaveLabel label={it.label} phepUsed={it.phepUsed} wageDays={it.wageDays} wageHours={it.wageHours} freeDays={it.freeDays} />
-          {it.wageDeduction > 0 && (
-            <span className="text-rose-700 font-semibold tabular-nums shrink-0 ml-2">−{Math.round(it.wageDeduction).toLocaleString("en-US")}</span>
+          {editable && employeeId && it.category === "leave_hourly" ? (
+            <LeaveHourlyDeductionEditor
+              leaveId={it.id}
+              leaveDate={it.date}
+              employeeId={employeeId}
+              currentDeduction={it.wageDeduction}
+            />
+          ) : (
+            it.wageDeduction > 0 && (
+              <span className="text-rose-700 font-semibold tabular-nums shrink-0 ml-2">−{Math.round(it.wageDeduction).toLocaleString("en-US")}</span>
+            )
           )}
         </li>
       ))}
     </ul>
+  );
+}
+
+// Inline edit số tiền trừ lương cho 1 đơn nghỉ theo giờ. Bỏ trống ô input
+// rồi Lưu = reset về giá trị compute (hours × hourRate).
+function LeaveHourlyDeductionEditor({
+  leaveId,
+  leaveDate,
+  employeeId,
+  currentDeduction,
+}: {
+  leaveId: string;
+  leaveDate: string;
+  employeeId: string;
+  currentDeduction: number;
+}) {
+  return (
+    <form action={setLeaveWageOverride} className="inline-flex items-center gap-1 ml-2 shrink-0">
+      <input type="hidden" name="leave_id" value={leaveId} />
+      <input type="hidden" name="employee_id" value={employeeId} />
+      <input type="hidden" name="leave_date" value={leaveDate} />
+      <span className="text-rose-700 font-semibold text-sm">−</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        name="override"
+        defaultValue={Math.round(currentDeduction)}
+        title="Số tiền trừ (VND). Bỏ trống để dùng auto-compute."
+        className="w-24 h-7 rounded-md border border-neutral-200 bg-white px-2 text-sm text-rose-700 font-semibold tabular-nums text-right outline-none focus:border-neutral-900"
+      />
+      <button
+        type="submit"
+        title="Lưu"
+        className="h-7 px-2 rounded-md text-xs font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
+      >
+        Lưu
+      </button>
+    </form>
   );
 }
 
