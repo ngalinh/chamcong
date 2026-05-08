@@ -65,6 +65,12 @@ export default function CheckInFlow({
     stopCamera();
   }, [stopCamera]);
 
+  // Preload models ngầm khi mount — đến lúc user click "Bắt đầu" thì models
+  // (~7MB) đã sẵn sàng, không bị nối tiếp sau geo + camera nữa.
+  useEffect(() => {
+    loadFaceModels().catch(() => {});
+  }, []);
+
   const close = useCallback(() => {
     cancelledRef.current = true;
     stopCamera();
