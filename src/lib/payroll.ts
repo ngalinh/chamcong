@@ -566,8 +566,13 @@ function regularHoursOfShift(
     regEndMs = new Date(`${startDateVN}T${we}+07:00`).getTime();
   }
 
-  const shiftStartMs = new Date(startAtIso).getTime();
-  const shiftEndMs = new Date(endAtIso).getTime();
+  // Snap timestamp về floor phút để khớp với độ chính xác phút của
+  // late_minutes/early_minutes (timeToMinutes bỏ giây). Trước đây để giữ
+  // giây thì 1 NV check-in 20:00:36 trên ca 20:00–00:00 bị tính 3.99h
+  // dù late_minutes=0 (coi như đúng giờ).
+  const FLOOR_MIN = 60_000;
+  const shiftStartMs = Math.floor(new Date(startAtIso).getTime() / FLOOR_MIN) * FLOOR_MIN;
+  const shiftEndMs = Math.floor(new Date(endAtIso).getTime() / FLOOR_MIN) * FLOOR_MIN;
   // Forgiven late: bỏ qua thời điểm check-in muộn, tính từ workStart như chưa muộn
   const overlapStart = opts.forgivenLateStart ? regStartMs : Math.max(regStartMs, shiftStartMs);
   const overlapEnd = Math.min(regEndMs, shiftEndMs);
