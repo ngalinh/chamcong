@@ -3,7 +3,6 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
-import { isAdminEmail } from "@/lib/utils";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
 import { computeLateEarly } from "@/lib/late-early";
 
@@ -25,13 +24,11 @@ export async function POST(request: NextRequest) {
 
   const { data: emp } = await admin
     .from("employees")
-    .select("id, is_active, face_descriptor, is_admin, email, home_office_id, work_start_time, work_end_time, work_shifts")
+    .select("id, is_active, face_descriptor, email, home_office_id, work_start_time, work_end_time, work_shifts")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!emp || !emp.is_active)
     return NextResponse.json({ error: "Tài khoản không hợp lệ" }, { status: 403 });
-
-  const isAdmin = emp.is_admin || isAdminEmail(user.email);
 
   const form = await request.formData();
   const parsed = Schema.safeParse(Object.fromEntries(form.entries()));
@@ -114,22 +111,6 @@ export async function POST(request: NextRequest) {
 
   const kind: "in" | "out" =
     lastCi?.kind === "in" && elapsedMin < SHIFT_MAX_HOURS * 60 ? "out" : "in";
-
-  // Spam protection: tối đa 2 events trong 18h gần nhất (1 ca = in+out)
-  if (!isAdmin) {
-    const since = new Date(Date.now() - SHIFT_MAX_HOURS * 3600_000).toISOString();
-    const { count: recentCount } = await admin
-      .from("check_ins")
-      .select("id", { count: "exact", head: true })
-      .eq("employee_id", emp.id)
-      .gte("checked_in_at", since);
-    if ((recentCount ?? 0) >= 2) {
-      return NextResponse.json(
-        { error: "Bạn đã chấm công đủ 2 lần trong 18 giờ qua." },
-        { status: 409 },
-      );
-    }
-  }
 
   // Tìm đơn nghỉ theo giờ HOẶC WFH ca sáng/chiều đã duyệt — cả 2 đều shift giờ làm
   // hiệu lực. Vd: office 9h-18h, NV nghỉ 9-10h hoặc WFH ca sáng 9-12:30 →
