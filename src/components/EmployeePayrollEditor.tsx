@@ -86,27 +86,25 @@ export default function EmployeePayrollEditor({
         </div>
       </div>
 
-      {/* Fields theo loại */}
+      {/* Fields theo loại — save icon đặt cuối mỗi ô input (thay nút Lưu rời) */}
       {isParttime ? (
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
           <Field icon={Clock} label="Lương / giờ (VND)">
-            <NumInput value={hourlyRate} onChange={setHourlyRate} />
+            <NumInput value={hourlyRate} onChange={setHourlyRate} dirty={dirty} saving={saving} />
           </Field>
           <Field icon={Hourglass} label="Lương OT / giờ (VND)">
-            <NumInput value={overtimeRate} onChange={setOvertimeRate} />
+            <NumInput value={overtimeRate} onChange={setOvertimeRate} dirty={dirty} saving={saving} />
           </Field>
-          <SaveButton dirty={dirty} saving={saving} />
           <ViewPayrollLink employeeId={employeeId} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
           <Field icon={Wallet} label="Lương cứng (VND)">
-            <NumInput value={salary} onChange={setSalary} />
+            <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
           </Field>
           <Field icon={CalendarOff} label="Ngày phép (có thể .25/.5/.75)">
-            <LeaveBalanceInput value={balance} onChange={setBalance} />
+            <LeaveBalanceInput value={balance} onChange={setBalance} dirty={dirty} saving={saving} />
           </Field>
-          <SaveButton dirty={dirty} saving={saving} />
           <ViewPayrollLink employeeId={employeeId} />
         </div>
       )}
@@ -140,18 +138,25 @@ function TypeBtn({
 function NumInput({
   value,
   onChange,
+  dirty,
+  saving,
 }: {
   value: number;
   onChange: (n: number) => void;
+  dirty: boolean;
+  saving: boolean;
 }) {
   return (
-    <input
-      type="text"
-      inputMode="numeric"
-      value={formatNum(value)}
-      onChange={(e) => onChange(parseNum(e.target.value))}
-      className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-    />
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={formatNum(value)}
+        onChange={(e) => onChange(parseNum(e.target.value))}
+        className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-2.5 pr-10 text-sm outline-none focus:border-neutral-900 tabular-nums"
+      />
+      <InlineSaveBtn dirty={dirty} saving={saving} />
+    </div>
   );
 }
 
@@ -161,26 +166,33 @@ function NumInput({
 function LeaveBalanceInput({
   value,
   onChange,
+  dirty,
+  saving,
 }: {
   value: number;
   onChange: (n: number) => void;
+  dirty: boolean;
+  saving: boolean;
 }) {
   const [text, setText] = useState<string>(() => formatDecimal(value));
 
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      value={text}
-      onChange={(e) => {
-        const raw = e.target.value.replace(/[^\d.,]/g, "");
-        setText(raw);
-        onChange(parseDecimal(raw));
-      }}
-      onBlur={() => setText(formatDecimal(value))}
-      placeholder="0"
-      className="h-9 w-full rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-    />
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={text}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/[^\d.,]/g, "");
+          setText(raw);
+          onChange(parseDecimal(raw));
+        }}
+        onBlur={() => setText(formatDecimal(value))}
+        placeholder="0"
+        className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-2.5 pr-10 text-sm outline-none focus:border-neutral-900 tabular-nums"
+      />
+      <InlineSaveBtn dirty={dirty} saving={saving} />
+    </div>
   );
 }
 
@@ -194,15 +206,21 @@ function formatDecimal(n: number): string {
   return String(n);
 }
 
-function SaveButton({ dirty, saving }: { dirty: boolean; saving: boolean }) {
+function InlineSaveBtn({ dirty, saving }: { dirty: boolean; saving: boolean }) {
   return (
     <button
       type="submit"
       disabled={!dirty || saving}
-      className="h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm font-medium hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
+      title="Lưu"
+      aria-label="Lưu"
+      className={cn(
+        "absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md inline-flex items-center justify-center transition",
+        dirty && !saving
+          ? "text-indigo-600 hover:bg-indigo-50"
+          : "text-neutral-300 cursor-not-allowed",
+      )}
     >
       {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-      Lưu
     </button>
   );
 }
