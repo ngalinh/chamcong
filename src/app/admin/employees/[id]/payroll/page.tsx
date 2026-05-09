@@ -121,6 +121,41 @@ async function setLeaveWageOverride(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function clearLateEarlyViolation(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const checkInId = String(formData.get("check_in_id") ?? "");
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const monthStr = String(formData.get("month") ?? "");
+  if (!checkInId || !employeeId) throw new Error("Dữ liệu không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("check_ins")
+    .update({ late_minutes: 0, early_minutes: 0 })
+    .eq("id", checkInId);
+  if (error) throw new Error(error.message);
+
+  if (/^\d{4}-\d{2}$/.test(monthStr)) {
+    await admin
+      .from("payroll_snapshots")
+      .delete()
+      .eq("employee_id", employeeId)
+      .eq("year_month", monthStr);
+  }
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 export const dynamic = "force-dynamic";
 
 const fmtVnd = (n: number) => `${Math.round(n).toLocaleString("en-US")} VND`;
@@ -230,7 +265,7 @@ export default async function PayrollPage({
       <div className="space-y-5">
         {header}
         {fromSnapshot && <SnapshotBanner />}
-        <ParttimeView result={payload.result} monthStr={monthStr} workShifts={payload.workShifts} />
+        <ParttimeView result={payload.result} monthStr={monthStr} workShifts={payload.workShifts} employeeId={emp.id} editable={!fromSnapshot} />
       </div>
     );
   }
@@ -260,10 +295,14 @@ function ParttimeView({
   result,
   monthStr,
   workShifts,
+  employeeId,
+  editable,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
   workShifts: { start: string; end: string }[];
+  employeeId: string;
+  editable: boolean;
 }) {
   const shiftsLabel = workShifts.length === 1
     ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
@@ -333,7 +372,7 @@ function ParttimeView({
       </Section>
 
       {/* Đi muộn / Về sớm */}
-      <LateEarlySection result={result} />
+      <LateEarlySection result={result} employeeId={employeeId} monthStr={monthStr} editable={editable} />
 
       {/* OT */}
       <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.overtimeRate > 0 ? result.overtimeRate : result.hourlyRate)}/giờ`} />
@@ -412,7 +451,7 @@ function FulltimeView({
         </div>
       )}
 
-      <LateEarlySection result={result} />
+      <LateEarlySection result={result} employeeId={employeeId} monthStr={monthStr} editable={editable} />
 
       <Section icon={CalendarOff} title="Nghỉ theo ngày" subtitle={`${(leavesByCat.leave_paid ?? []).length} đơn`} empty="Không có đơn nghỉ theo ngày.">
         {leavesByCat.leave_paid && <LeaveList items={leavesByCat.leave_paid} />}
@@ -479,9 +518,20 @@ function FulltimeView({
 // =============================================================================
 // Shared sections
 // =============================================================================
-function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollResult["lateEarlyViolations"] } }) {
+function LateEarlySection({
+  result,
+  employeeId,
+  monthStr,
+  editable,
+}: {
+  result: { lateEarlyViolations: PayrollResult["lateEarlyViolations"] };
+  employeeId?: string;
+  monthStr?: string;
+  editable?: boolean;
+}) {
   const penalizedCount = result.lateEarlyViolations.filter((v) => v.penaltyAmount > 0).length;
   const heavyCount = result.lateEarlyViolations.filter((v) => v.isHeavyLate).length;
+  const canEdit = editable && employeeId && monthStr;
   return (
     <Section
       icon={Clock}
@@ -508,6 +558,20 @@ function LateEarlySection({ result }: { result: { lateEarlyViolations: PayrollRe
                 <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.penaltyAmount).toLocaleString("en-US")}</span>
               ) : (
                 <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
+              )}
+              {canEdit && (
+                <form action={clearLateEarlyViolation}>
+                  <input type="hidden" name="check_in_id" value={v.id} />
+                  <input type="hidden" name="employee_id" value={employeeId} />
+                  <input type="hidden" name="month" value={monthStr} />
+                  <button
+                    type="submit"
+                    title="Xoá vi phạm này (reset late/early về 0)"
+                    className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </form>
               )}
             </li>
           ))}
