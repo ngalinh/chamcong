@@ -1,10 +1,14 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v10";
+const VERSION = "v11";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const HTML_CACHE = `cham-cong-html-${VERSION}`;
 // Models cache tách khỏi VERSION: bump SW không wipe ~7MB models đã tải.
 // Chỉ bump MODELS_CACHE khi thực sự thay file face-api weights trong public/models/.
 const MODELS_CACHE = "cham-cong-models-v1";
+// Next.js static (JS/CSS) — URL có hash content (immutable).
+// Cache-first riêng, không bump theo VERSION → asset của build cũ còn nguyên
+// để serve nếu HTML cache còn tham chiếu (tránh 404 → UI vỡ sau khi deploy).
+const NEXT_STATIC_CACHE = "cham-cong-next-static-v1";
 const BADGE_CACHE = "badge-state";
 const BADGE_KEY = "/__badge_count";
 
@@ -58,7 +62,7 @@ self.addEventListener("install", () => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
     const names = await caches.keys();
-    const keep = new Set([CACHE_NAME, HTML_CACHE, MODELS_CACHE, BADGE_CACHE]);
+    const keep = new Set([CACHE_NAME, HTML_CACHE, MODELS_CACHE, NEXT_STATIC_CACHE, BADGE_CACHE]);
     await Promise.all(
       names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)),
     );
@@ -85,11 +89,19 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
+  // 1c. Next.js static (JS/CSS bundles): cache-first.
+  // URL có content hash → immutable. Cache giữ qua nhiều build → khi HTML
+  // cached còn ref hash cũ, vẫn serve được từ cache thay vì 404 → UI vỡ.
+  if (url.pathname.startsWith("/_next/static/")) {
+    e.respondWith(cacheFirst(req, NEXT_STATIC_CACHE));
+    return;
+  }
+
   // 2. HTML pages NV-only: stale-while-revalidate
   // → mở PWA: thấy UI cũ ngay (instant), fetch ngầm để update cache.
   // Chỉ apply cho navigation request (page load), không apply cho fetch JSON từ client.
   if (req.mode === "navigate" && shouldCacheHTML(url)) {
-    e.respondWith(staleWhileRevalidate(req, HTML_CACHE));
+    e.respondWith(staleWhileRevalidate(e, req, HTML_CACHE));
     return;
   }
 });
@@ -107,7 +119,16 @@ async function cacheFirst(req, cacheName) {
   }
 }
 
-async function staleWhileRevalidate(req, cacheName) {
+// Lấy "chữ ký" asset của HTML — set các URL /_next/static/* được ref trong page.
+// Set này stable theo build, đổi sau mỗi deploy mới. Dùng để phát hiện build
+// mới khi revalidate, vì content HTML khác (timestamps, dynamic SSR) không phản
+// ánh build change.
+function htmlAssetSig(html) {
+  const m = html.match(/\/_next\/static\/[^"'\s)]+/g) ?? [];
+  return Array.from(new Set(m)).sort().join("|");
+}
+
+async function staleWhileRevalidate(e, req, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(req);
 
@@ -117,7 +138,25 @@ async function staleWhileRevalidate(req, cacheName) {
       // Chỉ cache 200 OK, không cache redirect (login redirect khi expired)
       // hoặc opaque (cross-origin) hay error.
       if (res && res.ok && res.status === 200 && res.type === "basic") {
-        cache.put(req, res.clone()).catch(() => {});
+        const newText = await res.clone().text();
+        let assetChanged = false;
+        if (cached) {
+          try {
+            const oldText = await cached.clone().text();
+            assetChanged = htmlAssetSig(oldText) !== htmlAssetSig(newText);
+          } catch {}
+        }
+        await cache
+          .put(req, new Response(newText, { headers: res.headers, status: res.status, statusText: res.statusText }))
+          .catch(() => {});
+        // Build mới (asset hash đổi) → page đang hiện bị broken vì JS/CSS cũ.
+        // Báo client reload để load HTML + asset mới.
+        if (assetChanged) {
+          const cls = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+          for (const c of cls) {
+            try { c.postMessage({ type: "RELOAD_FOR_UPDATE" }); } catch {}
+          }
+        }
       }
       return res;
     } catch {
@@ -127,7 +166,7 @@ async function staleWhileRevalidate(req, cacheName) {
 
   // Nếu có cache → trả ngay, fetch ngầm update cho lần sau.
   if (cached) {
-    // Đẩy networkPromise vào event để SW không bị kill sớm.
+    e.waitUntil(networkPromise);
     return cached;
   }
   // Không cache → đợi network.

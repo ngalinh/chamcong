@@ -36,6 +36,15 @@ export function ServiceWorkerRegister() {
       reloaded = true;
       window.location.reload();
     });
+
+    // SW phát hiện build mới (HTML cache cũ ref asset hash đã chết) → reload
+    // để tránh user thấy UI vỡ phải tự thoát/mở lại.
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type !== "RELOAD_FOR_UPDATE") return;
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    });
   }, []);
 
   return null;
