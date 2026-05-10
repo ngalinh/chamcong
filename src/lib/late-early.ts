@@ -2,11 +2,34 @@ import type { WorkShift } from "@/types/db";
 import { effectiveWorkShifts } from "./workHours";
 import { timeToMinutes } from "./time";
 
+const DAY_MIN = 24 * 60;
+
+/**
+ * Khoảng cách thời gian theo vòng tròn 24h (0..720). Vd 00:26 ↔ 23:59 = 27p
+ * (không phải 1413p), nhờ đó shift-picker chọn đúng ca cận 0h.
+ */
+function circularDistance(a: number, b: number): number {
+  const d = Math.abs(a - b) % DAY_MIN;
+  return Math.min(d, DAY_MIN - d);
+}
+
+/**
+ * Hiệu (now - target) wrap quanh 24h, trả [-720, 720].
+ * Dương = sau target, âm = trước target.
+ * Vd now=00:26, target=23:59 → +27 (sau end 27p, không phải sớm 1413p).
+ */
+function signedCircularDelta(now: number, target: number): number {
+  let d = ((now - target) % DAY_MIN + DAY_MIN) % DAY_MIN;
+  if (d > DAY_MIN / 2) d -= DAY_MIN;
+  return d;
+}
+
 /**
  * Tính late/early cho 1 lần check-in/out.
  * Hỗ trợ:
- *   - Multi-shift parttime (tìm shift gần nhất với thời điểm)
- *   - Cross-midnight night shift
+ *   - Multi-shift parttime (chọn shift gần nhất với thời điểm)
+ *   - Cross-midnight night shift HOẶC shift cận 0h (vd 20:00-23:59) với
+ *     check-out sau nửa đêm
  *   - Hourly leave window override (dịch effectiveStart/End nếu có đơn nghỉ giờ)
  *
  * @param timeMinutes thời điểm chấm công, theo phút trong ngày VN (0-1439)
@@ -31,7 +54,7 @@ export function computeLateEarly(opts: {
 
   const closest = shifts.reduce<{ shift: WorkShift; dist: number } | null>((best, s) => {
     const t = timeToMinutes(opts.kind === "in" ? s.start : s.end);
-    const distance = Math.abs(opts.timeMinutes - t);
+    const distance = circularDistance(opts.timeMinutes, t);
     if (!best || distance < best.dist) return { shift: s, dist: distance };
     return best;
   }, null)!;
@@ -48,20 +71,11 @@ export function computeLateEarly(opts: {
     if (lEnd >= wEnd && lStart < wEnd) effectiveEnd = opts.hourlyLeave.start_time;
   }
 
-  const startMin = timeToMinutes(effectiveStart);
-  const endMin = timeToMinutes(effectiveEnd);
-  const isNightShift = endMin < startMin;
-  const nowMin = opts.timeMinutes;
+  const targetMin = timeToMinutes(opts.kind === "in" ? effectiveStart : effectiveEnd);
+  const delta = signedCircularDelta(opts.timeMinutes, targetMin);
 
   if (opts.kind === "in") {
-    const diff = isNightShift && nowMin < endMin
-      ? nowMin + 24 * 60 - startMin
-      : nowMin - startMin;
-    return { late_minutes: diff > 0 ? diff : null, early_minutes: null };
+    return { late_minutes: delta > 0 ? delta : null, early_minutes: null };
   }
-
-  const diff = isNightShift && nowMin >= startMin
-    ? endMin + 24 * 60 - nowMin
-    : endMin - nowMin;
-  return { late_minutes: null, early_minutes: diff > 0 ? diff : null };
+  return { late_minutes: null, early_minutes: delta < 0 ? -delta : null };
 }
