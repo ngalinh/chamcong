@@ -243,9 +243,9 @@ export default function LeaveRequestForm({
       {/* leave_paid (nghỉ theo ngày): tự động tính theo số ngày, không có ô input */}
       {dayOnly && (
         <Row icon={Clock} label="Thời gian nghỉ">
-          <div className="h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 flex items-center text-sm">
+          <div className="min-h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 flex flex-wrap items-center gap-x-1.5 text-sm">
             <b className="tabular-nums">{validDateCount || 1} ngày</b>
-            <span className="text-neutral-400 ml-1.5">(tự động theo số ngày bạn thêm ở trên)</span>
+            <span className="text-neutral-400">(tự động theo số ngày bạn thêm ở trên)</span>
           </div>
         </Row>
       )}

@@ -60,6 +60,8 @@ type LeaveRow = {
   category: LeaveCategory;
   duration: number;
   duration_unit: "day" | "hour";
+  start_time: string | null;
+  end_time: string | null;
   reason: string | null;
   status: LeaveStatus;
 };
@@ -195,7 +197,7 @@ export default async function MyHistoryPage({
   if (type === "all" || type === "leave") {
     const { data } = await admin
       .from("leave_requests")
-      .select("id, created_at, leave_date, category, duration, duration_unit, reason, status")
+      .select("id, created_at, leave_date, category, duration, duration_unit, start_time, end_time, reason, status")
       .eq("employee_id", employee.id)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
@@ -211,6 +213,8 @@ export default async function MyHistoryPage({
         category: r.category,
         duration: r.duration,
         duration_unit: r.duration_unit,
+        start_time: r.start_time,
+        end_time: r.end_time,
         reason: r.reason,
         status: (r.status ?? "pending") as LeaveStatus,
       });
@@ -475,6 +479,9 @@ function LeaveCard({ row: r }: { row: LeaveRow }) {
         <div className="mt-0.5 text-sm font-medium truncate">{LEAVE_CATEGORIES[r.category]}</div>
         <div className="text-xs text-neutral-500">
           {formatVN(r.leave_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}
+          {r.category === "leave_hourly" && r.start_time && r.end_time && (
+            <> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</>
+          )}
           <span className="text-neutral-400"> · nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</span>
         </div>
         {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
