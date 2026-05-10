@@ -70,6 +70,9 @@ export default async function LeavePage() {
                   <div className="text-xs text-neutral-500 mt-0.5">
                     {formatVN(r.leave_date + "T00:00:00+07:00", "EEEE, d 'tháng' M yyyy")} · {r.duration}{" "}
                     {r.duration_unit === "day" ? "ngày" : "giờ"}
+                    {r.category === "leave_hourly" && r.start_time && r.end_time && (
+                      <> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</>
+                    )}
                   </div>
                   {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
                 </div>

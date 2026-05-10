@@ -70,6 +70,8 @@ type LeaveRow = {
   category: LeaveCategory;
   duration: number;
   duration_unit: "day" | "hour";
+  start_time: string | null;
+  end_time: string | null;
   reason: string | null;
   status: LeaveStatus;
   approver_email: string | null;  // null = chưa gán chi nhánh hoặc chi nhánh không có approver
@@ -697,7 +699,7 @@ export default async function HistoryPage({
   if (type === "leave" || type === "all") {
     let q = admin
       .from("leave_requests")
-      .select("id, created_at, leave_date, category, duration, duration_unit, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
+      .select("id, created_at, leave_date, category, duration, duration_unit, start_time, end_time, reason, status, employees(name, email, home_office_id, offices:home_office_id(approver_email))")
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
@@ -718,6 +720,8 @@ export default async function HistoryPage({
         category: r.category,
         duration: r.duration,
         duration_unit: r.duration_unit,
+        start_time: r.start_time,
+        end_time: r.end_time,
         reason: r.reason,
         status: (r.status ?? "pending") as LeaveStatus,
         approver_email: approver,
@@ -1163,6 +1167,9 @@ function LeaveCard({
           <div className="mt-1 text-xs text-neutral-700">
             <span className="font-medium">{LEAVE_CATEGORIES[r.category]}</span>
             <span className="text-neutral-500"> · ngày {formatVN(r.leave_date + "T00:00:00+07:00", "d/M")} · {r.duration} {r.duration_unit === "day" ? "ngày" : "giờ"}</span>
+            {r.category === "leave_hourly" && r.start_time && r.end_time && (
+              <span className="text-neutral-500 tabular-nums"> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</span>
+            )}
           </div>
           {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
           <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
