@@ -73,6 +73,9 @@ export default async function LeavePage() {
                     {r.category === "leave_hourly" && r.start_time && r.end_time && (
                       <> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</>
                     )}
+                    {r.category === "online_wfh" && r.start_time && (
+                      <> · {Number(r.start_time.slice(0, 2)) < 12 ? "Ca sáng" : "Ca chiều"}</>
+                    )}
                   </div>
                   {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
                 </div>
