@@ -59,23 +59,36 @@ export async function POST(request: NextRequest) {
   const data = parsed.data;
 
   // Chặn trùng lặp: cùng NV + cùng category + cùng ngày + status pending hoặc approved
+  // Riêng online_wfh: cho phép ca sáng + ca chiều trong cùng 1 ngày (chỉ chặn khi
+  // trùng ca, hoặc 1 trong 2 là full_day).
   const { data: existing } = await admin
     .from("leave_requests")
-    .select("leave_date, status")
+    .select("leave_date, status, start_time")
     .eq("employee_id", emp.id)
     .eq("category", data.category)
     .in("leave_date", data.leave_dates)
     .in("status", ["pending", "approved"]);
 
-  if (existing && existing.length > 0) {
-    const dupDates = [...new Set(existing.map((e) => e.leave_date as string))].sort();
+  let conflicts = existing ?? [];
+  if (data.category === "online_wfh" && conflicts.length > 0) {
+    const newShift = data.start_time ? data.start_time.slice(0, 5) : null; // null = full_day
+    conflicts = conflicts.filter((r) => {
+      const existingShift = r.start_time ? (r.start_time as string).slice(0, 5) : null;
+      // 1 trong 2 là full_day → conflict; cả 2 half-day → conflict khi trùng ca
+      if (newShift === null || existingShift === null) return true;
+      return newShift === existingShift;
+    });
+  }
+
+  if (conflicts.length > 0) {
+    const dupDates = [...new Set(conflicts.map((e) => e.leave_date as string))].sort();
     const formatted = dupDates
       .map((d) => {
         const [, m, day] = d.split("-");
         return `${Number(day)}/${Number(m)}`;
       })
       .join(", ");
-    const hasApproved = existing.some((e) => e.status === "approved");
+    const hasApproved = conflicts.some((e) => e.status === "approved");
     const message = hasApproved
       ? `Bạn đã có đơn xin nghỉ ngày ${formatted} được duyệt rồi`
       : `Bạn đã gửi đơn xin nghỉ ngày ${formatted} và đang chờ sếp duyệt`;
