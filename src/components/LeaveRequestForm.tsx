@@ -262,34 +262,23 @@ export default function LeaveRequestForm({
         </>
       )}
 
-      {/* leave_paid (nghỉ theo ngày): chọn cả ngày / nửa ngày sáng / nửa ngày chiều */}
+      {/* leave_paid (nghỉ theo ngày): chọn cả ngày / ca sáng / ca chiều */}
       {dayOnly && (
         <Row icon={Clock} label="Thời gian nghỉ">
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-2">
               <ModeButton active={leavePaidMode === "full_day"}  onClick={() => setLeavePaidMode("full_day")}  icon={Calendar} label="Cả ngày" />
-              <ModeButton active={leavePaidMode === "morning"}   onClick={() => setLeavePaidMode("morning")}   icon={Sun}      label="Nửa ngày sáng" />
-              <ModeButton active={leavePaidMode === "afternoon"} onClick={() => setLeavePaidMode("afternoon")} icon={Moon}     label="Nửa ngày chiều" />
+              <ModeButton active={leavePaidMode === "morning"}   onClick={() => setLeavePaidMode("morning")}   icon={Sun}      label="Ca sáng" />
+              <ModeButton active={leavePaidMode === "afternoon"} onClick={() => setLeavePaidMode("afternoon")} icon={Moon}     label="Ca chiều" />
             </div>
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
-              {leavePaidMode === "full_day" ? (
-                <>
-                  <b className="tabular-nums">{validDateCount || 1} ngày</b>
-                  <span className="text-neutral-400 ml-1">(tự động theo số ngày bạn thêm ở trên)</span>
-                </>
-              ) : (
-                <>
-                  Nghỉ {leavePaidMode === "morning" ? "sáng" : "chiều"}{" "}
-                  <b className="tabular-nums">
-                    {WFH_SHIFTS[leavePaidMode].start} - {WFH_SHIFTS[leavePaidMode].end}
-                  </b>
-                  <span className="text-neutral-400 ml-1">· trừ <b>0.5</b> ngày phép</span>
-                </>
-              )}
-            </div>
-            {isLeavePaidHalf && (
+            {leavePaidMode === "full_day" ? (
+              <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+                <b className="tabular-nums">{validDateCount || 1} ngày</b>
+                <span className="text-neutral-400 ml-1">(tự động theo số ngày bạn thêm ở trên)</span>
+              </div>
+            ) : (
               <p className="text-xs text-neutral-500">
-                Bạn vẫn cần chấm công ca {leavePaidMode === "morning" ? "chiều (13:30 - 17:30)" : "sáng (09:00 - 12:30)"}.
+                Trừ <b>0.5</b> ngày phép. Bạn vẫn cần chấm công ca {leavePaidMode === "morning" ? "chiều" : "sáng"} còn lại.
               </p>
             )}
           </div>
