@@ -36,6 +36,10 @@ const Schema = z.object({
   // WFH ca sáng/chiều = online_wfh có start_time → ràng buộc 1 ngày + đủ 2 mốc
   (d) => !(d.category === "online_wfh" && d.start_time) || (d.end_time && d.leave_dates.length === 1),
   { message: "WFH ca sáng/chiều cần đủ thời gian và chỉ áp dụng cho 1 ngày" },
+).refine(
+  // Nghỉ nửa ngày leave_paid = có start_time → 1 ngày + đủ 2 mốc + duration = 0.5
+  (d) => !(d.category === "leave_paid" && d.start_time) || (d.end_time && d.leave_dates.length === 1 && d.duration === 0.5 && d.duration_unit === "day"),
+  { message: "Nghỉ nửa ngày chỉ áp dụng cho 1 ngày + đúng 0.5 ngày phép" },
 );
 
 export async function POST(request: NextRequest) {
@@ -95,10 +99,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
-  // Lưu start/end_time cho leave_hourly + online_wfh half-day (cả 2 đều dùng để
-  // shift effective work hours khi check-in)
+  // Lưu start/end_time cho leave_hourly + online_wfh half-day + leave_paid half-day
+  // (cả 3 đều dùng để shift effective work hours khi check-in / recalc late-early)
   const hasShiftTimes = data.category === "leave_hourly"
-    || (data.category === "online_wfh" && !!data.start_time);
+    || ((data.category === "online_wfh" || data.category === "leave_paid") && !!data.start_time);
   const rows = data.leave_dates.map((d) => ({
     employee_id: emp.id,
     leave_date: d,

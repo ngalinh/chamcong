@@ -18,6 +18,7 @@ function diffHours(start: string, end: string): number {
 }
 
 type WfhMode = "full_day" | "morning" | "afternoon";
+type LeavePaidMode = "full_day" | "morning" | "afternoon";
 const WFH_SHIFTS: Record<Exclude<WfhMode, "full_day">, { start: string; end: string }> = {
   morning:   { start: "09:00", end: "12:30" },
   afternoon: { start: "13:30", end: "17:30" },
@@ -36,6 +37,7 @@ export default function LeaveRequestForm({
   const [dates, setDates] = useState<string[]>([today]);
   const [category, setCategory] = useState<LeaveCategory>("online_wfh");
   const [wfhMode, setWfhMode] = useState<WfhMode>("full_day");
+  const [leavePaidMode, setLeavePaidMode] = useState<LeavePaidMode>("full_day");
   const [duration, setDuration] = useState<string>("1");
   const [unit, setUnit] = useState<DurationUnit>("day");
   const [startTime, setStartTime] = useState("09:00");
@@ -49,6 +51,7 @@ export default function LeaveRequestForm({
   const isWfh = category === "online_wfh";
   const isWfhHalf = isWfh && wfhMode !== "full_day";
   const dayOnly = category === "leave_paid"; // Nghỉ theo ngày — duration = số ngày
+  const isLeavePaidHalf = dayOnly && leavePaidMode !== "full_day";
 
   const computedHours = useMemo(() => diffHours(startTime, endTime), [startTime, endTime]);
   const validDateCount = useMemo(() => dates.filter((d) => d.trim()).length, [dates]);
@@ -64,10 +67,16 @@ export default function LeaveRequestForm({
       setStartTime(shift.start);
       setEndTime(shift.end);
       setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
+    } else if (isLeavePaidHalf) {
+      const shift = WFH_SHIFTS[leavePaidMode as "morning" | "afternoon"];
+      setStartTime(shift.start);
+      setEndTime(shift.end);
+      setUnit("day");
+      setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
     } else if (dayOnly || (isWfh && wfhMode === "full_day")) {
       setUnit("day");
     }
-  }, [isHourly, isWfh, isWfhHalf, wfhMode, dayOnly, computedHours]);
+  }, [isHourly, isWfh, isWfhHalf, isLeavePaidHalf, wfhMode, leavePaidMode, dayOnly, computedHours]);
 
   function addDate() { setDates((prev) => [...prev, ""]); }
   function removeDate(idx: number) { setDates((prev) => prev.filter((_, i) => i !== idx)); }
@@ -95,10 +104,22 @@ export default function LeaveRequestForm({
 
     // Quyết định payload theo từng trường hợp
     const useHourly = isHourly || isWfhHalf;
-    const submitDuration = useHourly
-      ? computedHours
-      : (dayOnly || (isWfh && wfhMode === "full_day")) ? cleanDates.length : Number(duration);
-    const submitUnit: DurationUnit = useHourly ? "hour" : "day";
+    let submitDuration: number;
+    let submitUnit: DurationUnit;
+    if (useHourly) {
+      submitDuration = computedHours;
+      submitUnit = "hour";
+    } else if (isLeavePaidHalf) {
+      submitDuration = 0.5;
+      submitUnit = "day";
+    } else if (dayOnly || (isWfh && wfhMode === "full_day")) {
+      submitDuration = cleanDates.length;
+      submitUnit = "day";
+    } else {
+      submitDuration = Number(duration);
+      submitUnit = unit;
+    }
+    const includeShiftTimes = useHourly || isLeavePaidHalf;
 
     setLoading(true);
     try {
@@ -110,8 +131,8 @@ export default function LeaveRequestForm({
           category,
           duration: submitDuration,
           duration_unit: submitUnit,
-          start_time: useHourly ? startTime : null,
-          end_time:   useHourly ? endTime   : null,
+          start_time: includeShiftTimes ? startTime : null,
+          end_time:   includeShiftTimes ? endTime   : null,
           reason: reason.trim() || null,
         }),
       });
@@ -122,7 +143,7 @@ export default function LeaveRequestForm({
       setOk(cleanDates.length > 1 ? `Đã gửi ${cleanDates.length} đơn xin nghỉ` : "Đã gửi đơn xin nghỉ");
       setReason("");
       setDates([today]);
-      if (!useHourly) setDuration("1");
+      if (!useHourly && !isLeavePaidHalf) setDuration("1");
       router.refresh();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -131,7 +152,7 @@ export default function LeaveRequestForm({
     }
   }
 
-  const allowMultiDate = !isHourly && !isWfhHalf;
+  const allowMultiDate = !isHourly && !isWfhHalf && !isLeavePaidHalf;
 
   return (
     <form onSubmit={submit} className="rounded-2xl glass border border-white/60 p-5 space-y-4">
@@ -183,6 +204,7 @@ export default function LeaveRequestForm({
           onChange={(e) => {
             setCategory(e.target.value as LeaveCategory);
             setWfhMode("full_day"); // reset WFH mode khi đổi category
+            setLeavePaidMode("full_day");
           }}
           className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
         >
@@ -240,12 +262,36 @@ export default function LeaveRequestForm({
         </>
       )}
 
-      {/* leave_paid (nghỉ theo ngày): tự động tính theo số ngày, không có ô input */}
+      {/* leave_paid (nghỉ theo ngày): chọn cả ngày / nửa ngày sáng / nửa ngày chiều */}
       {dayOnly && (
         <Row icon={Clock} label="Thời gian nghỉ">
-          <div className="min-h-10 w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 flex flex-wrap items-center gap-x-1.5 text-sm">
-            <b className="tabular-nums">{validDateCount || 1} ngày</b>
-            <span className="text-neutral-400">(tự động theo số ngày bạn thêm ở trên)</span>
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">
+              <ModeButton active={leavePaidMode === "full_day"}  onClick={() => setLeavePaidMode("full_day")}  icon={Calendar} label="Cả ngày" />
+              <ModeButton active={leavePaidMode === "morning"}   onClick={() => setLeavePaidMode("morning")}   icon={Sun}      label="Nửa ngày sáng" />
+              <ModeButton active={leavePaidMode === "afternoon"} onClick={() => setLeavePaidMode("afternoon")} icon={Moon}     label="Nửa ngày chiều" />
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+              {leavePaidMode === "full_day" ? (
+                <>
+                  <b className="tabular-nums">{validDateCount || 1} ngày</b>
+                  <span className="text-neutral-400 ml-1">(tự động theo số ngày bạn thêm ở trên)</span>
+                </>
+              ) : (
+                <>
+                  Nghỉ {leavePaidMode === "morning" ? "sáng" : "chiều"}{" "}
+                  <b className="tabular-nums">
+                    {WFH_SHIFTS[leavePaidMode].start} - {WFH_SHIFTS[leavePaidMode].end}
+                  </b>
+                  <span className="text-neutral-400 ml-1">· trừ <b>0.5</b> ngày phép</span>
+                </>
+              )}
+            </div>
+            {isLeavePaidHalf && (
+              <p className="text-xs text-neutral-500">
+                Bạn vẫn cần chấm công ca {leavePaidMode === "morning" ? "chiều (13:30 - 17:30)" : "sáng (09:00 - 12:30)"}.
+              </p>
+            )}
           </div>
         </Row>
       )}
