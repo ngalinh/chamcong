@@ -355,10 +355,10 @@ async function decideLeave(formData: FormData) {
   // Recalc late/early cho các check-in trong ngày khi duyệt đơn nghỉ theo giờ
   // (lúc check-in, đơn còn pending nên đã tính theo giờ làm gốc — giờ duyệt rồi
   // thì cập nhật lại để bỏ/giảm label vi phạm).
-  // Áp dụng cho cả leave_hourly và online_wfh ca sáng/chiều (start_time có).
+  // Áp dụng cho leave_hourly + online_wfh ca sáng/chiều + leave_paid nửa ngày (start_time có).
   if (
     decision === "approved" &&
-    (leave.category === "leave_hourly" || leave.category === "online_wfh") &&
+    (leave.category === "leave_hourly" || leave.category === "online_wfh" || leave.category === "leave_paid") &&
     leave.start_time &&
     leave.end_time
   ) {
@@ -816,8 +816,8 @@ export default async function HistoryPage({
         .eq("status", "approved")
         .neq("category", "leave_hourly"); // hourly không auto-excuse
       for (const c of covers ?? []) {
-        // online_wfh ca sáng/chiều (start_time có) cũng không cover full day
-        if (c.category === "online_wfh" && c.start_time) continue;
+        // online_wfh ca sáng/chiều + leave_paid nửa ngày (start_time có) cũng không cover full day
+        if ((c.category === "online_wfh" || c.category === "leave_paid") && c.start_time) continue;
         leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
       }
     }
@@ -1170,7 +1170,7 @@ function LeaveCard({
             {r.category === "leave_hourly" && r.start_time && r.end_time && (
               <span className="text-neutral-500 tabular-nums"> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)}</span>
             )}
-            {r.category === "online_wfh" && r.start_time && (
+            {(r.category === "online_wfh" || r.category === "leave_paid") && r.start_time && (
               <span className="text-neutral-500"> · {Number(r.start_time.slice(0, 2)) < 12 ? "Ca sáng" : "Ca chiều"}</span>
             )}
           </div>

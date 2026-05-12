@@ -112,15 +112,16 @@ export async function POST(request: NextRequest) {
   const kind: "in" | "out" =
     lastCi?.kind === "in" && elapsedMin < SHIFT_MAX_HOURS * 60 ? "out" : "in";
 
-  // Tìm đơn nghỉ theo giờ HOẶC WFH ca sáng/chiều đã duyệt — cả 2 đều shift giờ làm
-  // hiệu lực. Vd: office 9h-18h, NV nghỉ 9-10h hoặc WFH ca sáng 9-12:30 →
-  // effective_start dịch theo, NV chỉ phải có mặt ca còn lại.
+  // Tìm đơn nghỉ theo giờ HOẶC WFH ca sáng/chiều HOẶC leave_paid nửa ngày đã duyệt —
+  // cả 3 đều shift giờ làm hiệu lực. Vd: office 9h-18h, NV nghỉ 9-10h hoặc WFH ca sáng
+  // 9-12:30 hoặc leave_paid sáng 9-12:30 → effective_start dịch theo, NV chỉ phải có
+  // mặt ca còn lại.
   const { data: hourlyLeave } = await admin
     .from("leave_requests")
     .select("start_time, end_time")
     .eq("employee_id", emp.id)
     .eq("leave_date", dayStr)
-    .in("category", ["leave_hourly", "online_wfh"])
+    .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
     .not("start_time", "is", null)
     .eq("status", "approved")
     .maybeSingle();

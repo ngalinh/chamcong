@@ -80,7 +80,7 @@ export async function computePayrollForMonth(
       ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
       : admin
           .from("leave_requests")
-          .select("id, leave_date, category, status, duration, duration_unit, reason, wage_deduction_override")
+          .select("id, leave_date, category, status, duration, duration_unit, reason, wage_deduction_override, start_time")
           .eq("employee_id", employee.id)
           .eq("status", "approved")
           .gte("leave_date", dayStart)
@@ -111,7 +111,12 @@ export async function computePayrollForMonth(
   const excusedDays = new Set<string>();
   for (const lv of leaves ?? []) {
     const cat = (lv as { category?: string }).category;
+    const startTime = (lv as { start_time?: string | null }).start_time ?? null;
     if (cat === "leave_paid" || cat === "online_wfh" || cat === "online_rain") {
+      // leave_paid nửa ngày (có start_time) → ca còn lại NV phải đi làm, không
+      // excuse cả ngày khỏi tính trễ/về sớm. (online_wfh half giữ nguyên hành vi
+      // cũ — vẫn excuse, vì NV WFH coi như "đang làm" nửa kia.)
+      if (cat === "leave_paid" && startTime) continue;
       excusedDays.add((lv as { leave_date: string }).leave_date);
     }
   }
