@@ -91,6 +91,21 @@ Vd: `Fix: redirect URL dùng X-Forwarded-Host thay vì request.url`
 Mỗi lần thêm/sửa schema → tạo migration mới ở `supabase/migrations/<timestamp>_<name>.sql`. **Không sửa migration cũ** (đã apply lên DB rồi). User phải apply thủ công qua Supabase Dashboard SQL Editor:
 https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/sql/new
 
+#### Data API GRANT (bắt buộc từ 30/10/2026)
+
+Supabase đổi default: từ **30/10/2026**, table mới tạo trong `public` schema KHÔNG còn được auto-grant cho `anon` / `authenticated` / `service_role` nữa. Bảng cũ giữ nguyên grants — không bị ảnh hưởng. Nhưng mọi migration MỚI từ giờ trở đi phải thêm GRANT explicit, nếu không supabase-js sẽ trả lỗi `42501` khi đọc/ghi bảng đó.
+
+Template cho mỗi `create table` mới trong `public`:
+```sql
+create table public.<tên_bảng> ( ... );
+
+-- BẮT BUỘC: explicit grant (Supabase bỏ auto-grant từ 30/10/2026)
+grant select, insert, update, delete on public.<tên_bảng> to authenticated, service_role;
+-- Thêm `anon` chỉ khi cần access không cần login (project này gần như không bao giờ cần)
+```
+
+App này dùng cả supabase-js phía client (role `authenticated`) lẫn admin client server-side (role `service_role`) → cả 2 đều phải có grant.
+
 ### Per-employee work hours override
 
 Một số NV có ca khác (vd Trâm Trương ca chiều 13:30 → cuối ngày). Lưu ở DB cột `employees.work_start_time` + `work_end_time` (nullable, null = dùng giờ chi nhánh). Admin set qua UI ở `/admin/employees`. Logic ở [src/lib/workHours.ts](src/lib/workHours.ts) `effectiveWorkHours()` — áp dụng trong cả `/api/checkin` và `decideLeave` (recalc khi duyệt đơn hourly).
