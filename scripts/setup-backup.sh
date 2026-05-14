@@ -14,6 +14,7 @@ set -euo pipefail
 APP_DIR="/opt/chamcong"
 ENV_FILE="$APP_DIR/.env"
 CRON_LINE="0 3 * * 0 $APP_DIR/scripts/backup.sh >> /var/log/chamcong-backup.log 2>&1"
+REMINDER_CRON_LINE="*/5 * * * * $APP_DIR/scripts/send-reminders.sh >> /var/log/chamcong-reminders.log 2>&1"
 
 cd "$APP_DIR"
 
@@ -125,30 +126,39 @@ fi
 
 # ── 5. Cài cron entry ──
 echo ""
-echo "[5/5] Cài cron 3:00 sáng Chủ nhật hàng tuần..."
-EXISTING_CRON=$(crontab -l 2>/dev/null || true)
-EXISTING_LINE=$(echo "$EXISTING_CRON" | grep -F "$APP_DIR/scripts/backup.sh" || true)
-if [ -n "$EXISTING_LINE" ]; then
-  if [ "$EXISTING_LINE" = "$CRON_LINE" ]; then
-    echo "      ✓ Cron đã đúng: $CRON_LINE"
+echo "[5/5] Cài cron 3:00 sáng Chủ nhật + reminder chấm công */5 phút..."
+
+# Helper: upsert 1 dòng cron — match theo script path, replace nếu khác.
+upsert_cron() {
+  local match="$1"     # substring nhận diện dòng cron cũ
+  local new_line="$2"  # dòng cron mới mong muốn
+  local current existing
+  current=$(crontab -l 2>/dev/null || true)
+  existing=$(echo "$current" | grep -F "$match" || true)
+  if [ -n "$existing" ]; then
+    if [ "$existing" = "$new_line" ]; then
+      echo "      ✓ Cron đã đúng: $new_line"
+    else
+      echo "$current" | grep -vF "$match" > /tmp/cc-cron.tmp
+      echo "$new_line" >> /tmp/cc-cron.tmp
+      crontab /tmp/cc-cron.tmp
+      rm -f /tmp/cc-cron.tmp
+      echo "      ✓ Đã cập nhật cron:"
+      echo "        Cũ: $existing"
+      echo "        Mới: $new_line"
+    fi
   else
-    # Replace dòng cron cũ bằng dòng mới
-    echo "$EXISTING_CRON" | grep -vF "$APP_DIR/scripts/backup.sh" > /tmp/cc-cron.tmp
-    echo "$CRON_LINE" >> /tmp/cc-cron.tmp
-    crontab /tmp/cc-cron.tmp
-    rm -f /tmp/cc-cron.tmp
-    echo "      ✓ Đã cập nhật cron:"
-    echo "        Cũ: $EXISTING_LINE"
-    echo "        Mới: $CRON_LINE"
+    (echo "$current"; echo "$new_line") | crontab -
+    echo "      ✓ Đã thêm: $new_line"
   fi
-else
-  (echo "$EXISTING_CRON"; echo "$CRON_LINE") | crontab -
-  echo "      ✓ Đã thêm: $CRON_LINE"
-fi
+}
+
+upsert_cron "$APP_DIR/scripts/backup.sh"         "$CRON_LINE"
+upsert_cron "$APP_DIR/scripts/send-reminders.sh" "$REMINDER_CRON_LINE"
 
 # Đảm bảo log file ghi được
-sudo touch /var/log/chamcong-backup.log
-sudo chown vmadmin:vmadmin /var/log/chamcong-backup.log
+sudo touch /var/log/chamcong-backup.log /var/log/chamcong-reminders.log
+sudo chown vmadmin:vmadmin /var/log/chamcong-backup.log /var/log/chamcong-reminders.log
 
 # ── Test ──
 echo ""

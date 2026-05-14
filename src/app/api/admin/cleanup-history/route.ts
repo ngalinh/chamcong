@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       violation_reports: 0,
       alerts: 0,
       error_logs: 0,
+      shift_reminders_sent: 0,
     },
   };
 
@@ -243,6 +244,19 @@ export async function POST(request: NextRequest) {
     if (!dryRun) {
       const { error: e } = await admin.from("error_logs").delete().lt("created_at", cutoffLogIso);
       if (e) throw new Error(`error_logs: ${e.message}`);
+    }
+
+    const { count: srCount } = await admin
+      .from("shift_reminders_sent")
+      .select("id", { count: "exact", head: true })
+      .lt("sent_at", cutoffLogIso);
+    result.deleted.shift_reminders_sent = srCount ?? 0;
+    if (!dryRun) {
+      const { error: e } = await admin
+        .from("shift_reminders_sent")
+        .delete()
+        .lt("sent_at", cutoffLogIso);
+      if (e) throw new Error(`shift_reminders_sent: ${e.message}`);
     }
 
     return NextResponse.json({ ok: true, ...result });
