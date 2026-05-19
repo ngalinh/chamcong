@@ -170,10 +170,10 @@ async function updateCheckIn(formData: FormData) {
   // Hourly leave override (nếu có)
   const { data: hourlyLeave } = await admin
     .from("leave_requests")
-    .select("start_time, end_time")
+    .select("start_time, end_time, category")
     .eq("employee_id", ci.employee_id)
     .eq("leave_date", dateStr)
-    .in("category", ["leave_hourly", "online_wfh"])
+    .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
     .not("start_time", "is", null)
     .eq("status", "approved")
     .maybeSingle();
@@ -250,10 +250,11 @@ async function createManualCheckIn(formData: FormData) {
 
   const { data: hourlyLeave } = await admin
     .from("leave_requests")
-    .select("start_time, end_time")
+    .select("start_time, end_time, category")
     .eq("employee_id", employeeId)
     .eq("leave_date", dateStr)
-    .eq("category", "leave_hourly")
+    .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+    .not("start_time", "is", null)
     .eq("status", "approved")
     .maybeSingle();
 
@@ -331,7 +332,7 @@ async function decideLeave(formData: FormData) {
   const admin = createAdminClient();
   const { data: leave } = await admin
     .from("leave_requests")
-    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, start_time, end_time, employees(name, email, home_office_id, work_start_time, work_end_time, offices:home_office_id(approver_email))")
+    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, start_time, end_time, employees(name, email, home_office_id, work_start_time, work_end_time, work_shifts, offices:home_office_id(approver_email))")
     .eq("id", id)
     .maybeSingle();
   if (!leave || leave.status !== "pending") return;
@@ -363,7 +364,7 @@ async function decideLeave(formData: FormData) {
     leave.end_time
   ) {
     const { timeToMinutes, formatVN } = await import("@/lib/time");
-    const { effectiveWorkHours } = await import("@/lib/workHours");
+    const { computeLateEarly } = await import("@/lib/late-early");
     const dayStart = new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString();
     const dayEnd = new Date(`${leave.leave_date}T23:59:59.999+07:00`).toISOString();
     const { data: dayCheckIns } = await admin
@@ -377,39 +378,32 @@ async function decideLeave(formData: FormData) {
       email: string | null;
       work_start_time: string | null;
       work_end_time: string | null;
+      work_shifts: { start: string; end: string }[] | null;
     } | null;
     const empForHours = {
       email: empJoin?.email ?? null,
       work_start_time: empJoin?.work_start_time ?? null,
       work_end_time: empJoin?.work_end_time ?? null,
+      work_shifts: empJoin?.work_shifts ?? null,
     };
-    const lStart = timeToMinutes(leave.start_time);
-    const lEnd = timeToMinutes(leave.end_time);
+    const hourlyLeave = {
+      start_time: leave.start_time!,
+      end_time: leave.end_time!,
+      category: leave.category,
+    };
 
     await Promise.all((dayCheckIns ?? []).map(async (ci) => {
       // @ts-expect-error — supabase join
       const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
       if (!office) return;
-      // Apply per-employee override trước rồi mới dịch theo leave window
-      const base = effectiveWorkHours(empForHours, office.work_start_time, office.work_end_time);
-      let effStart = base.start;
-      let effEnd = base.end;
-      const wStart = timeToMinutes(base.start);
-      const wEnd = timeToMinutes(base.end);
-
-      if (lStart <= wStart && lEnd > wStart) effStart = leave.end_time!;
-      if (lEnd >= wEnd && lStart < wEnd) effEnd = leave.start_time!;
-
       const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
-      let late_minutes: number | null = null;
-      let early_minutes: number | null = null;
-      if (ci.kind === "in") {
-        const diff = ciMin - timeToMinutes(effStart);
-        if (diff > 0) late_minutes = diff;
-      } else {
-        const diff = timeToMinutes(effEnd) - ciMin;
-        if (diff > 0) early_minutes = diff;
-      }
+      const { late_minutes, early_minutes } = computeLateEarly({
+        emp: empForHours,
+        office,
+        hourlyLeave,
+        kind: ci.kind as "in" | "out",
+        timeMinutes: ciMin,
+      });
       await admin
         .from("check_ins")
         .update({ late_minutes, early_minutes })
