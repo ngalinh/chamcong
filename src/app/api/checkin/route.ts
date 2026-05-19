@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
   // mặt ca còn lại.
   const { data: hourlyLeave } = await admin
     .from("leave_requests")
-    .select("start_time, end_time")
+    .select("start_time, end_time, category")
     .eq("employee_id", emp.id)
     .eq("leave_date", dayStr)
     .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
