@@ -106,7 +106,7 @@ async function accrueLeaveThisMonth() {
   const monthStr = yearMonthVN(); // "YYYY-MM" hiện tại theo giờ VN
   const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
 
-  // Đối tượng: NV active fulltime, được tạo TRƯỚC đầu tháng hiện tại (NV vào giữa tháng → skip),
+  // Đối tượng: NV active fulltime, được tạo TRƯỜC đầu tháng hiện tại (NV vào giữa tháng → skip),
   // và chưa được accrual cho tháng này. Parttime không có ngày phép → skip luôn.
   const { data: targets } = await admin
     .from("employees")
@@ -299,6 +299,12 @@ export default async function EmployeesPage({
     .order("holiday_date", { ascending: true });
 
   const meEmail = user?.email ?? "";
+  const sortedEmployees = [...(employees ?? [])].sort((a, b) => {
+    const aAdmin = a.is_admin ? 1 : 0;
+    const bAdmin = b.is_admin ? 1 : 0;
+    if (aAdmin !== bAdmin) return aAdmin - bAdmin;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
   const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
 
   const currentMonth = yearMonthVN();
@@ -424,7 +430,7 @@ export default async function EmployeesPage({
         />
       ) : (
         <div className="rounded-2xl border border-white/60 glass overflow-hidden divide-y divide-neutral-200/60">
-          {(employees as Employee[]).map((e) => {
+          {(sortedEmployees as Employee[]).map((e) => {
             const office = e.home_office_id ? officeMap.get(e.home_office_id) : undefined;
             const canDelete = e.email !== meEmail;
             return (
