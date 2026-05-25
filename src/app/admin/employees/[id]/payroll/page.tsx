@@ -9,6 +9,7 @@ import type { PayrollResult, ParttimePayrollResult } from "@/lib/payroll";
 import { parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { formatVN } from "@/lib/time";
 import { computePayrollForMonth, type PayrollSnapshotPayload } from "@/lib/payroll-snapshot";
+import { LeaveHourlyDeductionEditor } from "@/components/LeaveHourlyDeductionEditor";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -283,7 +284,7 @@ function SnapshotBanner() {
   return (
     <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-xs text-sky-800">
       Bảng lương hiển thị từ snapshot — raw data tháng này đã được cleanup
-      sau {">"} 100 ngày. Nội dung không thay đổi nữa.
+      sau {">"}  100 ngày. Nội dung không thay đổi nữa.
     </div>
   );
 }
@@ -799,6 +800,7 @@ function LeaveList({
           <LeaveLabel label={it.label} phepUsed={it.phepUsed} wageDays={it.wageDays} wageHours={it.wageHours} freeDays={it.freeDays} />
           {editable && employeeId && it.category === "leave_hourly" ? (
             <LeaveHourlyDeductionEditor
+              action={setLeaveWageOverride}
               leaveId={it.id}
               leaveDate={it.date}
               employeeId={employeeId}
@@ -815,43 +817,6 @@ function LeaveList({
   );
 }
 
-// Inline edit số tiền trừ lương cho 1 đơn nghỉ theo giờ. Bỏ trống ô input
-// rồi Lưu = reset về giá trị compute (hours × hourRate).
-function LeaveHourlyDeductionEditor({
-  leaveId,
-  leaveDate,
-  employeeId,
-  currentDeduction,
-}: {
-  leaveId: string;
-  leaveDate: string;
-  employeeId: string;
-  currentDeduction: number;
-}) {
-  return (
-    <form action={setLeaveWageOverride} className="inline-flex items-center gap-1 ml-2 shrink-0">
-      <input type="hidden" name="leave_id" value={leaveId} />
-      <input type="hidden" name="employee_id" value={employeeId} />
-      <input type="hidden" name="leave_date" value={leaveDate} />
-      <span className="text-rose-700 font-semibold text-sm">−</span>
-      <input
-        type="text"
-        inputMode="numeric"
-        name="override"
-        defaultValue={Math.round(currentDeduction)}
-        title="Số tiền trừ (VND). Bỏ trống để dùng auto-compute."
-        className="w-24 h-7 rounded-md border border-neutral-200 bg-white px-2 text-sm text-rose-700 font-semibold tabular-nums text-right outline-none focus:border-neutral-900"
-      />
-      <button
-        type="submit"
-        title="Lưu"
-        className="h-7 px-2 rounded-md text-xs font-medium border border-neutral-200 bg-white hover:bg-neutral-50"
-      >
-        Lưu
-      </button>
-    </form>
-  );
-}
 
 function LeaveLabel({
   label,
