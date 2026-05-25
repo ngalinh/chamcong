@@ -27,6 +27,7 @@ import {
   Wifi,
   Hourglass,
   ShieldAlert,
+  Sparkles,
   Download,
 } from "lucide-react";
 import Image from "next/image";
@@ -87,6 +88,7 @@ type ViolationRow = {
   itemCount: number;
   reason: string | null;
   status: ViolationStatus;
+  kind: "bonus" | "violation";
 };
 
 type Row = CheckInRow | LeaveRow | OvertimeRow | ViolationRow;
@@ -118,9 +120,9 @@ export default async function MyHistoryPage({
   const rangeFrom = (page - 1) * PAGE_SIZE;
   const rangeTo = rangeFrom + PAGE_SIZE - 1;
 
-  // Date range filter — default 30 ngày qua đến hôm nay
-  const from = sp.from ? new Date(sp.from + "T00:00:00+07:00") : new Date(Date.now() - 30 * 86400_000);
-  const to = sp.to ? new Date(sp.to + "T23:59:59.999+07:00") : new Date();
+  // Date range filter — default 30 ngày qua đến hôm nay. Chấp nhận DD/MM/YY hoặc YYYY-MM-DD.
+  const from = parseDateInput(sp.from, "start") ?? new Date(Date.now() - 30 * 86400_000);
+  const to = parseDateInput(sp.to, "end") ?? new Date();
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
 
@@ -224,7 +226,7 @@ export default async function MyHistoryPage({
   if (type === "all" || type === "violation") {
     const { data } = await admin
       .from("violation_reports")
-      .select("id, created_at, report_date, total_amount, reason, status, violation_items(id)")
+      .select("id, created_at, report_date, total_amount, reason, status, kind, violation_items(id)")
       .eq("employee_id", employee.id)
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
@@ -242,6 +244,7 @@ export default async function MyHistoryPage({
         itemCount: items.length,
         reason: r.reason,
         status: (r.status ?? "pending") as ViolationStatus,
+        kind: ((r.kind ?? "violation") as "bonus" | "violation"),
       });
     }
   }
@@ -283,8 +286,8 @@ export default async function MyHistoryPage({
       <form action="/history" className="rounded-2xl border border-white/60 glass p-3 flex flex-col gap-2">
         <input type="hidden" name="type" value={type} />
         <div className="grid grid-cols-2 gap-2">
-          <DateField label="Từ"  name="from" defaultValue={from.toISOString().slice(0, 10)} />
-          <DateField label="Đến" name="to"   defaultValue={to.toISOString().slice(0, 10)} />
+          <DateField label="Từ"  name="from" defaultValue={formatVN(from, "dd/MM/yy")} />
+          <DateField label="Đến" name="to"   defaultValue={formatVN(to,   "dd/MM/yy")} />
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" type="submit" className="flex-1">Lọc</Button>
@@ -403,9 +406,11 @@ function DateField({
       <div className="h-10 w-full rounded-lg border border-neutral-200 bg-white px-2.5 flex items-center gap-1.5 focus-within:border-neutral-900 focus-within:ring-2 focus-within:ring-neutral-900/5 transition">
         <Calendar size={14} className="text-neutral-400 shrink-0" />
         <input
-          type="date"
+          type="text"
+          inputMode="numeric"
           name={name}
           defaultValue={defaultValue}
+          placeholder="DD/MM/YY"
           className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm tabular-nums"
         />
       </div>
@@ -518,22 +523,46 @@ function OvertimeCard({ row: r }: { row: OvertimeRow }) {
   );
 }
 
+function parseDateInput(s: string | undefined, edge: "start" | "end"): Date | null {
+  if (!s) return null;
+  const suffix = edge === "start" ? "T00:00:00+07:00" : "T23:59:59.999+07:00";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + suffix);
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    const yr = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    const iso = `${yr}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    const d = new Date(iso + suffix);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function ViolationCard({ row: r }: { row: ViolationRow }) {
+  const isBonus = r.kind === "bonus";
   return (
     <div className="rounded-2xl border border-white/60 glass p-3 flex gap-3">
-      <div className="h-14 w-14 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-        <ShieldAlert size={18} />
+      <div className={cn(
+        "h-14 w-14 rounded-xl flex items-center justify-center shrink-0",
+        isBonus ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600",
+      )}>
+        {isBonus ? <Sparkles size={18} /> : <ShieldAlert size={18} />}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">
-            <ShieldAlert size={10} /> Vi phạm
+          <span className={cn(
+            "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded",
+            isBonus ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700",
+          )}>
+            {isBonus ? <Sparkles size={10} /> : <ShieldAlert size={10} />}
+            {isBonus ? "Thưởng" : "Vi phạm"}
           </span>
           <StatusBadge status={r.status} />
         </div>
         <div className="mt-0.5 text-sm font-medium">
-          {formatVN(r.report_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.itemCount} lỗi ·{" "}
-          <span className="text-rose-700 tabular-nums">{r.total_amount.toLocaleString("en-US")} VND</span>
+          {formatVN(r.report_date + "T00:00:00+07:00", "d/M/yyyy")} · {r.itemCount} {isBonus ? "mục" : "lỗi"} ·{" "}
+          <span className={cn("tabular-nums", isBonus ? "text-emerald-700" : "text-rose-700")}>
+            {isBonus ? "+" : ""}{r.total_amount.toLocaleString("en-US")} VND
+          </span>
         </div>
         <div className="text-xs text-neutral-400 mt-0.5">
           nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}
