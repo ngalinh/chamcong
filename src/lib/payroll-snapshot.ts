@@ -155,14 +155,16 @@ export async function computePayrollForMonth(
   if (isParttime) {
     let officeWorkStart = "09:00:00";
     let officeWorkEnd = "18:00:00";
+    let officeIsRemote = false;
     if (employee.home_office_id) {
       const { data: office } = await admin
         .from("offices")
-        .select("work_start_time, work_end_time")
+        .select("work_start_time, work_end_time, is_remote")
         .eq("id", employee.home_office_id)
         .maybeSingle();
       officeWorkStart = (office?.work_start_time as string | null) ?? "09:00:00";
       officeWorkEnd = (office?.work_end_time as string | null) ?? "18:00:00";
+      officeIsRemote = !!(office?.is_remote);
     }
     const workShifts = effectiveWorkShifts(
       {
@@ -182,6 +184,7 @@ export async function computePayrollForMonth(
       overtimes: otInputs,
       excusedDays,
       selfViolations: selfViolationsInput,
+      isRemote: officeIsRemote,
     });
     return { kind: "parttime", result, workShifts };
   }

@@ -414,8 +414,9 @@ export function computeParttimePayroll(args: {
   overtimes: OvertimeInput[];
   excusedDays: Set<string>;
   selfViolations: SelfViolationInput[];
+  isRemote?: boolean;
 }): ParttimePayrollResult {
-  const { hourlyRate, overtimeRate, workShifts, checkIns, overtimes, excusedDays, selfViolations } = args;
+  const { hourlyRate, overtimeRate, workShifts, checkIns, overtimes, excusedDays, selfViolations, isRemote } = args;
   // Parttime: nếu overtime_rate > 0 → dùng nó; else fallback hourly_rate.
   const effOTRate = overtimeRate > 0 ? overtimeRate : hourlyRate;
   const otEntries: OvertimeEntry[] = overtimes.map((o) => ({
@@ -458,7 +459,9 @@ export function computeParttimePayroll(args: {
         // Tìm work shift gần nhất với check-in time (dùng start time để match)
         const ws = closestWorkShiftForCheckIn(workShifts, pendingIn.checked_in_at);
         const regularHours = sane > 0 && ws
-          ? regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, ws.start, ws.end, { forgivenLateStart: pendingInForgiven })
+          ? (isRemote
+            ? Math.min(workShiftDuration(ws.start, ws.end), sane)
+            : regularHoursOfShift(pendingIn.checked_in_at, ci.checked_in_at, ws.start, ws.end, { forgivenLateStart: pendingInForgiven }))
           : 0;
         shifts.push({
           date: pendingIn.dateVN,
@@ -530,6 +533,14 @@ export function computeParttimePayroll(args: {
  *   - shift 21:00 day1 → 06:00 day2 → overlap = 9h (full)
  *   - shift 21:00 day1 → 07:00 day2 (1h OT) → overlap = 9h (cap tại 06:00)
  */
+/** Tổng số giờ của 1 ca (hỗ trợ ca xuyên đêm, kể cả end = "00:00"). */
+function workShiftDuration(workStartHM: string, workEndHM: string): number {
+  const startMin = timeToMinutes(workStartHM);
+  const endMin = timeToMinutes(workEndHM);
+  const durationMin = endMin <= startMin ? 1440 - startMin + endMin : endMin - startMin;
+  return durationMin / 60;
+}
+
 /** Tìm work shift có start time gần nhất với check-in (theo phút trong ngày VN). */
 function closestWorkShiftForCheckIn(shifts: WorkShift[], checkInIso: string): WorkShift | null {
   if (shifts.length === 0) return null;
