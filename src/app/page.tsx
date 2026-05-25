@@ -7,6 +7,7 @@ import { isAdminEmail, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { NotificationToggle } from "@/components/NotificationToggle";
 import { MonthlyStatsCards } from "@/components/MonthlyStatsCards";
+import { GreetingClock } from "@/components/GreetingClock";
 import {
   Fingerprint,
   LogOut,
@@ -225,10 +226,7 @@ export default async function Home() {
   // @ts-expect-error — supabase join
   const lastOfficeName: string | undefined = lastCheckIn?.offices?.name;
 
-  const now = new Date();
-  const hour = parseInt(formatVN(now, "H"), 10);
-  const greeting = hour < 12 ? "Chào buổi sáng" : hour < 18 ? "Chào buổi chiều" : "Chào buổi tối";
-  const nowLabel = formatVN(now, "HH:mm · EEEE, d 'tháng' M, yyyy");
+  const displayName = employee?.name ?? user.email?.split("@")[0] ?? "";
 
   return (
     <main className="relative min-h-dvh flex flex-col px-safe pt-safe pb-safe overflow-hidden">
@@ -237,11 +235,7 @@ export default async function Home() {
 
       <header className="relative flex items-center justify-between py-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.15em] text-neutral-400 font-medium">{greeting}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {employee?.name ?? user.email?.split("@")[0]}
-          </h1>
-          <p className="text-xs text-neutral-500 mt-0.5 first-letter:uppercase tabular-nums">{nowLabel}</p>
+          <GreetingClock name={displayName} />
         </div>
         <form action="/auth/signout" method="post">
           <button className="h-10 w-10 rounded-full glass border border-white/60 flex items-center justify-center text-neutral-500 hover:text-neutral-900">
