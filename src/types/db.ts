@@ -46,6 +46,8 @@ export type ProfitChannel = {
   channel_name: string;
   sale_employee_id: string | null;
   cskh_employee_id: string | null;
+  sale_pct: number;
+  cskh_pct: number;
   created_at: string;
 };
 
@@ -55,8 +57,6 @@ export type ProfitRule = {
   brand: string;
   customer_group: string;
   profit_pct: number;
-  sale_pct: number;
-  cskh_pct: number;
   created_at: string;
 };
 
@@ -69,7 +69,7 @@ export type OrderFile = {
   created_at: string;
 };
 
-export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO"] as const;
+export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO", "ShipUS"] as const;
 export type ProfitChannelName = typeof PROFIT_CHANNELS[number];
 
 export const PROFIT_BRANDS = ["Asale", "Basso", "ShipUS", "Checkout", "Stock"] as const;

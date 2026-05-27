@@ -12,9 +12,6 @@ import {
 function pctLabel(p: number) {
   return `${(p * 100).toFixed(1).replace(/\.0$/, "")}%`;
 }
-function pctNum(p: number) {
-  return (p * 100).toFixed(1).replace(/\.0$/, "");
-}
 
 export async function ProfitTab({
   ok,
@@ -24,8 +21,8 @@ export async function ProfitTab({
 }: {
   ok?: string;
   error?: string;
-  editChannel?: string; // channel id đang edit
-  editRule?: string;    // rule id đang edit
+  editChannel?: string;
+  editRule?: string;
 }) {
   const admin = createAdminClient();
 
@@ -60,67 +57,70 @@ export async function ProfitTab({
         </div>
       )}
 
-      {/* ─── Bảng 1: Kênh NV → SALE / CSKH ─────────────────────────────── */}
+      {/* ─── Tài khoản nhân viên theo kênh ─────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
           Tài khoản nhân viên theo kênh
         </h3>
 
         <div className="rounded-2xl border border-white/60 glass overflow-hidden">
-          {channelList.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
-                  <tr>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh NV</th>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản SALE</th>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản CSKH</th>
-                    <th className="py-2.5 px-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-200/40">
-                  {channelList.map((ch) => {
-                    const isEditing = editingChannel?.id === ch.id;
-                    const saleEmp = empList.find((e) => e.id === ch.sale_employee_id);
-                    const cskhEmp = empList.find((e) => e.id === ch.cskh_employee_id);
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
+                <tr>
+                  <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh NV</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản SALE</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản CSKH</th>
+                  <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% SALE</th>
+                  <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% CSKH</th>
+                  <th className="py-2.5 px-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200/40">
+                {channelList.map((ch) => {
+                  const isEditing = editingChannel?.id === ch.id;
+                  const saleEmp = empList.find((e) => e.id === ch.sale_employee_id);
+                  const cskhEmp = empList.find((e) => e.id === ch.cskh_employee_id);
 
-                    if (isEditing) {
-                      return (
-                        <tr key={ch.id} className="bg-indigo-50/40">
-                          <td colSpan={4} className="px-3 py-3">
-                            <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} />
-                          </td>
-                        </tr>
-                      );
-                    }
-
+                  if (isEditing) {
                     return (
-                      <tr key={ch.id}>
-                        <td className="py-2.5 px-3 font-medium">{ch.channel_name}</td>
-                        <td className="py-2.5 px-3 text-neutral-600">{saleEmp?.name ?? <span className="text-neutral-400">—</span>}</td>
-                        <td className="py-2.5 px-3 text-neutral-600">{cskhEmp?.name ?? <span className="text-neutral-400">—</span>}</td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-1 justify-end">
-                            <a
-                              href={`/admin/settings?tab=profit&edit_ch=${ch.id}`}
-                              className="h-7 px-2 rounded-md border border-neutral-200 bg-white text-xs hover:bg-neutral-50 inline-flex items-center gap-1"
-                            >
-                              <Pencil size={11} /> Sửa
-                            </a>
-                          </div>
+                      <tr key={ch.id} className="bg-indigo-50/40">
+                        <td colSpan={6} className="px-3 py-3">
+                          <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} />
                         </td>
                       </tr>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  }
 
+                  return (
+                    <tr key={ch.id}>
+                      <td className="py-2.5 px-3 font-medium">{ch.channel_name}</td>
+                      <td className="py-2.5 px-3 text-neutral-600">{saleEmp?.name ?? <span className="text-neutral-400">—</span>}</td>
+                      <td className="py-2.5 px-3 text-neutral-600">{cskhEmp?.name ?? <span className="text-neutral-400">—</span>}</td>
+                      <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700 font-medium">
+                        {ch.sale_pct > 0 ? pctLabel(ch.sale_pct) : <span className="text-neutral-400">—</span>}
+                      </td>
+                      <td className="py-2.5 px-3 text-right tabular-nums text-sky-700 font-medium">
+                        {ch.cskh_pct > 0 ? pctLabel(ch.cskh_pct) : <span className="text-neutral-400">—</span>}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <a
+                          href={`/admin/settings?tab=profit&edit_ch=${ch.id}`}
+                          className="h-7 px-2 rounded-md border border-neutral-200 bg-white text-xs hover:bg-neutral-50 inline-flex items-center gap-1"
+                        >
+                          <Pencil size={11} /> Sửa
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 
-      {/* ─── Bảng 2: Profit rules ─────────────────────────────────────────── */}
+      {/* ─── Công thức profit ─────────────────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
           Công thức profit
@@ -136,8 +136,6 @@ export async function ProfitTab({
                     <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Brand</th>
                     <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Nhóm KH</th>
                     <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% Profit</th>
-                    <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% SALE</th>
-                    <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% CSKH</th>
                     <th className="py-2.5 px-3" />
                   </tr>
                 </thead>
@@ -147,7 +145,7 @@ export async function ProfitTab({
                     if (isEditing) {
                       return (
                         <tr key={r.id} className="bg-indigo-50/40">
-                          <td colSpan={7} className="px-3 py-3">
+                          <td colSpan={5} className="px-3 py-3">
                             <RuleForm rule={r} action={upsertProfitRule} />
                           </td>
                         </tr>
@@ -160,12 +158,6 @@ export async function ProfitTab({
                         <td className="py-2.5 px-3">{r.customer_group}</td>
                         <td className="py-2.5 px-3 text-right tabular-nums text-indigo-700 font-medium">
                           {pctLabel(r.profit_pct)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700">
-                          {pctLabel(r.sale_pct)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right tabular-nums text-sky-700">
-                          {pctLabel(r.cskh_pct)}
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-1 justify-end">
@@ -194,23 +186,20 @@ export async function ProfitTab({
             </div>
           )}
 
-          {/* Add new rule form */}
           {!editingRule && (
             <div className="p-3 border-t border-neutral-200/40 bg-neutral-50/40">
-              <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-1">
-                <Plus size={12} /> Thêm rule profit
-              </p>
+              <p className="text-xs font-medium text-neutral-500 mb-3">+ Thêm rule profit</p>
               <RuleForm action={upsertProfitRule} />
             </div>
           )}
         </div>
 
         <p className="text-xs text-neutral-500 leading-relaxed">
-          💡 <b>% SALE</b> + <b>% CSKH</b> là phần trăm của tổng profit dòng đó. Vd profit 6tr, SALE 70% = 4.2tr, CSKH 30% = 1.8tr.
+          💡 <b>% SALE</b> và <b>% CSKH</b> cài chung theo kênh NV ở bảng trên.
+          % Profit ở đây là phần trăm doanh thu được tính là profit, rồi nhân thêm % SALE/CSKH của kênh.
         </p>
       </section>
 
-      {/* Profit summary hiện tại */}
       <ProfitSummarySection channels={channelList} employees={empList} />
     </div>
   );
@@ -221,47 +210,41 @@ function ChannelForm({
   employees,
   action,
 }: {
-  channel?: ProfitChannel;
+  channel: ProfitChannel;
   employees: Pick<Employee, "id" | "name">[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
 }) {
   return (
-    <form action={action} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
-      {channel && <input type="hidden" name="id" value={channel.id} />}
-      {/* disabled select không submit value → cần hidden input khi edit */}
-      {channel && <input type="hidden" name="channel_name" value={channel.channel_name} />}
+    <form action={action} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
+      <input type="hidden" name="id" value={channel.id} />
+      <input type="hidden" name="channel_name" value={channel.channel_name} />
 
-      <SelectField label="Kênh NV" name="channel_name" defaultValue={channel?.channel_name} disabled={!!channel}>
-        {PROFIT_CHANNELS.map((c) => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </SelectField>
-
-      <SelectField label="Tài khoản SALE" name="sale_employee_id" defaultValue={channel?.sale_employee_id ?? ""}>
+      <SelectField label="Tài khoản SALE" name="sale_employee_id" defaultValue={channel.sale_employee_id ?? ""}>
         <option value="">(chưa chọn)</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </SelectField>
 
-      <SelectField label="Tài khoản CSKH" name="cskh_employee_id" defaultValue={channel?.cskh_employee_id ?? ""}>
+      <SelectField label="Tài khoản CSKH" name="cskh_employee_id" defaultValue={channel.cskh_employee_id ?? ""}>
         <option value="">(chưa chọn)</option>
         {employees.map((e) => (
           <option key={e.id} value={e.id}>{e.name}</option>
         ))}
       </SelectField>
 
-      <div className="flex gap-1.5">
-        <Button type="submit" size="sm">{channel ? "Lưu" : "Thêm"}</Button>
-        {channel && (
-          <a
-            href="/admin/settings?tab=profit"
-            className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
-          >
-            Huỷ
-          </a>
-        )}
+      <NumberPctField label="% SALE" name="sale_pct" defaultValue={Math.round(channel.sale_pct * 100)} />
+      <NumberPctField label="% CSKH" name="cskh_pct" defaultValue={Math.round(channel.cskh_pct * 100)} />
+
+      <div className="flex gap-1.5 col-span-2 sm:col-span-1">
+        <Button type="submit" size="sm">Lưu</Button>
+        <a
+          href="/admin/settings?tab=profit"
+          className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
+        >
+          Huỷ
+        </a>
       </div>
     </form>
   );
@@ -275,50 +258,65 @@ function RuleForm({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
 }) {
+  const isEditing = !!rule;
   return (
-    <form action={action} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto] gap-2 items-end">
+    <form action={action} className="space-y-3">
       {rule && <input type="hidden" name="id" value={rule.id} />}
-      {/* disabled selects không submit value → cần hidden inputs khi edit */}
       {rule && <input type="hidden" name="channel_name" value={rule.channel_name} />}
       {rule && <input type="hidden" name="brand" value={rule.brand} />}
       {rule && <input type="hidden" name="customer_group" value={rule.customer_group} />}
 
-      <SelectField label="Kênh NV" name="channel_name" defaultValue={rule?.channel_name} disabled={!!rule}>
-        {PROFIT_CHANNELS.map((c) => (
-          <option key={c} value={c}>{c}</option>
-        ))}
-      </SelectField>
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
+        <SelectField label="Kênh NV" name="channel_name" defaultValue={rule?.channel_name} disabled={isEditing}>
+          {PROFIT_CHANNELS.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </SelectField>
 
-      <SelectField label="Brand" name="brand" defaultValue={rule?.brand} disabled={!!rule}>
-        {PROFIT_BRANDS.map((b) => (
-          <option key={b} value={b}>{b}</option>
-        ))}
-      </SelectField>
+        <SelectField label="Brand" name="brand" defaultValue={rule?.brand} disabled={isEditing}>
+          {PROFIT_BRANDS.map((b) => (
+            <option key={b} value={b}>{b}</option>
+          ))}
+        </SelectField>
 
-      <SelectField label="Nhóm KH" name="customer_group" defaultValue={rule?.customer_group} disabled={!!rule}>
-        {CUSTOMER_GROUPS.map((g) => (
-          <option key={g} value={g}>{g}</option>
-        ))}
-      </SelectField>
+        <SelectField label="% Profit" name="profit_pct" defaultValue={String(rule?.profit_pct ?? PROFIT_PCTS[0])}>
+          {PROFIT_PCTS.map((p) => (
+            <option key={p} value={String(p)}>{(p * 100).toFixed(1).replace(/\.0$/, "")}%</option>
+          ))}
+        </SelectField>
 
-      <SelectField label="% Profit" name="profit_pct" defaultValue={String(rule?.profit_pct ?? PROFIT_PCTS[0])}>
-        {PROFIT_PCTS.map((p) => (
-          <option key={p} value={String(p)}>{(p * 100).toFixed(1).replace(/\.0$/, "")}%</option>
-        ))}
-      </SelectField>
+        <div className="flex gap-1.5 col-span-2 sm:col-span-1">
+          <Button type="submit" size="sm">{rule ? "Lưu" : "Thêm"}</Button>
+          {rule && (
+            <a
+              href="/admin/settings?tab=profit"
+              className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
+            >
+              Huỷ
+            </a>
+          )}
+        </div>
+      </div>
 
-      <NumberPctField label="% SALE" name="sale_pct" defaultValue={rule ? Math.round(rule.sale_pct * 100) : 70} />
-      <NumberPctField label="% CSKH" name="cskh_pct" defaultValue={rule ? Math.round(rule.cskh_pct * 100) : 30} />
-
-      <div className="flex gap-1.5 col-span-2 sm:col-span-1">
-        <Button type="submit" size="sm">{rule ? "Lưu" : "Thêm"}</Button>
-        {rule && (
-          <a
-            href="/admin/settings?tab=profit"
-            className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
-          >
-            Huỷ
-          </a>
+      <div>
+        <div className="text-xs font-medium text-neutral-600 mb-1.5">Nhóm KH</div>
+        {isEditing ? (
+          <div className="text-sm text-neutral-500 h-9 flex items-center">{rule.customer_group}</div>
+        ) : (
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {CUSTOMER_GROUPS.map((g) => (
+              <label key={g} className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  name="customer_group"
+                  value={g}
+                  defaultChecked
+                  className="h-4 w-4 rounded accent-neutral-900"
+                />
+                {g}
+              </label>
+            ))}
+          </div>
         )}
       </div>
     </form>
@@ -394,7 +392,7 @@ function ProfitSummarySection({
       <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide flex items-center gap-1.5">
         <TrendingUp size={14} /> Tóm tắt phân công
       </h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         {channels.map((ch) => {
           const saleEmp = employees.find((e) => e.id === ch.sale_employee_id);
           const cskhEmp = employees.find((e) => e.id === ch.cskh_employee_id);
@@ -404,10 +402,12 @@ function ProfitSummarySection({
               <div className="text-xs text-neutral-600">
                 <span className="text-emerald-600 font-medium">SALE:</span>{" "}
                 {saleEmp?.name ?? <span className="text-neutral-400">chưa set</span>}
+                {ch.sale_pct > 0 && <span className="text-neutral-400 ml-1">({pctLabel(ch.sale_pct)})</span>}
               </div>
               <div className="text-xs text-neutral-600">
                 <span className="text-sky-600 font-medium">CSKH:</span>{" "}
                 {cskhEmp?.name ?? <span className="text-neutral-400">chưa set</span>}
+                {ch.cskh_pct > 0 && <span className="text-neutral-400 ml-1">({pctLabel(ch.cskh_pct)})</span>}
               </div>
             </div>
           );
