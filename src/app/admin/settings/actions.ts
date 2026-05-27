@@ -102,6 +102,50 @@ export async function deleteProfitRule(formData: FormData) {
   ok("profit", "Đã xoá rule");
 }
 
+// edit_key = "channel_name||brand||profit_pct"
+export async function upsertProfitRuleGroup(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const editKey = String(formData.get("edit_key") ?? "");
+  const parts = editKey.split("||");
+  const channel_name = (parts[0] ?? "").trim();
+  const brand = (parts[1] ?? "").trim();
+  const old_profit_pct = Number(parts[2] ?? 0);
+  const profit_pct = Number(formData.get("profit_pct") ?? 0);
+  const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
+
+  if (!channel_name || !brand || !customer_groups.length) err("profit", "Thiếu thông tin");
+  if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
+
+  // Xoá group cũ, insert lại với nhóm KH mới
+  await admin.from("profit_rules").delete()
+    .eq("channel_name", channel_name)
+    .eq("brand", brand)
+    .eq("profit_pct", old_profit_pct);
+
+  const rows = customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }));
+  const { error } = await admin.from("profit_rules").insert(rows);
+  if (error) err("profit", error.message);
+  ok("profit", "Đã cập nhật rule");
+}
+
+export async function deleteProfitRuleGroup(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const editKey = String(formData.get("edit_key") ?? "");
+  const parts = editKey.split("||");
+  const channel_name = (parts[0] ?? "").trim();
+  const brand = (parts[1] ?? "").trim();
+  const profit_pct = Number(parts[2] ?? 0);
+
+  const { error } = await admin.from("profit_rules").delete()
+    .eq("channel_name", channel_name)
+    .eq("brand", brand)
+    .eq("profit_pct", profit_pct);
+  if (error) err("profit", error.message);
+  ok("profit", "Đã xoá rule");
+}
+
 // ─── order files ───────────────────────────────────────────────────────────
 
 function parseAmount(val: unknown): number {
