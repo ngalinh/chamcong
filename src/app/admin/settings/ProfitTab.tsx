@@ -1,11 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
-import { AlertTriangle, CheckCircle2, Plus, Pencil, Trash2, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Pencil, Trash2, TrendingUp } from "lucide-react";
 import type { ProfitChannel, ProfitRule, Employee } from "@/types/db";
 import { PROFIT_CHANNELS, PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
 import {
   upsertProfitChannel,
-  deleteProfitChannel,
   upsertProfitRule,
   deleteProfitRule,
 } from "./actions";
@@ -108,15 +107,6 @@ export async function ProfitTab({
                             >
                               <Pencil size={11} /> Sửa
                             </a>
-                            <form action={deleteProfitChannel} className="inline">
-                              <input type="hidden" name="id" value={ch.id} />
-                              <button
-                                type="submit"
-                                className="h-7 w-7 rounded-md border border-neutral-200 bg-white inline-flex items-center justify-center text-neutral-400 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200"
-                              >
-                                <Trash2 size={11} />
-                              </button>
-                            </form>
                           </div>
                         </td>
                       </tr>
@@ -127,15 +117,6 @@ export async function ProfitTab({
             </div>
           )}
 
-          {/* Add new channel form */}
-          {!editingChannel && (
-            <div className="p-3 border-t border-neutral-200/40 bg-neutral-50/40">
-              <p className="text-xs font-medium text-neutral-500 mb-2 flex items-center gap-1">
-                <Plus size={12} /> Thêm kênh NV
-              </p>
-              <ChannelForm employees={empList} action={upsertProfitChannel} />
-            </div>
-          )}
         </div>
       </section>
 
