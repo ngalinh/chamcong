@@ -12,6 +12,7 @@ import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
 import { DeleteEmployeeButton } from "@/components/DeleteEmployeeButton";
 import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
 import EmployeeWorkHoursEditor from "@/components/EmployeeWorkHoursEditor";
+import OtFixedSalaryEditor from "@/components/OtFixedSalaryEditor";
 import { yearMonthVN } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -84,6 +85,32 @@ async function updateEmployeePayroll(formData: FormData) {
       hourly_rate: hourlyRate,
       overtime_rate: overtimeRate,
     })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/employees");
+}
+
+async function updateOtFixedSalary(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const raw = Number(formData.get("ot_fixed_salary") ?? 0);
+  const val = Number.isFinite(raw) && raw >= 0 ? raw : 0;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("employees")
+    .update({ ot_fixed_salary: val || null })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
@@ -512,7 +539,14 @@ export default async function EmployeesPage({
                   action={updateEmployeePayroll}
                 />
 
-                {/* Row 5: button "Thời gian làm việc" — click mới expand form,
+                {/* Row 5: lương OT cố định/tháng */}
+                <OtFixedSalaryEditor
+                  employeeId={e.id}
+                  initialValue={e.ot_fixed_salary ?? null}
+                  action={updateOtFixedSalary}
+                />
+
+                {/* Row 6: button "Thời gian làm việc" — click mới expand form,
                     có thể nhập nhiều ca (parttime online) hoặc chỉ 1 ca */}
                 <EmployeeWorkHoursEditor
                   employeeId={e.id}

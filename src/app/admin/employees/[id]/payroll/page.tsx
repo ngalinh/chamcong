@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
+import { computeProfitForEmployee, type EmployeeProfit } from "@/lib/profit";
 import { LEAVE_CATEGORIES, type Employee, type LeaveCategory } from "@/types/db";
 import type { PayrollResult, ParttimePayrollResult } from "@/lib/payroll";
 import { parseYearMonth, yearMonthVN } from "@/lib/workdays";
@@ -208,6 +209,12 @@ export default async function PayrollPage({
     : await computePayrollForMonth(admin, emp, monthStr);
   const fromSnapshot = !!snapshotRow?.data;
 
+  const otFixedSalary = Number(emp.ot_fixed_salary ?? 0);
+  // Profit chỉ tính khi không phải snapshot (snapshot là tháng cũ đã cleanup)
+  const profitData = fromSnapshot
+    ? { items: [] as EmployeeProfit[], total: 0 }
+    : await computeProfitForEmployee(emp.id, monthStr);
+
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
   const next = ym.month === 12 ? { y: ym.year + 1, m: 1 } : { y: ym.year, m: ym.month + 1 };
@@ -266,7 +273,16 @@ export default async function PayrollPage({
       <div className="space-y-5">
         {header}
         {fromSnapshot && <SnapshotBanner />}
-        <ParttimeView result={payload.result} monthStr={monthStr} workShifts={payload.workShifts} employeeId={emp.id} editable={!fromSnapshot} />
+        <ParttimeView
+          result={payload.result}
+          monthStr={monthStr}
+          workShifts={payload.workShifts}
+          employeeId={emp.id}
+          editable={!fromSnapshot}
+          otFixedSalary={otFixedSalary}
+          profitItems={profitData.items}
+          profitTotal={profitData.total}
+        />
       </div>
     );
   }
@@ -275,7 +291,15 @@ export default async function PayrollPage({
     <div className="space-y-5">
       {header}
       {fromSnapshot && <SnapshotBanner />}
-      <FulltimeView result={payload.result} monthStr={monthStr} employeeId={emp.id} editable={!fromSnapshot} />
+      <FulltimeView
+        result={payload.result}
+        monthStr={monthStr}
+        employeeId={emp.id}
+        editable={!fromSnapshot}
+        otFixedSalary={otFixedSalary}
+        profitItems={profitData.items}
+        profitTotal={profitData.total}
+      />
     </div>
   );
 }
@@ -298,12 +322,18 @@ function ParttimeView({
   workShifts,
   employeeId,
   editable,
+  otFixedSalary,
+  profitItems,
+  profitTotal,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
   workShifts: { start: string; end: string }[];
   employeeId: string;
   editable: boolean;
+  otFixedSalary: number;
+  profitItems: EmployeeProfit[];
+  profitTotal: number;
 }) {
   const shiftsLabel = workShifts.length === 1
     ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
@@ -401,11 +431,20 @@ function ParttimeView({
         {result.totalSelfBonus > 0 && (
           <EarnRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
         )}
+        {otFixedSalary > 0 && (
+          <EarnRow label="Lương OT cố định" value={otFixedSalary} positive />
+        )}
+        {profitTotal > 0 && (
+          <EarnRow label="Profit từ doanh số" value={profitTotal} positive />
+        )}
         <div className="pt-2 mt-2 border-t border-emerald-300/60 flex items-center justify-between">
           <span className="font-semibold text-emerald-900">Lương thực nhận tạm tính</span>
-          <span className="text-2xl font-bold text-emerald-700 tabular-nums">{Math.max(0, Math.round(result.grandEarning)).toLocaleString("en-US")} VND</span>
+          <span className="text-2xl font-bold text-emerald-700 tabular-nums">
+            {Math.max(0, Math.round(result.grandEarning + otFixedSalary + profitTotal)).toLocaleString("en-US")} VND
+          </span>
         </div>
       </div>
+      {profitItems.length > 0 && <ProfitSection items={profitItems} total={profitTotal} />}
     </>
   );
 }
@@ -418,11 +457,17 @@ function FulltimeView({
   monthStr,
   employeeId,
   editable,
+  otFixedSalary,
+  profitItems,
+  profitTotal,
 }: {
   result: PayrollResult;
   monthStr: string;
   employeeId: string;
   editable: boolean;
+  otFixedSalary: number;
+  profitItems: EmployeeProfit[];
+  profitTotal: number;
 }) {
   // Group leaves theo loại
   const leavesByCat: Record<string, typeof result.leaves> = {};
@@ -501,6 +546,12 @@ function FulltimeView({
         {result.totalSelfBonus > 0 && (
           <TotalRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
         )}
+        {otFixedSalary > 0 && (
+          <TotalRow label="Lương OT cố định" value={otFixedSalary} positive />
+        )}
+        {profitTotal > 0 && (
+          <TotalRow label="Profit từ doanh số" value={profitTotal} positive />
+        )}
         <div className="pt-2 mt-2 border-t border-rose-300/60 flex items-center justify-between">
           <span className="font-semibold text-rose-900">Tổng tiền trừ</span>
           <span className="text-2xl font-bold text-rose-700 tabular-nums">−{Math.round(result.grandTotal).toLocaleString("en-US")} VND</span>
@@ -508,10 +559,11 @@ function FulltimeView({
         <p className="text-xs text-rose-700/80 mt-1">
           Lương thực nhận tạm tính:{" "}
           <b className="tabular-nums">
-            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay).toLocaleString("en-US")} VND
+            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal).toLocaleString("en-US")} VND
           </b>
         </p>
       </div>
+      {profitItems.length > 0 && <ProfitSection items={profitItems} total={profitTotal} />}
     </>
   );
 }
@@ -882,5 +934,60 @@ function EarnRow({ label, value, positive = false }: { label: string; value: num
       <span className="text-emerald-900/80">{label}</span>
       <span className={cn("font-medium tabular-nums", cls)}>{sign}{Math.round(value).toLocaleString("en-US")} VND</span>
     </div>
+  );
+}
+
+function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: number }) {
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/60 overflow-hidden">
+      <header className="px-3 py-2.5 border-b border-violet-200/60 flex items-center justify-between gap-2">
+        <h3 className="font-semibold text-sm text-violet-900">Profit từ doanh số</h3>
+        <span className="text-xs font-semibold text-violet-700 tabular-nums">
+          +{Math.round(total).toLocaleString("en-US")} VND
+        </span>
+      </header>
+      <div className="divide-y divide-violet-100">
+        {items.map((item, i) => (
+          <div key={i} className="px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-violet-800">{item.channel_name}</span>
+              <span className={cn(
+                "text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wider",
+                item.role === "sale" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700",
+              )}>
+                {item.role.toUpperCase()}
+              </span>
+              <span className="ml-auto text-xs font-semibold text-violet-700 tabular-nums">
+                +{Math.round(item.total_employee_profit).toLocaleString("en-US")}
+              </span>
+            </div>
+            {item.details.length > 0 && (
+              <table className="w-full text-[11px] text-neutral-600">
+                <tbody>
+                  {item.details.map((d, j) => (
+                    <tr key={j} className="border-t border-violet-100/60">
+                      <td className="py-1 pr-2">{d.brand}</td>
+                      <td className="py-1 pr-2 text-neutral-500">{d.customer_group}</td>
+                      <td className="py-1 pr-2 text-neutral-500 tabular-nums">
+                        DT: {Math.round(d.revenue).toLocaleString("en-US")}
+                      </td>
+                      <td className="py-1 pr-2 text-neutral-500">
+                        ×{(d.profit_pct * 100).toFixed(1).replace(/\.0$/, "")}%
+                      </td>
+                      <td className="py-1 pr-2 text-neutral-500">
+                        ×{(d.share_pct * 100).toFixed(0)}%
+                      </td>
+                      <td className="py-1 text-right tabular-nums font-medium text-violet-700">
+                        +{Math.round(d.employee_profit).toLocaleString("en-US")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

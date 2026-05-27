@@ -37,8 +37,44 @@ export type Employee = {
   work_start_time: string | null;  // legacy single-shift override
   work_end_time: string | null;
   work_shifts: WorkShift[];        // multi-shift, ưu tiên hơn work_start/end
+  ot_fixed_salary: number | null;  // lương OT cố định/tháng
   created_at: string;
 };
+
+export type ProfitChannel = {
+  id: string;
+  channel_name: string;
+  sale_employee_id: string | null;
+  cskh_employee_id: string | null;
+  created_at: string;
+};
+
+export type ProfitRule = {
+  id: string;
+  channel_name: string;
+  brand: string;
+  customer_group: string;
+  profit_pct: number;
+  sale_pct: number;
+  cskh_pct: number;
+  created_at: string;
+};
+
+export type OrderFile = {
+  id: string;
+  month: string;
+  original_filename: string;
+  row_count: number;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
+export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO"] as const;
+export type ProfitChannelName = typeof PROFIT_CHANNELS[number];
+
+export const PROFIT_BRANDS = ["Asale", "Basso", "ShipUS", "Checkout", "Stock"] as const;
+export const CUSTOMER_GROUPS = ["Khách lẻ", "CTV", "Sỉ nhỏ", "Sỉ vừa", "Sỉ to"] as const;
+export const PROFIT_PCTS = [0.005, 0.01, 0.015, 0.02] as const;
 
 export const LEAVE_CATEGORIES = {
   online_rain:  "Làm online - trời mưa",
