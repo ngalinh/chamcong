@@ -42,20 +42,20 @@ export async function upsertProfitChannel(formData: FormData) {
   const channel_name = String(formData.get("channel_name") ?? "").trim();
   const saleRaw = formData.get("sale_employee_id") as string | null;
   const cskhRaw = formData.get("cskh_employee_id") as string | null;
+  const sale_pct = Number(formData.get("sale_pct") ?? 0) / 100;
+  const cskh_pct = Number(formData.get("cskh_pct") ?? 0) / 100;
   if (!channel_name) err("profit", "Thiếu kênh NV");
 
-  const payload = {
-    channel_name,
+  const updatePayload = {
     sale_employee_id: saleRaw || null,
     cskh_employee_id: cskhRaw || null,
+    sale_pct,
+    cskh_pct,
   };
 
   const { error } = id
-    ? await admin.from("profit_channels").update({
-        sale_employee_id: saleRaw || null,
-        cskh_employee_id: cskhRaw || null,
-      }).eq("id", id)
-    : await admin.from("profit_channels").insert(payload);
+    ? await admin.from("profit_channels").update(updatePayload).eq("id", id)
+    : await admin.from("profit_channels").insert({ channel_name, ...updatePayload });
 
   if (error) err("profit", error.message);
   ok("profit", id ? "Đã cập nhật kênh NV" : "Đã thêm kênh NV");
@@ -77,25 +77,21 @@ export async function upsertProfitRule(formData: FormData) {
   const id = formData.get("id") as string | null;
   const channel_name = String(formData.get("channel_name") ?? "").trim();
   const brand = String(formData.get("brand") ?? "").trim();
-  const customer_group = String(formData.get("customer_group") ?? "").trim();
   const profit_pct = Number(formData.get("profit_pct") ?? 0);
-  const sale_pct_raw = Number(formData.get("sale_pct") ?? 0);
-  const cskh_pct_raw = Number(formData.get("cskh_pct") ?? 0);
+  const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
 
-  if (!channel_name || !brand || !customer_group) err("profit", "Thiếu thông tin");
+  if (!channel_name || !brand || !customer_groups.length) err("profit", "Thiếu thông tin");
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
-  const sale_pct = sale_pct_raw / 100;
-  const cskh_pct = cskh_pct_raw / 100;
-
-  const payload = { channel_name, brand, customer_group, profit_pct, sale_pct, cskh_pct };
-
-  const { error } = id
-    ? await admin.from("profit_rules").update({ profit_pct, sale_pct, cskh_pct }).eq("id", id)
-    : await admin.from("profit_rules").upsert(payload, { onConflict: "channel_name,brand,customer_group" });
-
-  if (error) err("profit", error.message);
-  ok("profit", id ? "Đã cập nhật rule" : "Đã thêm rule");
+  if (id) {
+    const { error } = await admin.from("profit_rules").update({ profit_pct }).eq("id", id);
+    if (error) err("profit", error.message);
+  } else {
+    const rows = customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }));
+    const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group" });
+    if (error) err("profit", error.message);
+  }
+  ok("profit", id ? "Đã cập nhật rule" : `Đã thêm ${customer_groups.length} rule`);
 }
 
 export async function deleteProfitRule(formData: FormData) {

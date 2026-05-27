@@ -72,7 +72,7 @@ export async function computeProfitForEmployee(
       if (!revenue) continue;
 
       const profit = revenue * rule.profit_pct;
-      const share_pct = isSale ? rule.sale_pct : rule.cskh_pct;
+      const share_pct = isSale ? (ch as { sale_pct: number }).sale_pct : (ch as { cskh_pct: number }).cskh_pct;
       const employee_profit = profit * share_pct;
 
       details.push({
