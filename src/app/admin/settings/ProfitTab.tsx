@@ -64,7 +64,7 @@ export async function ProfitTab({
       {/* ─── Bảng 1: Kênh NV → SALE / CSKH ─────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
-          Bảng 1 — Kênh NV / Tài khoản SALE / CSKH
+          Bảng 1 — Tài khoản nhân viên theo kênh
         </h3>
 
         <div className="rounded-2xl border border-white/60 glass overflow-hidden">
@@ -142,7 +142,7 @@ export async function ProfitTab({
       {/* ─── Bảng 2: Profit rules ─────────────────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
-          Bảng 2 — % Profit theo Kênh / Brand / Nhóm KH
+          Bảng 2 — Công thức profit
         </h3>
 
         <div className="rounded-2xl border border-white/60 glass overflow-hidden">
@@ -248,6 +248,8 @@ function ChannelForm({
   return (
     <form action={action} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
       {channel && <input type="hidden" name="id" value={channel.id} />}
+      {/* disabled select không submit value → cần hidden input khi edit */}
+      {channel && <input type="hidden" name="channel_name" value={channel.channel_name} />}
 
       <SelectField label="Kênh NV" name="channel_name" defaultValue={channel?.channel_name} disabled={!!channel}>
         {PROFIT_CHANNELS.map((c) => (
@@ -295,6 +297,10 @@ function RuleForm({
   return (
     <form action={action} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto] gap-2 items-end">
       {rule && <input type="hidden" name="id" value={rule.id} />}
+      {/* disabled selects không submit value → cần hidden inputs khi edit */}
+      {rule && <input type="hidden" name="channel_name" value={rule.channel_name} />}
+      {rule && <input type="hidden" name="brand" value={rule.brand} />}
+      {rule && <input type="hidden" name="customer_group" value={rule.customer_group} />}
 
       <SelectField label="Kênh NV" name="channel_name" defaultValue={rule?.channel_name} disabled={!!rule}>
         {PROFIT_CHANNELS.map((c) => (
