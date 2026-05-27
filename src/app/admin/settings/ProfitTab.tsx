@@ -64,7 +64,7 @@ export async function ProfitTab({
       {/* ─── Bảng 1: Kênh NV → SALE / CSKH ─────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
-          Bảng 1 — Tài khoản nhân viên theo kênh
+          Tài khoản nhân viên theo kênh
         </h3>
 
         <div className="rounded-2xl border border-white/60 glass overflow-hidden">
@@ -142,7 +142,7 @@ export async function ProfitTab({
       {/* ─── Bảng 2: Profit rules ─────────────────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
-          Bảng 2 — Công thức profit
+          Công thức profit
         </h3>
 
         <div className="rounded-2xl border border-white/60 glass overflow-hidden">

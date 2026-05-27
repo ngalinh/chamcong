@@ -51,7 +51,10 @@ export async function upsertProfitChannel(formData: FormData) {
   };
 
   const { error } = id
-    ? await admin.from("profit_channels").update(payload).eq("id", id)
+    ? await admin.from("profit_channels").update({
+        sale_employee_id: saleRaw || null,
+        cskh_employee_id: cskhRaw || null,
+      }).eq("id", id)
     : await admin.from("profit_channels").insert(payload);
 
   if (error) err("profit", error.message);
@@ -88,7 +91,7 @@ export async function upsertProfitRule(formData: FormData) {
   const payload = { channel_name, brand, customer_group, profit_pct, sale_pct, cskh_pct };
 
   const { error } = id
-    ? await admin.from("profit_rules").update(payload).eq("id", id)
+    ? await admin.from("profit_rules").update({ profit_pct, sale_pct, cskh_pct }).eq("id", id)
     : await admin.from("profit_rules").upsert(payload, { onConflict: "channel_name,brand,customer_group" });
 
   if (error) err("profit", error.message);
