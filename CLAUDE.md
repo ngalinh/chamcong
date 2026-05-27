@@ -88,8 +88,24 @@ Vd: `Fix: redirect URL dùng X-Forwarded-Host thay vì request.url`
 
 ### Migration Supabase
 
-Mỗi lần thêm/sửa schema → tạo migration mới ở `supabase/migrations/<timestamp>_<name>.sql`. **Không sửa migration cũ** (đã apply lên DB rồi). User phải apply thủ công qua Supabase Dashboard SQL Editor:
-https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/sql/new
+Mỗi lần thêm/sửa schema → tạo migration mới ở `supabase/migrations/<timestamp>_<name>.sql`. **Không sửa migration cũ** (đã apply lên DB rồi). User phải apply thủ công qua Supabase Dashboard SQL Editor.
+
+#### Cách apply migration (hướng dẫn từng bước)
+
+1. Mở link: https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/sql/new
+2. Copy toàn bộ nội dung file migration mới nhất trong `supabase/migrations/` (file có timestamp lớn nhất = mới nhất)
+3. Paste vào ô SQL Editor trên Dashboard
+4. Click **"Run"** (hoặc Ctrl+Enter)
+5. Kiểm tra tab **"Results"** — không có lỗi đỏ = thành công
+
+**Lưu ý thường gặp:**
+- Nếu thấy lỗi `duplicate column` / `already exists` → migration đó đã apply rồi, bỏ qua
+- Nếu thấy lỗi `42501 permission denied` → thiếu GRANT (xem mục Data API GRANT bên dưới)
+- Nếu cần apply nhiều migration → apply theo thứ tự timestamp (từ cũ đến mới), mỗi file một lần
+
+**Migration cần apply sau mỗi lần Claude tạo file mới trong `supabase/migrations/`:**
+- Claude sẽ thông báo rõ tên file migration mới và link SQL Editor
+- Chỉ cần apply file có timestamp MỚI NHẤT nếu chưa apply trước đó
 
 #### Data API GRANT (bắt buộc từ 30/10/2026)
 
