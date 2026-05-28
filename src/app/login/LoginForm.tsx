@@ -18,17 +18,20 @@ export default function LoginForm({
   async function signInWithGoogle() {
     setLoading(true);
     setError(null);
-    const supabase = createClient();
-    const origin = window.location.origin;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        queryParams: { prompt: "select_account" },
-      },
-    });
-    if (error) {
-      setError(error.message);
+    try {
+      const supabase = createClient();
+      const origin = window.location.origin;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+      if (error) throw error;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
       setLoading(false);
     }
   }
@@ -91,7 +94,12 @@ export default function LoginForm({
           {loading ? <Loader2 size={18} className="animate-spin text-neutral-500" /> : <GoogleIcon />}
           <span>{loading ? "Đang chuyển..." : "Tiếp tục với Google"}</span>
         </button>
-        {error && <p className="text-xs text-rose-600 px-1 mt-3">{error}</p>}
+        {error && (
+          <div className="mt-3 rounded-xl bg-rose-50 border border-rose-200 px-3 py-2.5 flex items-start gap-2">
+            <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-rose-700 break-all">{error}</p>
+          </div>
+        )}
       </div>
 
       <p className="text-center text-xs text-neutral-400 mt-6">
