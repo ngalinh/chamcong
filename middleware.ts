@@ -71,7 +71,18 @@ async function run(request: NextRequest): Promise<NextResponse> {
 
 export async function middleware(request: NextRequest) {
   const t0 = Date.now();
-  const response = await run(request);
+  let response: NextResponse;
+  try {
+    response = await run(request);
+  } catch (err) {
+    // Nếu middleware throw (Supabase init fail, env var thiếu, ...) → redirect về /login
+    // thay vì để Next.js trả 500 (iOS Safari + Chrome báo "server error").
+    console.error("[middleware] unexpected error:", err);
+    const proto = request.headers.get("x-forwarded-proto") ?? "https";
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    const base = host ? `${proto}://${host}` : request.nextUrl.origin;
+    return NextResponse.redirect(new URL("/login", base));
+  }
   const mwMs = Date.now() - t0;
   const authMs = Number(response.headers.get("X-Mw-Auth-Ms") ?? 0);
 

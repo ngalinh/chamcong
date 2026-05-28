@@ -55,7 +55,13 @@ type NotifItem =
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // auth error → treat as unauthenticated
+  }
   if (!user?.email) redirect("/login");
 
   const admin = createAdminClient();
