@@ -50,7 +50,7 @@ export default function LoginForm({
     <div className="w-full max-w-sm">
       <div className="flex flex-col items-center gap-4 mb-10">
         <div className="relative">
-          <div className="absolute -inset-3 rounded-[28px] bg-gradient-to-br from-indigo-400/40 to-purple-400/40 blur-2xl" />
+          <div className="absolute -inset-3 rounded-[28px] blur-2xl" style={{ background: "linear-gradient(135deg, rgba(129,140,248,0.4), rgba(192,132,252,0.4))" }} />
           <div className="relative h-20 w-20 rounded-[24px] shadow-xl shadow-indigo-500/40 flex items-center justify-center ring-1 ring-white/60" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #7c3aed)" }}>
             <Fingerprint size={34} className="text-white" strokeWidth={1.8} />
           </div>

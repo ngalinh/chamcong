@@ -62,7 +62,7 @@ export function PushToaster() {
             key={t.id}
             className="pointer-events-auto bg-neutral-900/95 backdrop-blur text-white rounded-2xl p-3 shadow-2xl shadow-black/20 flex items-start gap-3 animate-slide-down"
           >
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center shrink-0">
+            <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #818cf8, #a855f7)" }}>
               <Bell size={18} className="text-white" />
             </div>
             <button

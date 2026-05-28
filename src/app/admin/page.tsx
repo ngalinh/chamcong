@@ -122,7 +122,7 @@ export default async function AdminHome() {
 
       {/* Hero stat */}
       <section className="relative rounded-3xl overflow-hidden p-6 text-white shadow-xl shadow-indigo-500/30">
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-700" />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #7c3aed)" }} />
         <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
         <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/15 blur-3xl" />
         <div className="relative flex items-center justify-between">

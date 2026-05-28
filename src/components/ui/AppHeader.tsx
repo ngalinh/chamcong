@@ -22,7 +22,7 @@ export function AppHeader({
       <div className="mx-auto max-w-6xl px-safe">
         <div className="h-14 flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-            <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-700 flex items-center justify-center ring-1 ring-white/60 shadow-sm shadow-indigo-500/30">
+            <span className="h-7 w-7 rounded-lg flex items-center justify-center ring-1 ring-white/60 shadow-sm shadow-indigo-500/30" style={{ background: "linear-gradient(135deg, #6366f1, #7c3aed)" }}>
               <Fingerprint size={14} className="text-white" strokeWidth={2.2} />
             </span>
             {title}

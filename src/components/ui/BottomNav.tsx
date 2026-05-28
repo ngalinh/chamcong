@@ -31,7 +31,7 @@ export function BottomNav() {
                 )}
               >
                 {item.highlight ? (
-                  <span className="flex items-center justify-center h-11 w-11 -mt-5 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-700 text-white shadow-lg shadow-indigo-500/40 ring-1 ring-white/60">
+                  <span className="flex items-center justify-center h-11 w-11 -mt-5 rounded-2xl text-white shadow-lg shadow-indigo-500/40 ring-1 ring-white/60" style={{ background: "linear-gradient(135deg, #6366f1, #7c3aed)" }}>
                     <Icon size={20} />
                   </span>
                 ) : (

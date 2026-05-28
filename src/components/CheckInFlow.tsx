@@ -263,7 +263,7 @@ export default function CheckInFlow({
         />
         <canvas ref={canvasRef} className="hidden" />
         {/* Subtle gradient overlay for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.5), transparent, rgba(0,0,0,0.7))" }} />
       </div>
 
       {/* Top bar */}
