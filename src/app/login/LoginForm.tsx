@@ -7,12 +7,14 @@ import { Fingerprint, Loader2, AlertTriangle, Copy, Check } from "lucide-react";
 export default function LoginForm({
   next,
   defaultInApp,
+  initialError,
 }: {
   next: string;
   defaultInApp: boolean;
+  initialError?: string;
 }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [copied, setCopied] = useState(false);
 
   async function signInWithGoogle() {
@@ -49,7 +51,7 @@ export default function LoginForm({
       <div className="flex flex-col items-center gap-4 mb-10">
         <div className="relative">
           <div className="absolute -inset-3 rounded-[28px] bg-gradient-to-br from-indigo-400/40 to-purple-400/40 blur-2xl" />
-          <div className="relative h-20 w-20 rounded-[24px] bg-gradient-to-br from-indigo-500 via-indigo-600 to-purple-700 shadow-xl shadow-indigo-500/40 flex items-center justify-center ring-1 ring-white/60">
+          <div className="relative h-20 w-20 rounded-[24px] shadow-xl shadow-indigo-500/40 flex items-center justify-center ring-1 ring-white/60" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #7c3aed)" }}>
             <Fingerprint size={34} className="text-white" strokeWidth={1.8} />
           </div>
         </div>

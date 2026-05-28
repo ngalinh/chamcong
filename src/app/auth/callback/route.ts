@@ -20,8 +20,14 @@ export async function GET(request: NextRequest) {
   const origin = getPublicOrigin(request);
   const code = url.searchParams.get("code");
   const nextParam = url.searchParams.get("next");
+  const oauthError = url.searchParams.get("error_description") ?? url.searchParams.get("error");
 
-  if (!code) return NextResponse.redirect(new URL("/login", origin));
+  if (!code) {
+    const dest = new URL("/login", origin);
+    if (nextParam) dest.searchParams.set("next", nextParam);
+    if (oauthError) dest.searchParams.set("error", oauthError);
+    return NextResponse.redirect(dest);
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
