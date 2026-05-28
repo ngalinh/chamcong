@@ -85,7 +85,7 @@ export default function LoginForm({
       <div className="glass rounded-3xl border border-white/60 shadow-xl shadow-neutral-900/5 p-6">
         <button
           onClick={signInWithGoogle}
-          disabled={loading || defaultInApp}
+          disabled={loading}
           className="w-full h-12 rounded-xl bg-white border border-neutral-200 hover:bg-neutral-50 active:scale-[0.99] transition text-[15px] font-medium flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? <Loader2 size={18} className="animate-spin text-neutral-500" /> : <GoogleIcon />}
