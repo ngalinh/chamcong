@@ -11,6 +11,18 @@ export async function loadFaceModels() {
     faceapi.nets.faceLandmark68Net.loadFromUri(url),
     faceapi.nets.faceRecognitionNet.loadFromUri(url),
   ]);
+  // Warm-up: compile WebGL shaders ngay sau khi load weights.
+  // Lần đầu inference luôn chậm (TF.js compile shader ~2-5s trên mobile);
+  // chạy dummy detect trên canvas trắng để compile trước — tránh lag khi user thực sự quét mặt.
+  if (typeof document !== "undefined") {
+    const warmup = document.createElement("canvas");
+    warmup.width = 320;
+    warmup.height = 240;
+    await faceapi.detectSingleFace(
+      warmup,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.99 }),
+    );
+  }
   loaded = true;
 }
 

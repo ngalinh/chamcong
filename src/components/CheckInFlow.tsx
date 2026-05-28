@@ -112,7 +112,9 @@ export default function CheckInFlow({
       // mà OS không re-prompt; fail nhanh để hiển thị lỗi cho user.
       const stream = await Promise.race([
         navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          // ideal height > width → yêu cầu portrait stream, tránh iOS trả về landscape
+          // rồi object-cover phải scale ~1.75× để phủ màn hình dọc (trông bị zoom).
+          video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 640 } },
           audio: false,
         }),
         new Promise<MediaStream>((_, reject) =>
@@ -140,7 +142,7 @@ export default function CheckInFlow({
       let lastDescriptor: Float32Array | null = null;
       let framesWithFace = 0;
 
-      while (Date.now() < deadline && framesWithFace < 3) {
+      while (Date.now() < deadline && framesWithFace < 2) {
         if (cancelledRef.current) return;
         const result = await detectDescriptor(v);
         if (cancelledRef.current) return;
