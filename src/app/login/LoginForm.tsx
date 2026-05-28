@@ -4,10 +4,6 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Fingerprint, Loader2, AlertTriangle, Copy, Check } from "lucide-react";
 
-export function isInAppBrowser(ua: string): boolean {
-  return /FBAN|FBAV|FB_IAB|FBSS|Instagram|Line\/|Twitter|MicroMessenger|TikTok|Zalo|KAKAOTALK|NAVER|SnapChat/i.test(ua);
-}
-
 export default function LoginForm({
   next,
   defaultInApp,

@@ -1,5 +1,9 @@
 import { headers } from "next/headers";
-import LoginForm, { isInAppBrowser } from "./LoginForm";
+import LoginForm from "./LoginForm";
+
+function isInAppBrowser(ua: string): boolean {
+  return /FBAN|FBAV|FB_IAB|FBSS|Instagram|Line\/|Twitter|MicroMessenger|TikTok|Zalo|KAKAOTALK|NAVER|SnapChat/i.test(ua);
+}
 
 export default async function LoginPage({
   searchParams,
