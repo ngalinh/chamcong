@@ -41,6 +41,21 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="vi">
+      {/* eslint-disable-next-line @next/next/no-before-interactive-script-outside-document */}
+      <head>
+        {/* Trap JS errors trước khi React load — hiện banner đỏ trực tiếp trên DOM.
+            Xoá sau khi xác định xong nguyên nhân. */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          window.addEventListener('error',function(e){
+            var b=document.getElementById('__err');
+            if(!b){b=document.createElement('div');b.id='__err';
+              b.style.cssText='position:fixed;top:0;left:0;right:0;background:#b91c1c;color:#fff;padding:8px 12px;font-size:11px;z-index:99999;word-break:break-all;white-space:pre-wrap';
+              document.body&&document.body.appendChild(b);}
+            b.textContent=(b.textContent?b.textContent+'\\n':'')+
+              '[JS ERROR] '+(e.message||'')+(e.filename?' @ '+e.filename.split('/').pop()+':'+e.lineno:'');
+          });
+        ` }} />
+      </head>
       <body>
         {children}
         <ServiceWorkerRegister />
