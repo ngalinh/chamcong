@@ -1,5 +1,5 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v12";
+const VERSION = "v13";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const HTML_CACHE = `cham-cong-html-${VERSION}`;
 // Models cache tách khỏi VERSION: bump SW không wipe ~7MB models đã tải.
@@ -139,7 +139,13 @@ async function staleWhileRevalidate(e, req, cacheName) {
       // Chỉ cache 200 OK không redirect (login redirect khi chưa đăng nhập),
       // không cache opaque (cross-origin) hay error.
       // !res.redirected: tránh cache login page dưới key "/" khi middleware redirect
-      if (res && res.ok && res.status === 200 && res.type === "basic" && !res.redirected) {
+      if (res && res.ok && res.status === 200 && res.type === "basic") {
+        if (res.redirected) {
+          // Server redirect (auth chưa login → /login) — trả 302 để browser follow
+          // ở navigation level (URL bar thay đổi). KHÔNG trả về 200 với nội dung /login
+          // ở URL "/" vì iOS Safari báo "server error" khi navigation response URL mismatch.
+          return new Response(null, { status: 302, headers: { Location: res.url } });
+        }
         // Đọc body một lần từ res gốc (KHÔNG clone) để tránh iOS Safari bug:
         // clone().text() đôi khi drain cả original body → return res trả về rỗng → "server error"
         const newText = await res.text();
@@ -163,7 +169,7 @@ async function staleWhileRevalidate(e, req, cacheName) {
         // Trả về Response mới từ text đã đọc (body chắc chắn còn nguyên)
         return makeRes();
       }
-      return res;
+      return res; // non-200, error response, v.v.
     } catch {
       return null;
     }
