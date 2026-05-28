@@ -43,7 +43,14 @@ async function run(request: NextRequest): Promise<NextResponse> {
   // Dùng getUser() nhưng Supabase SSR cache phiên trong cookies — chỉ network call
   // khi token gần hết hạn. Page sẽ tự getUser() lại để verify bảo mật.
   const tAuth0 = Date.now();
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Supabase auth throw (network error, malformed cookie…) → treat as unauthenticated
+    // thay vì để crash 500 khiến Safari báo "server error"
+  }
   const authMs = Date.now() - tAuth0;
   response.headers.set("X-Mw-Auth-Ms", String(authMs));
 

@@ -1,5 +1,5 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v11";
+const VERSION = "v12";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const HTML_CACHE = `cham-cong-html-${VERSION}`;
 // Models cache tách khỏi VERSION: bump SW không wipe ~7MB models đã tải.
@@ -101,7 +101,8 @@ self.addEventListener("fetch", (e) => {
   // → mở PWA: thấy UI cũ ngay (instant), fetch ngầm để update cache.
   // Chỉ apply cho navigation request (page load), không apply cho fetch JSON từ client.
   if (req.mode === "navigate" && shouldCacheHTML(url)) {
-    e.respondWith(staleWhileRevalidate(e, req, HTML_CACHE));
+    // .catch → nếu SW logic throw, fallback về fetch trực tiếp (tránh iOS Safari "server error")
+    e.respondWith(staleWhileRevalidate(e, req, HTML_CACHE).catch(() => fetch(req)));
     return;
   }
 });
@@ -135,10 +136,13 @@ async function staleWhileRevalidate(e, req, cacheName) {
   const networkPromise = (async () => {
     try {
       const res = await fetch(req);
-      // Chỉ cache 200 OK, không cache redirect (login redirect khi expired)
-      // hoặc opaque (cross-origin) hay error.
-      if (res && res.ok && res.status === 200 && res.type === "basic") {
-        const newText = await res.clone().text();
+      // Chỉ cache 200 OK không redirect (login redirect khi chưa đăng nhập),
+      // không cache opaque (cross-origin) hay error.
+      // !res.redirected: tránh cache login page dưới key "/" khi middleware redirect
+      if (res && res.ok && res.status === 200 && res.type === "basic" && !res.redirected) {
+        // Đọc body một lần từ res gốc (KHÔNG clone) để tránh iOS Safari bug:
+        // clone().text() đôi khi drain cả original body → return res trả về rỗng → "server error"
+        const newText = await res.text();
         let assetChanged = false;
         if (cached) {
           try {
@@ -146,9 +150,8 @@ async function staleWhileRevalidate(e, req, cacheName) {
             assetChanged = htmlAssetSig(oldText) !== htmlAssetSig(newText);
           } catch {}
         }
-        await cache
-          .put(req, new Response(newText, { headers: res.headers, status: res.status, statusText: res.statusText }))
-          .catch(() => {});
+        const makeRes = () => new Response(newText, { headers: res.headers, status: res.status, statusText: res.statusText });
+        await cache.put(req, makeRes()).catch(() => {});
         // Build mới (asset hash đổi) → page đang hiện bị broken vì JS/CSS cũ.
         // Báo client reload để load HTML + asset mới.
         if (assetChanged) {
@@ -157,6 +160,8 @@ async function staleWhileRevalidate(e, req, cacheName) {
             try { c.postMessage({ type: "RELOAD_FOR_UPDATE" }); } catch {}
           }
         }
+        // Trả về Response mới từ text đã đọc (body chắc chắn còn nguyên)
+        return makeRes();
       }
       return res;
     } catch {
