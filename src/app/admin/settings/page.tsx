@@ -44,7 +44,7 @@ export default async function SettingsPage({
       </div>
 
       {/* Tab nav */}
-      <div className="flex items-center gap-1 border-b border-neutral-200/60 overflow-x-auto pb-0 -mb-1">
+      <div className="flex items-center gap-1 border-b border-neutral-200/60">
         {TABS.map((t) => (
           <Link
             key={t.id}
@@ -62,7 +62,7 @@ export default async function SettingsPage({
       </div>
 
       {/* Tab content */}
-      <div>
+      <div className="pt-2">
         {activeTab === "orders" && (
           <OrdersTab ok={sp.ok} error={sp.error} preview={sp.preview} dsMonth={sp.ds_month} />
         )}

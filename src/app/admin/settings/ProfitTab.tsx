@@ -62,7 +62,7 @@ export async function ProfitTab({
   const editGroupKey = editRule ? decodeURIComponent(editRule) : null;
 
   return (
-    <div className="space-y-8 pt-1">
+    <div className="space-y-8">
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3 text-sm flex items-start gap-2">
