@@ -72,7 +72,7 @@ export type OrderFile = {
 export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO", "ShipUS"] as const;
 export type ProfitChannelName = typeof PROFIT_CHANNELS[number];
 
-export const PROFIT_BRANDS = ["Asale", "Basso", "ShipUS", "Checkout", "Stock"] as const;
+export const PROFIT_BRANDS = ["Asale", "Basso", "ShipUS", "Checkout", "Stock", "Dropship"] as const;
 export const CUSTOMER_GROUPS = ["Khách lẻ", "CTV", "Sỉ nhỏ", "Sỉ vừa", "Sỉ to"] as const;
 export const PROFIT_PCTS = [0.005, 0.01, 0.015, 0.02] as const;
 

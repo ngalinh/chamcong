@@ -270,3 +270,27 @@ export async function deleteOrderFile(formData: FormData) {
   if (error) err("orders", error.message);
   ok("orders", "Đã xoá dữ liệu đơn hàng");
 }
+
+// ─── dropship_revenue ──────────────────────────────────────────────────────
+
+export async function upsertDropshipRevenue(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const month = String(formData.get("month") ?? "").trim();
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) err("orders", "Tháng không hợp lệ");
+
+  const { PROFIT_CHANNELS } = await import("@/types/db");
+  const rows = PROFIT_CHANNELS.map((ch) => ({
+    month,
+    channel_name: ch,
+    amount: Number(String(formData.get(`amount_${ch}`) ?? "0").replace(/[^\d]/g, "")) || 0,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error } = await admin
+    .from("dropship_revenue")
+    .upsert(rows, { onConflict: "month,channel_name" });
+
+  if (error) err("orders", error.message);
+  ok("orders", `Đã lưu doanh thu Dropship tháng ${month}`);
+}

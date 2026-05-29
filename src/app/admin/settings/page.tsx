@@ -25,6 +25,7 @@ export default async function SettingsPage({
     error?: string; ok?: string; new?: string;
     // orders params
     preview?: string;
+    ds_month?: string; // dropship revenue month
     // profit params
     edit_ch?: string; edit_rule?: string;
     // logs params
@@ -34,7 +35,7 @@ export default async function SettingsPage({
   const sp = await searchParams;
   const activeTab: Tab = (TABS.map((t) => t.id) as string[]).includes(sp.tab ?? "")
     ? (sp.tab as Tab)
-    : "branches";
+    : "orders";
 
   return (
     <div className="space-y-5">
@@ -63,7 +64,7 @@ export default async function SettingsPage({
       {/* Tab content */}
       <div>
         {activeTab === "orders" && (
-          <OrdersTab ok={sp.ok} error={sp.error} preview={sp.preview} />
+          <OrdersTab ok={sp.ok} error={sp.error} preview={sp.preview} dsMonth={sp.ds_month} />
         )}
         {activeTab === "profit" && (
           <ProfitTab ok={sp.ok} error={sp.error} editChannel={sp.edit_ch} editRule={sp.edit_rule} />
