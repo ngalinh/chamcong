@@ -353,6 +353,33 @@ async function decideLeave(formData: FormData) {
     })
     .eq("id", id);
 
+  // Ghi log lịch sử ngày phép (thông tin; balance thực tế trừ lúc chốt lương)
+  if (leave.category === "leave_paid" || leave.category === "online_wfh") {
+    const { data: emp } = await admin
+      .from("employees")
+      .select("leave_balance")
+      .eq("id", leave.employee_id)
+      .maybeSingle();
+    const currentBalance = Number(emp?.leave_balance ?? 0);
+    const expectedDeduct =
+      leave.category === "leave_paid"
+        ? leave.start_time ? -0.5 : -1
+        : leave.duration_unit === "day" ? -0.5 : 0;
+    const catLabel =
+      leave.category === "leave_paid" ? "nghỉ phép có lương" : "WFH";
+    await admin.from("leave_balance_log").insert({
+      employee_id: leave.employee_id,
+      delta: decision === "approved" ? expectedDeduct : 0,
+      balance_after: currentBalance,
+      event_type: decision === "approved" ? "leave_approved" : "leave_rejected",
+      note:
+        decision === "approved"
+          ? `Duyệt đơn ${catLabel} ngày ${leave.leave_date}${expectedDeduct ? ` (dự kiến trừ ${Math.abs(expectedDeduct)} ngày khi chốt lương)` : ""}`
+          : `Từ chối đơn ${catLabel} ngày ${leave.leave_date}`,
+      leave_request_id: leave.id,
+    });
+  }
+
   // Recalc late/early cho các check-in trong ngày khi duyệt đơn nghỉ theo giờ
   // (lúc check-in, đơn còn pending nên đã tính theo giờ làm gốc — giờ duyệt rồi
   // thì cập nhật lại để bỏ/giảm label vi phạm).
