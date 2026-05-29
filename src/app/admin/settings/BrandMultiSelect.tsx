@@ -14,6 +14,13 @@ export default function BrandMultiSelect({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Sync khi defaultValues thay đổi (vd: mở edit form khác nhau)
+  const defaultKey = defaultValues.join(",");
+  useEffect(() => {
+    setSelected(defaultValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultKey]);
+
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -28,12 +35,7 @@ export default function BrandMultiSelect({
     );
   }
 
-  const label =
-    selected.length === 0
-      ? "Chọn brand"
-      : selected.length === 1
-        ? selected[0]
-        : `${selected.length} brands`;
+  const label = selected.length === 0 ? "Chọn brand" : selected.join(", ");
 
   return (
     <div ref={ref} className="relative">
