@@ -25,7 +25,6 @@ export async function BranchesTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Chi nhánh</h2>
         {!showNew && (
           <Link
             href="/admin/settings?tab=branches&new=1"

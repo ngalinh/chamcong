@@ -284,6 +284,7 @@ export async function upsertDropshipRevenue(formData: FormData) {
     month,
     channel_name: ch,
     amount: Number(String(formData.get(`amount_${ch}`) ?? "0").replace(/[^\d]/g, "")) || 0,
+    customer_group: (formData.get(`cg_${ch}`) as string | null) || null,
     updated_at: new Date().toISOString(),
   }));
 

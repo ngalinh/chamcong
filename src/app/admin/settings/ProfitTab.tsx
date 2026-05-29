@@ -63,9 +63,6 @@ export async function ProfitTab({
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold">Tính Profit</h2>
-      </div>
 
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3 text-sm flex items-start gap-2">

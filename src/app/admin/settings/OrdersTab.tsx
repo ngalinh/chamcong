@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Eye, Upload, Pack
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { OrderFile } from "@/types/db";
-import { PROFIT_CHANNELS } from "@/types/db";
+import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
 import { uploadOrderFile, deleteOrderFile, upsertDropshipRevenue } from "./actions";
 
 function fmt(n: number) {
@@ -71,16 +71,18 @@ export async function OrdersTab({
   const dropshipMonth = dsMonth ?? defaultMonth;
   const { data: dropshipRows } = await admin
     .from("dropship_revenue")
-    .select("channel_name, amount")
+    .select("channel_name, amount, customer_group")
     .eq("month", dropshipMonth);
-  const dropshipMap = new Map<string, number>(
-    (dropshipRows ?? []).map((r: { channel_name: string; amount: unknown }) => [r.channel_name, Number(r.amount ?? 0)])
+  const dropshipMap = new Map<string, { amount: number; customer_group: string | null }>(
+    (dropshipRows ?? []).map((r: { channel_name: string; amount: unknown; customer_group: string | null }) => [
+      r.channel_name,
+      { amount: Number(r.amount ?? 0), customer_group: r.customer_group ?? null },
+    ])
   );
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Đơn hàng</h2>
       </div>
 
       {error && (
@@ -230,19 +232,32 @@ export async function OrdersTab({
               </thead>
               <tbody>
                 <tr>
-                  {PROFIT_CHANNELS.map((ch) => (
-                    <td key={ch} className="py-2 px-3">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        name={`amount_${ch}`}
-                        defaultValue={dropshipMap.get(ch) ? fmt(dropshipMap.get(ch)!) : ""}
-                        placeholder="0"
-                        className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-                      />
-                    </td>
-                  ))}
-                  <td className="py-2 px-3">
+                  {PROFIT_CHANNELS.map((ch) => {
+                    const entry = dropshipMap.get(ch);
+                    return (
+                      <td key={ch} className="py-2 px-3 space-y-1.5">
+                        <select
+                          name={`cg_${ch}`}
+                          defaultValue={entry?.customer_group ?? ""}
+                          className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900"
+                        >
+                          <option value="">(chưa chọn)</option>
+                          {CUSTOMER_GROUPS.map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          name={`amount_${ch}`}
+                          defaultValue={entry?.amount ? fmt(entry.amount) : ""}
+                          placeholder="0"
+                          className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="py-2 px-3 align-bottom">
                     <Button type="submit" size="sm">Lưu</Button>
                   </td>
                 </tr>
