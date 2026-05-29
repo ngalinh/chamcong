@@ -45,7 +45,8 @@ export async function OrdersTab({
       const { data: rawRows } = await admin
         .from("order_data")
         .select("sale_channel, brand, customer_group, amount")
-        .eq("file_id", previewFile.id);
+        .eq("file_id", previewFile.id)
+        .limit(100000);
 
       totalOrders = rawRows?.length ?? 0;
 
