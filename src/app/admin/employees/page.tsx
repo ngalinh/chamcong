@@ -76,6 +76,12 @@ async function updateEmployeePayroll(formData: FormData) {
   if (!Number.isFinite(overtimeRate) || overtimeRate < 0) throw new Error("Lương OT không hợp lệ");
 
   const admin = createAdminClient();
+  const { data: prev } = await admin
+    .from("employees")
+    .select("leave_balance, name")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await admin
     .from("employees")
     .update({
@@ -87,6 +93,17 @@ async function updateEmployeePayroll(formData: FormData) {
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
+
+  const delta = leaveBalance - Number(prev?.leave_balance ?? 0);
+  if (delta !== 0) {
+    await admin.from("leave_balance_log").insert({
+      employee_id: id,
+      delta,
+      balance_after: leaveBalance,
+      event_type: "admin_edit",
+      note: `Admin sửa số dư: ${Number(prev?.leave_balance ?? 0)} → ${leaveBalance}`,
+    });
+  }
 
   revalidatePath("/admin/employees");
 }
@@ -150,13 +167,21 @@ async function accrueLeaveThisMonth() {
 
   // Update từng row (Supabase JS không hỗ trợ +1 nguyên tử kiểu raw SQL, nên đọc rồi ghi)
   for (const t of targets) {
+    const newBalance = Number(t.leave_balance ?? 0) + 1;
     await admin
       .from("employees")
       .update({
-        leave_balance: Number(t.leave_balance ?? 0) + 1,
+        leave_balance: newBalance,
         last_accrual_month: monthStr,
       })
       .eq("id", t.id);
+    await admin.from("leave_balance_log").insert({
+      employee_id: t.id,
+      delta: 1,
+      balance_after: newBalance,
+      event_type: "accrual",
+      note: `Cộng phép tháng ${monthStr}`,
+    });
   }
 
   revalidatePath("/admin/employees");
