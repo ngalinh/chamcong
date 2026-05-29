@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/Button";
 import { AlertTriangle, CheckCircle2, Pencil, Trash2, TrendingUp } from "lucide-react";
 import type { ProfitChannel, ProfitRule, Employee } from "@/types/db";
 import { PROFIT_CHANNELS, PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
+import BrandMultiSelect from "./BrandMultiSelect";
 import {
   upsertProfitChannel,
   upsertProfitRule,
@@ -355,11 +356,10 @@ function RuleForm({
             <option key={c} value={c}>{c}</option>
           ))}
         </SelectField>
-        <SelectField label="Brand" name="brand">
-          {PROFIT_BRANDS.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </SelectField>
+        <label className="block text-sm">
+          <div className="text-xs font-medium text-neutral-600 mb-1">Brand</div>
+          <BrandMultiSelect />
+        </label>
         <SelectField label="% Profit" name="profit_pct" defaultValue={String(PROFIT_PCTS[0])}>
           {PROFIT_PCTS.map((p) => (
             <option key={p} value={String(p)}>{(p * 100).toFixed(1).replace(/\.0$/, "")}%</option>
