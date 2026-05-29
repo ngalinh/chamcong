@@ -214,7 +214,7 @@ export async function uploadOrderFile(formData: FormData) {
   const colCustomer    = findCol(["khách hàng", "khach hang"]);
   const colBrand       = findCol(["brand"]);
   const colCustGroup   = findCol(["phân nhóm", "phan nhom", "nhóm kh"]);
-  const colSaleChannel = findCol(["nv duyệt", "nv duyet", "kênh nv", "kenh nv"]);
+  const colSaleChannel = findCol(["nhân viên", "nhan vien", "nv duyệt", "nv duyet", "kênh nv", "kenh nv"]);
   const colAmount      = findCol(["thành tiền", "thanh tien", "doanh thu"]);
 
   if (!colAmount) err("orders", "Không tìm thấy cột 'Thành tiền' trong file Excel");
