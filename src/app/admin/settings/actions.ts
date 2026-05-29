@@ -105,22 +105,25 @@ export async function upsertProfitRuleGroup(formData: FormData) {
   const editKey = String(formData.get("edit_key") ?? "");
   const parts = editKey.split("||");
   const channel_name = (parts[0] ?? "").trim();
-  const brand = (parts[1] ?? "").trim();
+  const old_brand = (parts[1] ?? "").trim();
   const old_profit_pct = Number(parts[2] ?? 0);
   const profit_pct = Number(formData.get("profit_pct") ?? 0);
+  const brands = formData.getAll("brand").map((v) => String(v).trim()).filter(Boolean);
   const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
 
-  if (!channel_name || !brand || !customer_groups.length) err("profit", "Thiếu thông tin");
+  if (!channel_name || !brands.length || !customer_groups.length) err("profit", "Thiếu thông tin");
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
-  // Xoá group cũ, insert lại với nhóm KH mới
+  // Xoá group cũ (theo brand cũ), insert lại với brand+nhóm KH mới
   await admin.from("profit_rules").delete()
     .eq("channel_name", channel_name)
-    .eq("brand", brand)
+    .eq("brand", old_brand)
     .eq("profit_pct", old_profit_pct);
 
-  const rows = customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }));
-  const { error } = await admin.from("profit_rules").insert(rows);
+  const rows = brands.flatMap((brand) =>
+    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }))
+  );
+  const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group" });
   if (error) err("profit", error.message);
   ok("profit", "Đã cập nhật rule");
 }

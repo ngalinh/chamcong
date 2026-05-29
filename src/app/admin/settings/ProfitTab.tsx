@@ -215,13 +215,14 @@ export async function ProfitTab({
             </div>
           )}
 
-          {!editGroupKey && (
-            <div className="p-3 border-t border-neutral-200/40 bg-neutral-50/40">
-              <p className="text-xs font-medium text-neutral-500 mb-3">+ Thêm rule profit</p>
-              <RuleForm action={upsertProfitRule} />
-            </div>
-          )}
         </div>
+
+        {!editGroupKey && (
+          <div className="p-3 border border-neutral-200/40 rounded-2xl bg-neutral-50/40">
+            <p className="text-xs font-medium text-neutral-500 mb-3">+ Thêm rule profit</p>
+            <RuleForm action={upsertProfitRule} />
+          </div>
+        )}
 
         <p className="text-xs text-neutral-500 leading-relaxed">
           💡 <b>% SALE</b> và <b>% CSKH</b> cài chung theo kênh NV ở bảng trên.
@@ -299,11 +300,10 @@ function RuleGroupForm({
             <option key={c} value={c}>{c}</option>
           ))}
         </SelectField>
-        <SelectField label="Brand" name="_br" defaultValue={group.brand} disabled>
-          {PROFIT_BRANDS.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </SelectField>
+        <label className="block text-sm">
+          <div className="text-xs font-medium text-neutral-600 mb-1">Brand</div>
+          <BrandMultiSelect defaultValues={[group.brand]} />
+        </label>
         <SelectField label="% Profit" name="profit_pct" defaultValue={String(group.profit_pct)}>
           {PROFIT_PCTS.map((p) => (
             <option key={p} value={String(p)}>{(p * 100).toFixed(1).replace(/\.0$/, "")}%</option>
