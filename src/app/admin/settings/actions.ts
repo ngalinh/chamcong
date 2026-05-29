@@ -179,8 +179,15 @@ export async function uploadOrderFile(formData: FormData) {
   const sheet = workbook.worksheets[0];
   if (!sheet) err("orders", "File Excel không có sheet nào");
 
-  // Đọc header row (row 1)
-  const headerRow = sheet.getRow(1);
+  // Tìm header row: scan tối đa 10 row đầu, chọn row có nhiều cell nhất (row tiêu đề thường có nhiều cột)
+  let headerRowNum = 1;
+  let maxCells = 0;
+  for (let i = 1; i <= 10; i++) {
+    let count = 0;
+    sheet.getRow(i).eachCell(() => { count++; });
+    if (count > maxCells) { maxCells = count; headerRowNum = i; }
+  }
+  const headerRow = sheet.getRow(headerRowNum);
   const colMap: Record<string, number> = {};
   headerRow.eachCell((cell: ExcelJS.Cell, colNum: number) => {
     const name = String(cell.value ?? "").trim().toLowerCase();
@@ -235,7 +242,7 @@ export async function uploadOrderFile(formData: FormData) {
   // Parse và insert rows theo batch
   const rows: object[] = [];
   sheet.eachRow((row: ExcelJS.Row, rowNum: number) => {
-    if (rowNum === 1) return; // skip header
+    if (rowNum <= headerRowNum) return; // skip title + header rows
     const amount = parseAmount(colAmount ? row.getCell(colAmount).value : 0);
     rows.push({
       file_id: fileRow!.id,
