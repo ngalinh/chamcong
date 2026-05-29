@@ -104,8 +104,14 @@ Mỗi lần thêm/sửa schema → tạo migration mới ở `supabase/migration
 - Nếu cần apply nhiều migration → apply theo thứ tự timestamp (từ cũ đến mới), mỗi file một lần
 
 **Migration cần apply sau mỗi lần Claude tạo file mới trong `supabase/migrations/`:**
-- Claude sẽ thông báo rõ tên file migration mới và link SQL Editor
-- Chỉ cần apply file có timestamp MỚI NHẤT nếu chưa apply trước đó
+
+**QUAN TRỌNG — Claude PHẢI làm đủ các bước sau mỗi lần tạo migration, KHÔNG được chỉ nhắc tên file:**
+1. In ra link SQL Editor: `https://supabase.com/dashboard/project/tmrtgriopaczpxrpxmpu/sql/new`
+2. In toàn bộ nội dung SQL của file migration đó vào code block để user copy/paste trực tiếp
+3. Hướng dẫn từng bước: mở link → paste SQL → bấm Run → kiểm tra Results
+4. Nếu có nhiều migration thì làm từng bước riêng cho từng file theo thứ tự timestamp
+
+Lý do: user không muốn phải tự mở file để copy — Claude phải chủ động in ra đầy đủ.
 
 #### Data API GRANT (bắt buộc từ 30/10/2026)
 
