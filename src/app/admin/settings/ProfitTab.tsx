@@ -17,19 +17,32 @@ function pctLabel(p: number) {
 
 type RuleGroup = {
   channel_name: string;
-  brand: string;
+  brands: string[];
   profit_pct: number;
   customer_groups: string[];
 };
 
 function groupRules(rules: ProfitRule[]): RuleGroup[] {
+  // Group by channel + profit_pct + sorted customer_groups (brands can vary within a group)
   const map = new Map<string, RuleGroup>();
+  // First pass: collect all customer_groups per channel+brand+pct, then group by channel+pct+cgs
+  // Strategy: group rows that share the same channel, pct, AND the same set of customer_groups
+  const tempMap = new Map<string, { channel_name: string; brand: string; profit_pct: number; customer_groups: string[] }>();
   for (const r of rules) {
     const key = `${r.channel_name}||${r.brand}||${r.profit_pct}`;
-    if (!map.has(key)) {
-      map.set(key, { channel_name: r.channel_name, brand: r.brand, profit_pct: r.profit_pct, customer_groups: [] });
+    if (!tempMap.has(key)) {
+      tempMap.set(key, { channel_name: r.channel_name, brand: r.brand, profit_pct: r.profit_pct, customer_groups: [] });
     }
-    map.get(key)!.customer_groups.push(r.customer_group);
+    tempMap.get(key)!.customer_groups.push(r.customer_group);
+  }
+  // Second pass: group by channel+pct+sorted_cgs, merge brands
+  for (const g of tempMap.values()) {
+    const sortedCgs = [...g.customer_groups].sort().join("~");
+    const key = `${g.channel_name}||${g.profit_pct}||${sortedCgs}`;
+    if (!map.has(key)) {
+      map.set(key, { channel_name: g.channel_name, brands: [], profit_pct: g.profit_pct, customer_groups: g.customer_groups });
+    }
+    map.get(key)!.brands.push(g.brand);
   }
   return Array.from(map.values());
 }
@@ -43,7 +56,7 @@ export async function ProfitTab({
   ok?: string;
   error?: string;
   editChannel?: string;
-  editRule?: string; // encoded group key: channel_name||brand||profit_pct
+  editRule?: string; // encoded group key: channel_name||profit_pct||brands_tilde||cgs_tilde
 }) {
   const admin = createAdminClient();
 
@@ -61,6 +74,11 @@ export async function ProfitTab({
 
   const editingChannel = editChannel ? channelList.find((c) => c.id === editChannel) : undefined;
   const editGroupKey = editRule ? decodeURIComponent(editRule) : null;
+
+  // Build edit key for a group: channel_name||profit_pct||brands_tilde||cgs_tilde
+  function makeGroupKey(g: RuleGroup): string {
+    return `${g.channel_name}||${g.profit_pct}||${[...g.brands].sort().join("~")}||${[...g.customer_groups].sort().join("~")}`;
+  }
 
   return (
     <div className="space-y-8">
@@ -161,7 +179,7 @@ export async function ProfitTab({
                 </thead>
                 <tbody className="divide-y divide-neutral-200/40">
                   {ruleGroups.map((g) => {
-                    const gKey = `${g.channel_name}||${g.brand}||${g.profit_pct}`;
+                    const gKey = makeGroupKey(g);
                     const isEditing = editGroupKey === gKey;
                     if (isEditing) {
                       return (
@@ -175,7 +193,7 @@ export async function ProfitTab({
                     return (
                       <tr key={gKey}>
                         <td className="py-2.5 px-3 font-medium">{g.channel_name}</td>
-                        <td className="py-2.5 px-3">{g.brand}</td>
+                        <td className="py-2.5 px-3">{g.brands.join(", ")}</td>
                         <td className="py-2.5 px-3">
                           <div className="flex flex-wrap gap-1">
                             {g.customer_groups.map((cg) => (
@@ -280,7 +298,7 @@ function ChannelForm({
   );
 }
 
-// Form để SỬA 1 group (channel, brand, profit_pct) với checkboxes cho Nhóm KH
+// Form để SỬA 1 group (channel, brands, profit_pct) với checkboxes cho Nhóm KH
 function RuleGroupForm({
   group,
   action,
@@ -289,7 +307,8 @@ function RuleGroupForm({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
 }) {
-  const editKey = `${group.channel_name}||${group.brand}||${group.profit_pct}`;
+  // edit_key: channel_name||profit_pct||brands_tilde||cgs_tilde
+  const editKey = `${group.channel_name}||${group.profit_pct}||${[...group.brands].sort().join("~")}||${[...group.customer_groups].sort().join("~")}`;
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="edit_key" value={editKey} />
@@ -302,7 +321,7 @@ function RuleGroupForm({
         </SelectField>
         <label className="block text-sm">
           <div className="text-xs font-medium text-neutral-600 mb-1">Brand</div>
-          <BrandMultiSelect defaultValues={[group.brand]} />
+          <BrandMultiSelect defaultValues={group.brands} />
         </label>
         <SelectField label="% Profit" name="profit_pct" defaultValue={String(group.profit_pct)}>
           {PROFIT_PCTS.map((p) => (
