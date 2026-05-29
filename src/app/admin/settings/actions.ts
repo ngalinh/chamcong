@@ -179,13 +179,18 @@ export async function uploadOrderFile(formData: FormData) {
   const sheet = workbook.worksheets[0];
   if (!sheet) err("orders", "File Excel không có sheet nào");
 
-  // Tìm header row: scan tối đa 10 row đầu, chọn row có nhiều cell nhất (row tiêu đề thường có nhiều cột)
+  // Tìm header row: scan tối đa 10 row đầu, chọn row đầu tiên chứa keyword cột bắt buộc
+  const HEADER_KEYWORDS = ["thành tiền", "thanh tien", "brand", "khách hàng", "mã đh", "nv duyệt"];
   let headerRowNum = 1;
-  let maxCells = 0;
   for (let i = 1; i <= 10; i++) {
-    let count = 0;
-    sheet.getRow(i).eachCell(() => { count++; });
-    if (count > maxCells) { maxCells = count; headerRowNum = i; }
+    const row = sheet.getRow(i);
+    let found = false;
+    row.eachCell((cell: ExcelJS.Cell) => {
+      if (found) return;
+      const val = String(cell.value ?? "").trim().toLowerCase();
+      if (HEADER_KEYWORDS.some((kw) => val.includes(kw))) found = true;
+    });
+    if (found) { headerRowNum = i; break; }
   }
   const headerRow = sheet.getRow(headerRowNum);
   const colMap: Record<string, number> = {};
