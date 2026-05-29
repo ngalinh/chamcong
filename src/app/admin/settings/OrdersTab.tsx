@@ -1,11 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Eye, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Eye, Upload, PackageSearch } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { OrderFile } from "@/types/db";
-import { uploadOrderFile, deleteOrderFile } from "./actions";
+import { PROFIT_CHANNELS } from "@/types/db";
+import { uploadOrderFile, deleteOrderFile, upsertDropshipRevenue } from "./actions";
 
 function fmt(n: number) {
   return n.toLocaleString("vi-VN");
@@ -15,10 +16,12 @@ export async function OrdersTab({
   ok,
   error,
   preview,
+  dsMonth,
 }: {
   ok?: string;
   error?: string;
   preview?: string; // YYYY-MM — tháng đang preview
+  dsMonth?: string; // YYYY-MM — tháng đang nhập dropship revenue
 }) {
   const admin = createAdminClient();
 
@@ -60,9 +63,19 @@ export async function OrdersTab({
     }
   }
 
-  // Tháng mặc định cho form upload = tháng hiện tại
+  // Tháng mặc định = tháng hiện tại
   const now = new Date();
   const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  // Fetch dữ liệu dropship revenue cho tháng đang xem
+  const dropshipMonth = dsMonth ?? defaultMonth;
+  const { data: dropshipRows } = await admin
+    .from("dropship_revenue")
+    .select("channel_name, amount")
+    .eq("month", dropshipMonth);
+  const dropshipMap = new Map<string, number>(
+    (dropshipRows ?? []).map((r: { channel_name: string; amount: unknown }) => [r.channel_name, Number(r.amount ?? 0)])
+  );
 
   return (
     <div className="space-y-5">
@@ -176,6 +189,68 @@ export async function OrdersTab({
           )}
         </div>
       )}
+
+      {/* Doanh thu Dropship */}
+      <div className="rounded-2xl border border-white/60 glass p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-9 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+            <PackageSearch size={16} />
+          </div>
+          <div>
+            <div className="font-medium text-sm">Doanh thu Dropship</div>
+            <div className="text-xs text-neutral-500">Nhập tay doanh thu Dropship theo tháng để tính profit Sale/CSKH</div>
+          </div>
+        </div>
+
+        <form action={upsertDropshipRevenue} className="space-y-3">
+          <div className="flex items-end gap-3 flex-wrap">
+            <label className="block text-sm flex-none">
+              <div className="text-xs font-medium text-neutral-600 mb-1.5">Tháng</div>
+              <input
+                type="month"
+                name="month"
+                defaultValue={dropshipMonth}
+                required
+                className="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+              />
+            </label>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-neutral-200">
+                  {PROFIT_CHANNELS.map((ch) => (
+                    <th key={ch} className="text-left py-2 px-3 text-xs font-medium text-neutral-600 whitespace-nowrap">
+                      {ch}
+                    </th>
+                  ))}
+                  <th className="py-2 px-3 w-20" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {PROFIT_CHANNELS.map((ch) => (
+                    <td key={ch} className="py-2 px-3">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        name={`amount_${ch}`}
+                        defaultValue={dropshipMap.get(ch) ? fmt(dropshipMap.get(ch)!) : ""}
+                        placeholder="0"
+                        className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                      />
+                    </td>
+                  ))}
+                  <td className="py-2 px-3">
+                    <Button type="submit" size="sm">Lưu</Button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </form>
+      </div>
 
       {/* File list */}
       {!(files?.length) ? (
