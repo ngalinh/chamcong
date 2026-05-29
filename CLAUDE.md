@@ -3,6 +3,21 @@
 App **chấm công nội bộ** dùng face match + geofence + selfie cho công ty Basso (~12 NV).
 Nếu bạn (Claude) đang làm việc với repo này, đọc file này để có context đầy đủ.
 
+## ⚠️ CHECKLIST BẮT BUỘC SAU MỖI TASK — KHÔNG ĐƯỢC BỎ QUA
+
+Sau khi sửa xong code, trước khi reply cho user, Claude PHẢI tự hỏi và thực hiện **toàn bộ** các bước sau theo thứ tự:
+
+1. **Commit + push** các file đã sửa lên branch hiện tại (không dùng `git add -A`, không commit `.env*`)
+2. **Typecheck**: `npx tsc --noEmit` — nếu có lỗi MỚI (không phải pre-existing do thiếu node_modules) thì fix trước khi tiếp
+3. **Merge PR vào main**: nếu đang trên feature branch có PR → mark ready → squash merge ngay, KHÔNG hỏi user
+4. **Migration SQL**: nếu có file migration mới trong `supabase/migrations/` → in đầy đủ SQL + link + hướng dẫn từng bước (xem mục Migration bên dưới)
+5. **Deploy**: CI/CD tự chạy sau khi push/merge vào `main` — không cần thao tác thêm
+
+**Các lỗi hay gặp cần tránh:**
+- Quên merge PR → user phải nhắc
+- Quên in SQL migration → user phải nhắc
+- Tạo PR xong không merge → vi phạm convention auto-merge
+
 ## Tech stack
 
 - **Next.js 16** (App Router, Server Components, Server Actions)
