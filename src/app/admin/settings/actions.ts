@@ -98,15 +98,16 @@ export async function deleteProfitRule(formData: FormData) {
   ok("profit", "Đã xoá rule");
 }
 
-// edit_key = "channel_name||brand||profit_pct"
+// edit_key = "channel_name||profit_pct||brands_tilde||cgs_tilde"
 export async function upsertProfitRuleGroup(formData: FormData) {
   await requireAdmin();
   const admin = createAdminClient();
   const editKey = String(formData.get("edit_key") ?? "");
   const parts = editKey.split("||");
   const channel_name = (parts[0] ?? "").trim();
-  const old_brand = (parts[1] ?? "").trim();
-  const old_profit_pct = Number(parts[2] ?? 0);
+  const old_profit_pct = Number(parts[1] ?? 0);
+  const old_brands = (parts[2] ?? "").split("~").map((s) => s.trim()).filter(Boolean);
+  const old_cgs = (parts[3] ?? "").split("~").map((s) => s.trim()).filter(Boolean);
   const profit_pct = Number(formData.get("profit_pct") ?? 0);
   const brands = formData.getAll("brand").map((v) => String(v).trim()).filter(Boolean);
   const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
@@ -114,10 +115,11 @@ export async function upsertProfitRuleGroup(formData: FormData) {
   if (!channel_name || !brands.length || !customer_groups.length) err("profit", "Thiếu thông tin");
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
-  // Xoá group cũ (theo brand cũ), insert lại với brand+nhóm KH mới
+  // Xoá toàn bộ rows cũ của group này (old brands × old cgs)
   await admin.from("profit_rules").delete()
     .eq("channel_name", channel_name)
-    .eq("brand", old_brand)
+    .in("brand", old_brands)
+    .in("customer_group", old_cgs)
     .eq("profit_pct", old_profit_pct);
 
   const rows = brands.flatMap((brand) =>
@@ -134,12 +136,14 @@ export async function deleteProfitRuleGroup(formData: FormData) {
   const editKey = String(formData.get("edit_key") ?? "");
   const parts = editKey.split("||");
   const channel_name = (parts[0] ?? "").trim();
-  const brand = (parts[1] ?? "").trim();
-  const profit_pct = Number(parts[2] ?? 0);
+  const profit_pct = Number(parts[1] ?? 0);
+  const brands = (parts[2] ?? "").split("~").map((s) => s.trim()).filter(Boolean);
+  const cgs = (parts[3] ?? "").split("~").map((s) => s.trim()).filter(Boolean);
 
   const { error } = await admin.from("profit_rules").delete()
     .eq("channel_name", channel_name)
-    .eq("brand", brand)
+    .in("brand", brands)
+    .in("customer_group", cgs)
     .eq("profit_pct", profit_pct);
   if (error) err("profit", error.message);
   ok("profit", "Đã xoá rule");
