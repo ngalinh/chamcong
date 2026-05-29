@@ -41,18 +41,25 @@ export async function OrdersTab({
   if (preview) {
     previewFile = ((files ?? []) as OrderFile[]).find((f) => f.month === preview) ?? null;
     if (previewFile) {
-      // Aggregate bằng supabase raw query (không có group by nên làm thủ công)
-      const { data: rawRows } = await admin
-        .from("order_data")
-        .select("sale_channel, brand, customer_group, amount")
-        .eq("file_id", previewFile.id)
-        .limit(100000);
+      // Fetch tất cả rows theo batch (Supabase PostgREST max 1000/request)
+      const BATCH = 1000;
+      const allRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; amount: number }[] = [];
+      for (let from = 0; ; from += BATCH) {
+        const { data: batch } = await admin
+          .from("order_data")
+          .select("sale_channel, brand, customer_group, amount")
+          .eq("file_id", previewFile.id)
+          .range(from, from + BATCH - 1);
+        if (!batch || batch.length === 0) break;
+        allRows.push(...batch);
+        if (batch.length < BATCH) break;
+      }
 
-      totalOrders = rawRows?.length ?? 0;
+      totalOrders = allRows.length;
 
       // Group by sale_channel + brand + customer_group
       const map = new Map<string, number>();
-      for (const r of rawRows ?? []) {
+      for (const r of allRows) {
         const key = `${r.sale_channel ?? ""}||${r.brand ?? ""}||${r.customer_group ?? ""}`;
         map.set(key, (map.get(key) ?? 0) + Number(r.amount ?? 0));
         totalAmount += Number(r.amount ?? 0);
