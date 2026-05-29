@@ -23,7 +23,7 @@ export async function BranchesTab({
     .order("created_at", { ascending: true });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pt-1">
       <div className="flex items-center justify-between gap-2">
         {!showNew && (
           <Link

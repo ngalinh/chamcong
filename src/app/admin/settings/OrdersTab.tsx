@@ -6,6 +6,8 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { OrderFile } from "@/types/db";
 import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
+
+type DropshipEntry = { amount: number };
 import { uploadOrderFile, deleteOrderFile, upsertDropshipRevenue } from "./actions";
 
 function fmt(n: number) {
@@ -73,10 +75,11 @@ export async function OrdersTab({
     .from("dropship_revenue")
     .select("channel_name, amount, customer_group")
     .eq("month", dropshipMonth);
-  const dropshipMap = new Map<string, { amount: number; customer_group: string | null }>(
-    (dropshipRows ?? []).map((r: { channel_name: string; amount: unknown; customer_group: string | null }) => [
-      r.channel_name,
-      { amount: Number(r.amount ?? 0), customer_group: r.customer_group ?? null },
+  // Map key: "channel_name||customer_group" → { amount }
+  const dropshipMap = new Map<string, DropshipEntry>(
+    (dropshipRows ?? []).map((r: { channel_name: string; amount: unknown; customer_group: string }) => [
+      `${r.channel_name}||${r.customer_group}`,
+      { amount: Number(r.amount ?? 0) },
     ])
   );
 
@@ -221,47 +224,44 @@ export async function OrdersTab({
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr className="border-b border-neutral-200">
+                <tr className="border-b border-neutral-200 bg-neutral-50/60">
+                  <th className="text-left py-2 px-3 text-xs font-medium text-neutral-500 w-28">Nhóm KH</th>
                   {PROFIT_CHANNELS.map((ch) => (
                     <th key={ch} className="text-left py-2 px-3 text-xs font-medium text-neutral-600 whitespace-nowrap">
                       {ch}
                     </th>
                   ))}
-                  <th className="py-2 px-3 w-20" />
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-neutral-100">
+                {CUSTOMER_GROUPS.map((cg) => (
+                  <tr key={cg}>
+                    <td className="py-2 px-3 text-xs font-medium text-neutral-600 whitespace-nowrap">{cg}</td>
+                    {PROFIT_CHANNELS.map((ch) => {
+                      const entry = dropshipMap.get(`${ch}||${cg}`);
+                      return (
+                        <td key={ch} className="py-2 px-3">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            name={`amount_${ch}_${cg}`}
+                            defaultValue={entry?.amount ? fmt(entry.amount) : ""}
+                            placeholder="0"
+                            className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
                 <tr>
-                  {PROFIT_CHANNELS.map((ch) => {
-                    const entry = dropshipMap.get(ch);
-                    return (
-                      <td key={ch} className="py-2 px-3 space-y-1.5">
-                        <select
-                          name={`cg_${ch}`}
-                          defaultValue={entry?.customer_group ?? ""}
-                          className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900"
-                        >
-                          <option value="">(chưa chọn)</option>
-                          {CUSTOMER_GROUPS.map((g) => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          name={`amount_${ch}`}
-                          defaultValue={entry?.amount ? fmt(entry.amount) : ""}
-                          placeholder="0"
-                          className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="py-2 px-3 align-bottom">
+                  <td colSpan={PROFIT_CHANNELS.length + 1} className="pt-3 px-3">
                     <Button type="submit" size="sm">Lưu</Button>
                   </td>
                 </tr>
-              </tbody>
+              </tfoot>
             </table>
           </div>
         </form>
