@@ -41,10 +41,10 @@ export async function LogsTab({ level = "all" }: { level?: string }) {
   const rows = (data ?? []) as unknown as LogRow[];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pt-1">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <p className="text-sm text-neutral-500 mt-1">
+          <p className="text-sm text-neutral-500">
             200 sự kiện gần nhất. Lỗi client (browser) và server (Next.js) đều ghi vào đây.
           </p>
         </div>
