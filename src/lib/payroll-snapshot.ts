@@ -194,6 +194,7 @@ export async function computePayrollForMonth(
   const result = computePayroll({
     workdays,
     workingDaysInMonth,
+    month: monthStr,
     salary: Number(employee.salary),
     balanceStart: Number(employee.leave_balance),
     approvedLeaves: (leaves ?? []).map((l) => ({
