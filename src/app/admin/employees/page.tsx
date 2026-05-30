@@ -134,6 +134,21 @@ async function updateOtFixedSalary(formData: FormData) {
   revalidatePath("/admin/employees");
 }
 
+async function toggleExemptAbsence(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase.from("employees").select("is_admin").eq("user_id", user.id).maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+  const id = String(formData.get("id"));
+  const val = formData.get("exempt_absence") === "1";
+  const admin = createAdminClient();
+  const { error } = await admin.from("employees").update({ exempt_absence: val }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/employees");
+}
+
 async function accrueLeaveThisMonth() {
   "use server";
   const supabase = await createClient();
@@ -570,6 +585,22 @@ export default async function EmployeesPage({
                   initialValue={e.ot_fixed_salary ?? null}
                   action={updateOtFixedSalary}
                 />
+
+                {/* Row 5b: miễn trừ vắng không phép */}
+                <form action={toggleExemptAbsence} className="flex items-center gap-2 px-1">
+                  <input type="hidden" name="id" value={e.id} />
+                  <input type="hidden" name="exempt_absence" value={e.exempt_absence ? "0" : "1"} />
+                  <button
+                    type="submit"
+                    className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                      e.exempt_absence
+                        ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                        : "bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {e.exempt_absence ? "✓ Không chấm công" : "Bật không chấm công"}
+                  </button>
+                </form>
 
                 {/* Row 6: button "Thời gian làm việc" — click mới expand form,
                     có thể nhập nhiều ca (parttime online) hoặc chỉ 1 ca */}
