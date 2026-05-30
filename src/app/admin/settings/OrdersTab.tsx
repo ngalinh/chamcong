@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Eye, Upload, PackageSearch } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
-import type { OrderFile } from "@/types/db";
+import type { OrderFile, ProfitRule } from "@/types/db";
 import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
 
 type DropshipEntry = { amount: number };
@@ -33,10 +33,12 @@ export async function OrdersTab({
     .order("month", { ascending: false });
 
   // Nếu đang preview tháng nào, lấy summary data
-  let summaryRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; total: number }[] = [];
+  let summaryRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; total: number; profit_pct: number | null; profit: number | null }[] = [];
   let totalAmount = 0;
   let totalOrders = 0;
   let previewFile: OrderFile | null = null;
+
+  const customerGroupOrder = ["Khách lẻ", "CTV", "Sỉ nhỏ", "Sỉ vừa", "Sỉ to"];
 
   if (preview) {
     previewFile = ((files ?? []) as OrderFile[]).find((f) => f.month === preview) ?? null;
@@ -57,6 +59,15 @@ export async function OrdersTab({
 
       totalOrders = allRows.length;
 
+      // Fetch profit rules
+      const { data: profitRules } = await admin.from("profit_rules").select("*");
+      const ruleMap = new Map<string, number>(
+        ((profitRules ?? []) as ProfitRule[]).map((r) => [
+          `${r.channel_name}||${r.brand}||${r.customer_group}`,
+          r.profit_pct,
+        ])
+      );
+
       // Group by sale_channel + brand + customer_group
       const map = new Map<string, number>();
       for (const r of allRows) {
@@ -67,9 +78,19 @@ export async function OrdersTab({
       summaryRows = Array.from(map.entries())
         .map(([k, total]) => {
           const [sale_channel, brand, customer_group] = k.split("||");
-          return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total };
+          const profit_pct = ruleMap.get(k) ?? null;
+          const profit = profit_pct !== null ? Math.round(total * profit_pct) : null;
+          return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit };
         })
-        .sort((a, b) => b.total - a.total);
+        .sort((a, b) => {
+          const ch = (a.sale_channel ?? "").localeCompare(b.sale_channel ?? "", "vi");
+          if (ch !== 0) return ch;
+          const br = (a.brand ?? "").localeCompare(b.brand ?? "", "vi");
+          if (br !== 0) return br;
+          const ai = customerGroupOrder.indexOf(a.customer_group ?? "");
+          const bi = customerGroupOrder.indexOf(b.customer_group ?? "");
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
     }
   }
 
@@ -155,7 +176,7 @@ export async function OrdersTab({
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="font-medium text-sm text-indigo-900">
-                Preview tháng {preview} — {previewFile.original_filename}
+                Preview tháng {preview ? `${Number(preview.split("-")[1])}-${preview.split("-")[0]}` : ""} — {previewFile.original_filename}
               </div>
               <div className="text-xs text-indigo-600 mt-0.5">
                 {fmt(totalOrders)} đơn · Tổng Thành tiền: {fmt(totalAmount)}đ
@@ -179,6 +200,8 @@ export async function OrdersTab({
                     <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Brand</th>
                     <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Nhóm KH</th>
                     <th className="text-right py-1.5 px-2 font-medium text-indigo-700">Doanh thu (đ)</th>
+                    <th className="text-right py-1.5 px-2 font-medium text-indigo-700">% Profit</th>
+                    <th className="text-right py-1.5 px-2 font-medium text-indigo-700">Profit (đ)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,6 +211,12 @@ export async function OrdersTab({
                       <td className="py-1.5 px-2 text-neutral-700">{r.brand ?? "(trống)"}</td>
                       <td className="py-1.5 px-2 text-neutral-700">{r.customer_group ?? "(trống)"}</td>
                       <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmt(r.total)}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-neutral-500">
+                        {r.profit_pct !== null ? `${(r.profit_pct * 100).toFixed(1)}%` : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums font-medium text-emerald-700">
+                        {r.profit !== null ? fmt(r.profit) : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -195,6 +224,7 @@ export async function OrdersTab({
                   <tr className="border-t border-indigo-200">
                     <td colSpan={3} className="py-1.5 px-2 font-semibold text-indigo-800">Tổng</td>
                     <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-indigo-800">{fmt(totalAmount)}</td>
+                    <td colSpan={2} />
                   </tr>
                 </tfoot>
               </table>
