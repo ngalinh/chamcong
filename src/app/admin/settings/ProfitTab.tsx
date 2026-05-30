@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Pencil, Trash2, TrendingUp } from "lucide-
 import type { ProfitChannel, ProfitRule, Employee } from "@/types/db";
 import { PROFIT_CHANNELS, PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
 import BrandMultiSelect from "./BrandMultiSelect";
+import { ApplyFromSubmit } from "@/components/ApplyFromSubmit";
 import {
   upsertProfitChannel,
   upsertProfitRule,
@@ -66,9 +67,30 @@ export async function ProfitTab({
     admin.from("employees").select("id, name").eq("is_active", true).order("name"),
   ]);
 
-  const channelList = (channels ?? []) as ProfitChannel[];
-  const ruleList = (rules ?? []) as ProfitRule[];
+  const allChannels = (channels ?? []) as ProfitChannel[];
+  const allRules = (rules ?? []) as ProfitRule[];
   const empList = (employees ?? []) as Pick<Employee, "id" | "name">[];
+
+  // Tính tháng hiện tại và tháng sau
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
+  // Hiển thị chỉ rule hiệu lực tháng hiện tại (latest effective_from <= currentMonth)
+  function latestEffective<T extends { effective_from: string }>(rows: T[], keyFn: (r: T) => string): T[] {
+    const map = new Map<string, T>();
+    for (const r of rows) {
+      if (r.effective_from > currentMonth) continue;
+      const key = keyFn(r);
+      const ex = map.get(key);
+      if (!ex || ex.effective_from < r.effective_from) map.set(key, r);
+    }
+    return Array.from(map.values());
+  }
+
+  const channelList = latestEffective(allChannels, (c) => c.channel_name);
+  const ruleList = latestEffective(allRules, (r) => `${r.channel_name}||${r.brand}||${r.customer_group}`);
 
   const ruleGroups = groupRules(ruleList);
 
@@ -124,7 +146,7 @@ export async function ProfitTab({
                     return (
                       <tr key={ch.id} className="bg-indigo-50/40">
                         <td colSpan={6} className="px-3 py-3">
-                          <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} />
+                          <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} currentMonth={currentMonth} nextMonth={nextMonth} />
                         </td>
                       </tr>
                     );
@@ -185,7 +207,7 @@ export async function ProfitTab({
                       return (
                         <tr key={gKey} className="bg-indigo-50/40">
                           <td colSpan={5} className="px-3 py-3">
-                            <RuleGroupForm group={g} action={upsertProfitRuleGroup} />
+                            <RuleGroupForm group={g} action={upsertProfitRuleGroup} currentMonth={currentMonth} nextMonth={nextMonth} />
                           </td>
                         </tr>
                       );
@@ -257,11 +279,15 @@ function ChannelForm({
   channel,
   employees,
   action,
+  currentMonth,
+  nextMonth,
 }: {
   channel: ProfitChannel;
   employees: Pick<Employee, "id" | "name">[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
+  currentMonth: string;
+  nextMonth: string;
 }) {
   return (
     <form action={action} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
@@ -286,7 +312,7 @@ function ChannelForm({
       <NumberPctField label="% CSKH" name="cskh_pct" defaultValue={Math.round(channel.cskh_pct * 100)} />
 
       <div className="flex gap-1.5 col-span-2 sm:col-span-1">
-        <Button type="submit" size="sm">Lưu</Button>
+        <ApplyFromSubmit currentMonth={currentMonth} nextMonth={nextMonth} />
         <a
           href="/admin/settings?tab=profit"
           className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
@@ -302,10 +328,14 @@ function ChannelForm({
 function RuleGroupForm({
   group,
   action,
+  currentMonth,
+  nextMonth,
 }: {
   group: RuleGroup;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
+  currentMonth: string;
+  nextMonth: string;
 }) {
   // edit_key: channel_name||profit_pct||brands_tilde||cgs_tilde
   const editKey = `${group.channel_name}||${group.profit_pct}||${[...group.brands].sort().join("~")}||${[...group.customer_groups].sort().join("~")}`;
@@ -329,7 +359,7 @@ function RuleGroupForm({
           ))}
         </SelectField>
         <div className="flex gap-1.5 col-span-2 sm:col-span-1">
-          <Button type="submit" size="sm">Lưu</Button>
+          <ApplyFromSubmit currentMonth={currentMonth} nextMonth={nextMonth} />
           <a
             href="/admin/settings?tab=profit"
             className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"

@@ -48,6 +48,7 @@ export type ProfitChannel = {
   cskh_employee_id: string | null;
   sale_pct: number;
   cskh_pct: number;
+  effective_from: string; // YYYY-MM, '' = luôn áp dụng
   created_at: string;
 };
 
@@ -57,6 +58,7 @@ export type ProfitRule = {
   brand: string;
   customer_group: string;
   profit_pct: number;
+  effective_from: string; // YYYY-MM, '' = luôn áp dụng
   created_at: string;
 };
 

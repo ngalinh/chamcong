@@ -45,18 +45,28 @@ export async function upsertProfitChannel(formData: FormData) {
   const cskhRaw = formData.get("cskh_employee_id") as string | null;
   const sale_pct = Number(formData.get("sale_pct") ?? 0) / 100;
   const cskh_pct = Number(formData.get("cskh_pct") ?? 0) / 100;
+  const apply_from = String(formData.get("apply_from") ?? "").trim(); // YYYY-MM or ''
   if (!channel_name) err("profit", "Thiếu kênh NV");
 
-  const updatePayload = {
+  const payload = {
     sale_employee_id: saleRaw || null,
     cskh_employee_id: cskhRaw || null,
     sale_pct,
     cskh_pct,
   };
 
-  const { error } = id
-    ? await admin.from("profit_channels").update(updatePayload).eq("id", id)
-    : await admin.from("profit_channels").insert({ channel_name, ...updatePayload });
+  let error;
+  if (apply_from && id) {
+    // Thay đổi có hiệu lực từ tháng cụ thể: insert/update row với effective_from = apply_from
+    ({ error } = await admin
+      .from("profit_channels")
+      .upsert({ channel_name, effective_from: apply_from, ...payload }, { onConflict: "channel_name,effective_from" }));
+  } else if (id) {
+    // Update row gốc (effective_from = '')
+    ({ error } = await admin.from("profit_channels").update(payload).eq("id", id));
+  } else {
+    ({ error } = await admin.from("profit_channels").insert({ channel_name, effective_from: "", ...payload }));
+  }
 
   if (error) err("profit", error.message);
   ok("profit", id ? "Đã cập nhật kênh NV" : "Đã thêm kênh NV");
@@ -84,9 +94,9 @@ export async function upsertProfitRule(formData: FormData) {
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
   const rows = brands.flatMap((brand) =>
-    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }))
+    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct, effective_from: "" }))
   );
-  const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group" });
+  const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group,effective_from" });
   if (error) err("profit", error.message);
   ok("profit", `Đã thêm ${rows.length} rule`);
 }
@@ -112,21 +122,27 @@ export async function upsertProfitRuleGroup(formData: FormData) {
   const profit_pct = Number(formData.get("profit_pct") ?? 0);
   const brands = formData.getAll("brand").map((v) => String(v).trim()).filter(Boolean);
   const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
+  const apply_from = String(formData.get("apply_from") ?? "").trim(); // YYYY-MM or ''
 
   if (!channel_name || !brands.length || !customer_groups.length) err("profit", "Thiếu thông tin");
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
-  // Xoá toàn bộ rows cũ của group này (old brands × old cgs)
-  await admin.from("profit_rules").delete()
-    .eq("channel_name", channel_name)
-    .in("brand", old_brands)
-    .in("customer_group", old_cgs)
-    .eq("profit_pct", old_profit_pct);
+  const effective_from = apply_from || "";
+
+  if (!apply_from) {
+    // Không có apply_from → update row gốc (effective_from='') như cũ
+    await admin.from("profit_rules").delete()
+      .eq("channel_name", channel_name)
+      .in("brand", old_brands)
+      .in("customer_group", old_cgs)
+      .eq("profit_pct", old_profit_pct)
+      .eq("effective_from", "");
+  }
 
   const rows = brands.flatMap((brand) =>
-    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct }))
+    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct, effective_from }))
   );
-  const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group" });
+  const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group,effective_from" });
   if (error) err("profit", error.message);
   ok("profit", "Đã cập nhật rule");
 }
