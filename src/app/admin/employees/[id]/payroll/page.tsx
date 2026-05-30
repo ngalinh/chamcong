@@ -23,7 +23,6 @@ import {
   Sparkles,
   Clock,
   AlertTriangle,
-  TrendingDown,
   ChevronLeft,
   ChevronRight,
   Briefcase,
@@ -529,39 +528,44 @@ function FulltimeView({
         editable={editable}
       />
 
-      <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-5 space-y-2">
-        <div className="flex items-center gap-2 text-rose-900 mb-2">
-          <TrendingDown size={18} />
+      <div className="rounded-2xl border border-neutral-200 bg-white/80 p-5 space-y-2">
+        <div className="flex items-center gap-2 text-neutral-800 mb-2">
+          <Wallet size={18} />
           <h2 className="font-semibold">Tổng kết — {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}</h2>
         </div>
-        <TotalRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
-        <TotalRow label="Trừ lương từ nghỉ vượt phép + nghỉ giờ + online" value={result.totalWageDeduction} />
-        <TotalRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
-        {result.totalMissingDeduction > 0 && (
-          <TotalRow label="Vắng không phép" value={result.totalMissingDeduction} />
-        )}
-        {result.totalOTPay > 0 && (
-          <TotalRow label="Lương OT (đã duyệt)" value={result.totalOTPay} positive />
-        )}
-        {result.totalSelfBonus > 0 && (
-          <TotalRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
-        )}
+        {/* Các khoản cộng */}
+        <TotalRow label="Lương cứng" value={result.salary} positive />
         {otFixedSalary > 0 && (
           <TotalRow label="Lương OT cố định" value={otFixedSalary} positive />
         )}
         {profitTotal > 0 && (
-          <TotalRow label="Profit từ doanh số" value={profitTotal} positive />
+          <TotalRow label="Profit từ doanh thu" value={profitTotal} positive />
         )}
-        <div className="pt-2 mt-2 border-t border-rose-300/60 flex items-center justify-between">
-          <span className="font-semibold text-rose-900">Tổng tiền trừ</span>
-          <span className="text-2xl font-bold text-rose-700 tabular-nums">−{Math.round(result.grandTotal).toLocaleString("en-US")} VND</span>
+        {result.totalSelfBonus > 0 && (
+          <TotalRow label="Thưởng tự khai" value={result.totalSelfBonus} positive />
+        )}
+        {result.totalOTPay > 0 && (
+          <TotalRow label="Lương OT (đã duyệt)" value={result.totalOTPay} positive />
+        )}
+        {/* Các khoản trừ */}
+        {result.totalLatePenalty > 0 && (
+          <TotalRow label="Phạt đi muộn / về sớm" value={result.totalLatePenalty} />
+        )}
+        {result.totalWageDeduction > 0 && (
+          <TotalRow label="Trừ lương từ nghỉ vượt phép + nghỉ giờ + online" value={result.totalWageDeduction} />
+        )}
+        {result.totalSelfViolation > 0 && (
+          <TotalRow label="Vi phạm tự khai" value={result.totalSelfViolation} />
+        )}
+        {result.totalMissingDeduction > 0 && (
+          <TotalRow label="Vắng không phép" value={result.totalMissingDeduction} />
+        )}
+        <div className="pt-2 mt-2 border-t border-neutral-200 flex items-center justify-between">
+          <span className="font-semibold text-neutral-900">Tổng tiền lương</span>
+          <span className="text-2xl font-bold text-emerald-700 tabular-nums">
+            {Math.max(0, Math.round(result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal)).toLocaleString("en-US")} VND
+          </span>
         </div>
-        <p className="text-xs text-rose-700/80 mt-1">
-          Lương thực nhận tạm tính:{" "}
-          <b className="tabular-nums">
-            {Math.max(0, result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal).toLocaleString("en-US")} VND
-          </b>
-        </p>
       </div>
       {profitItems.length > 0 && <ProfitSection items={profitItems} total={profitTotal} />}
     </>
