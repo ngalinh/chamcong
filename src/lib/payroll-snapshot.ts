@@ -189,6 +189,32 @@ export async function computePayrollForMonth(
     return { kind: "parttime", result, workShifts };
   }
 
+  // Auto-accrue: +1 ngày phép cho mỗi tháng giữa last_accrual và tháng tính lương.
+  // Chỉ áp với fulltime, NV tồn tại trước tháng đầu kỳ.
+  const lastAccrual = employee.last_accrual_month ?? "";
+  let balanceStart = Number(employee.leave_balance);
+  if (lastAccrual < monthStr) {
+    const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
+    if (employee.created_at < monthStartIso) {
+      const monthsToAccrue = listMonthsBetween(lastAccrual, monthStr).length;
+      if (monthsToAccrue > 0) {
+        const newBalance = balanceStart + monthsToAccrue;
+        await admin.from("employees").update({
+          leave_balance: newBalance,
+          last_accrual_month: monthStr,
+        }).eq("id", employee.id);
+        await admin.from("leave_balance_log").insert({
+          employee_id: employee.id,
+          delta: monthsToAccrue,
+          balance_after: newBalance,
+          event_type: "accrual",
+          note: `Cộng phép ${monthsToAccrue} tháng (tự động đến ${monthStr})`,
+        });
+        balanceStart = newBalance;
+      }
+    }
+  }
+
   const workdays = countWorkdaysInMonth(ym.year, ym.month);
   const workingDaysInMonth = listWorkingDaysInMonth(ym.year, ym.month);
   const result = computePayroll({
@@ -196,7 +222,7 @@ export async function computePayrollForMonth(
     workingDaysInMonth,
     month: monthStr,
     salary: Number(employee.salary),
-    balanceStart: Number(employee.leave_balance),
+    balanceStart,
     approvedLeaves: (leaves ?? []).map((l) => ({
       id: (l as { id: string }).id,
       leave_date: (l as { leave_date: string }).leave_date,

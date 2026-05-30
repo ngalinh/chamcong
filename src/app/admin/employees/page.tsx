@@ -4,8 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import { Button } from "@/components/ui/Button";
-import { Users, Check, CircleSlash, Building2, Wifi, Plus, CalendarOff, Trash2 } from "lucide-react";
+import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2 } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
@@ -13,7 +12,6 @@ import { DeleteEmployeeButton } from "@/components/DeleteEmployeeButton";
 import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
 import EmployeeWorkHoursEditor from "@/components/EmployeeWorkHoursEditor";
 import OtFixedSalaryEditor from "@/components/OtFixedSalaryEditor";
-import { yearMonthVN } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -67,43 +65,23 @@ async function updateEmployeePayroll(formData: FormData) {
   if (employmentType !== "fulltime" && employmentType !== "parttime")
     throw new Error("Loại nhân viên không hợp lệ");
   const salary = Number(formData.get("salary") ?? 0);
-  const leaveBalance = Number(formData.get("leave_balance") ?? 0);
   const hourlyRate = Number(formData.get("hourly_rate") ?? 0);
   const overtimeRate = Number(formData.get("overtime_rate") ?? 0);
   if (!Number.isFinite(salary) || salary < 0) throw new Error("Lương không hợp lệ");
-  if (!Number.isFinite(leaveBalance) || leaveBalance < 0) throw new Error("Số ngày phép không hợp lệ");
   if (!Number.isFinite(hourlyRate) || hourlyRate < 0) throw new Error("Lương theo giờ không hợp lệ");
   if (!Number.isFinite(overtimeRate) || overtimeRate < 0) throw new Error("Lương OT không hợp lệ");
 
   const admin = createAdminClient();
-  const { data: prev } = await admin
-    .from("employees")
-    .select("leave_balance, name")
-    .eq("id", id)
-    .maybeSingle();
-
   const { error } = await admin
     .from("employees")
     .update({
       employment_type: employmentType,
       salary,
-      leave_balance: leaveBalance,
       hourly_rate: hourlyRate,
       overtime_rate: overtimeRate,
     })
     .eq("id", id);
   if (error) throw new Error(error.message);
-
-  const delta = leaveBalance - Number(prev?.leave_balance ?? 0);
-  if (delta !== 0) {
-    await admin.from("leave_balance_log").insert({
-      employee_id: id,
-      delta,
-      balance_after: leaveBalance,
-      event_type: "admin_edit",
-      note: `Admin sửa số dư: ${Number(prev?.leave_balance ?? 0)} → ${leaveBalance}`,
-    });
-  }
 
   revalidatePath("/admin/employees");
 }
@@ -135,58 +113,6 @@ async function updateOtFixedSalary(formData: FormData) {
 }
 
 
-async function accrueLeaveThisMonth() {
-  "use server";
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Unauthorized");
-  const { data: me } = await supabase
-    .from("employees")
-    .select("is_admin")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
-
-  const admin = createAdminClient();
-  const monthStr = yearMonthVN(); // "YYYY-MM" hiện tại theo giờ VN
-  const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
-
-  // Đối tượng: NV active fulltime, được tạo TRƯỜC đầu tháng hiện tại (NV vào giữa tháng → skip),
-  // và chưa được accrual cho tháng này. Parttime không có ngày phép → skip luôn.
-  const { data: targets } = await admin
-    .from("employees")
-    .select("id, leave_balance, last_accrual_month, created_at")
-    .eq("is_active", true)
-    .eq("employment_type", "fulltime")
-    .lt("created_at", monthStartIso)
-    .or(`last_accrual_month.is.null,last_accrual_month.neq.${monthStr}`);
-
-  if (!targets?.length) {
-    revalidatePath("/admin/employees");
-    return;
-  }
-
-  // Update từng row (Supabase JS không hỗ trợ +1 nguyên tử kiểu raw SQL, nên đọc rồi ghi)
-  for (const t of targets) {
-    const newBalance = Number(t.leave_balance ?? 0) + 1;
-    await admin
-      .from("employees")
-      .update({
-        leave_balance: newBalance,
-        last_accrual_month: monthStr,
-      })
-      .eq("id", t.id);
-    await admin.from("leave_balance_log").insert({
-      employee_id: t.id,
-      delta: 1,
-      balance_after: newBalance,
-      event_type: "accrual",
-      note: `Cộng phép tháng ${monthStr}`,
-    });
-  }
-
-  revalidatePath("/admin/employees");
-}
 
 async function addCompanyHoliday(formData: FormData) {
   "use server";
@@ -360,13 +286,6 @@ export default async function EmployeesPage({
   });
   const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
 
-  const currentMonth = yearMonthVN();
-  const accruedCount = (employees ?? []).filter((e) => e.last_accrual_month === currentMonth).length;
-  const eligibleCount = (employees ?? []).filter((e) => {
-    const monthStartIso = new Date(`${currentMonth}-01T00:00:00+07:00`).toISOString();
-    return e.is_active && e.created_at < monthStartIso;
-  }).length;
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -388,20 +307,6 @@ export default async function EmployeesPage({
               <span className="text-[10px] text-neutral-500 ml-1">({holidays?.length ?? 0})</span>
             )}
           </Link>
-          <form action={accrueLeaveThisMonth}>
-            <Button
-              size="sm"
-              variant="secondary"
-              type="submit"
-              title={`Cộng +1 ngày phép cho ${eligibleCount} NV (NV mới vào tháng ${currentMonth} sẽ bị bỏ qua)`}
-              disabled={accruedCount === eligibleCount && eligibleCount > 0}
-            >
-              <Plus size={14} />
-              Cộng phép tháng {currentMonth}
-              {accruedCount > 0 && <span className="text-[10px] text-neutral-500 ml-1">({accruedCount}/{eligibleCount})</span>}
-            </Button>
-          </form>
-
           {showHolidays && (
             <section className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-neutral-200 bg-white shadow-xl p-3 z-20">
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -559,7 +464,6 @@ export default async function EmployeesPage({
                   employeeId={e.id}
                   initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
                   initialSalary={Number(e.salary ?? 0)}
-                  initialLeaveBalance={Number(e.leave_balance ?? 0)}
                   initialHourlyRate={Number(e.hourly_rate ?? 0)}
                   initialOvertimeRate={Number(e.overtime_rate ?? 0)}
                   action={updateEmployeePayroll}
