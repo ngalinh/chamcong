@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Empty } from "@/components/ui/Empty";
 import { Button } from "@/components/ui/Button";
+import { NumberInput } from "@/components/NumberInput";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Trash2, Eye, Upload, PackageSearch } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -281,12 +282,9 @@ export async function OrdersTab({
                       const entry = dropshipMap.get(`${ch}||${cg}`);
                       return (
                         <td key={ch} className="py-2 px-3">
-                          <input
-                            type="text"
-                            inputMode="numeric"
+                          <NumberInput
                             name={`amount_${ch}_${cg}`}
-                            defaultValue={entry?.amount ? fmt(entry.amount) : ""}
-                            placeholder="0"
+                            defaultValue={entry?.amount || undefined}
                             className="h-9 w-full min-w-[110px] rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
                           />
                         </td>

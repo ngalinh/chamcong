@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
+import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import ExcelJS from "exceljs";
@@ -313,9 +314,6 @@ export async function upsertDropshipRevenue(formData: FormData) {
   const month = String(formData.get("month") ?? "").trim();
   if (!month || !/^\d{4}-\d{2}$/.test(month)) err("orders", "Tháng không hợp lệ");
 
-  const { PROFIT_CHANNELS, CUSTOMER_GROUPS } = await import("@/types/db");
-  const now = new Date().toISOString();
-
   // Upsert từng ô (channel × group) có amount > 0; xoá ô = 0
   const toUpsert: object[] = [];
   const toDelete: { channel_name: string; customer_group: string }[] = [];
@@ -325,7 +323,7 @@ export async function upsertDropshipRevenue(formData: FormData) {
       const raw = String(formData.get(`amount_${ch}_${cg}`) ?? "0").replace(/[^\d]/g, "");
       const amount = raw ? Number(raw) : 0;
       if (amount > 0) {
-        toUpsert.push({ month, channel_name: ch, customer_group: cg, amount, updated_at: now });
+        toUpsert.push({ month, channel_name: ch, customer_group: cg, amount });
       } else {
         toDelete.push({ channel_name: ch, customer_group: cg });
       }
