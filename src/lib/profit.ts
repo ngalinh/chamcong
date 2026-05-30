@@ -1,6 +1,26 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveChannelName, CHANNEL_ALIAS_MAP } from "@/lib/channelAlias";
 
+// Cho một mảng rows, group theo key, mỗi group pick row có effective_from cao nhất <= month
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dedupeByEffectiveFrom<T extends Record<string, any>>(
+  rows: T[],
+  keyFn: (r: T) => string,
+  month: string,
+): T[] {
+  const map = new Map<string, T>();
+  for (const r of rows) {
+    const from = r.effective_from ?? "";
+    if (from > month) continue; // future rule — chưa áp dụng
+    const key = keyFn(r);
+    const existing = map.get(key);
+    if (!existing || (existing.effective_from ?? "") < from) {
+      map.set(key, r);
+    }
+  }
+  return Array.from(map.values());
+}
+
 export type EmployeeProfit = {
   channel_name: string;
   role: "sale" | "cskh";
@@ -30,14 +50,25 @@ export async function computeProfitForEmployee(
 
   if (!channels?.length) return { items: [], total: 0 };
 
-  // 2. Lấy tất cả rules
+  // Deduplicate channels: per channel_name, pick row with latest effective_from <= month
   const channelNames = [...new Set(channels.map((c) => c.channel_name))];
+  const effectiveChannels = dedupeByEffectiveFrom(channels, (c) => c.channel_name, month);
+  if (!effectiveChannels.length) return { items: [], total: 0 };
+
+  // 2. Lấy tất cả rules (mọi effective_from), lọc và dedupe client-side
   const { data: rules } = await admin
     .from("profit_rules")
     .select("*")
     .in("channel_name", channelNames);
 
   if (!rules?.length) return { items: [], total: 0 };
+
+  // Deduplicate rules: per (channel_name, brand, customer_group), pick latest effective_from <= month
+  const effectiveRules = dedupeByEffectiveFrom(
+    rules,
+    (r) => `${r.channel_name}||${r.brand}||${r.customer_group}`,
+    month,
+  );
 
   // 3. Lấy order data và dropship_revenue cho tháng này
   // Bao gồm cả tên gốc trong DB (vd "Thư") lẫn tên kênh chuẩn (vd "ShipUS")
@@ -78,12 +109,12 @@ export async function computeProfitForEmployee(
   const items: EmployeeProfit[] = [];
   let grandTotal = 0;
 
-  for (const ch of channels) {
+  for (const ch of effectiveChannels) {
     const isSale = ch.sale_employee_id === employeeId;
     const isCskh = ch.cskh_employee_id === employeeId;
     if (!isSale && !isCskh) continue;
 
-    const channelRules = rules.filter((r) => r.channel_name === ch.channel_name);
+    const channelRules = effectiveRules.filter((r) => r.channel_name === ch.channel_name);
     const details: EmployeeProfit["details"] = [];
     let channelTotal = 0;
 
