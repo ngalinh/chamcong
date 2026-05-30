@@ -468,7 +468,6 @@ function FulltimeView({
   profitItems: EmployeeProfit[];
   profitTotal: number;
 }) {
-  // Group leaves theo loại
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
     const k = lv.category;
@@ -476,13 +475,21 @@ function FulltimeView({
     leavesByCat[k].push(lv);
   }
 
+  // Ẩn thẻ ngày phép khi tháng chưa bắt đầu (phép chưa chốt)
+  const currentMonthStr = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).slice(0, 7);
+  const showBalance = monthStr <= currentMonthStr;
+
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+      <div className={`grid gap-2.5 ${showBalance ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"}`}>
         <SummaryCard icon={Calendar}    label="Ngày làm việc"    value={`${formatNum(result.workdays)} ngày`}             tone="sky" />
         <SummaryCard icon={Wallet}      label="Lương / ngày"      value={fmtVnd(result.dayRate)}                            tone="indigo" />
-        <SummaryCard icon={CalendarOff} label="Phép đầu kỳ"       value={`${formatNum(result.balanceStart)} ngày`}          tone="amber" />
-        <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${formatNum(result.balanceEnd)} ngày`}            tone={result.balanceEnd < 0 ? "rose" : "emerald"} />
+        {showBalance && (
+          <SummaryCard icon={CalendarOff} label="Phép đầu kỳ"       value={`${formatNum(result.balanceStart)} ngày`}          tone="amber" />
+        )}
+        {showBalance && (
+          <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${formatNum(result.balanceEnd)} ngày`}            tone={result.balanceEnd < 0 ? "rose" : "emerald"} />
+        )}
       </div>
 
       {result.salary === 0 && (
@@ -496,31 +503,33 @@ function FulltimeView({
         </div>
       )}
 
-      <LateEarlySection result={result} employeeId={employeeId} monthStr={monthStr} editable={editable} />
+      {result.lateEarlyViolations.length > 0 && (
+        <LateEarlySection result={result} employeeId={employeeId} monthStr={monthStr} editable={editable} />
+      )}
 
-      <Section icon={CalendarOff} title="Nghỉ theo ngày" subtitle={`${(leavesByCat.leave_paid ?? []).length} đơn`} empty="Không có đơn nghỉ theo ngày.">
-        {leavesByCat.leave_paid && <LeaveList items={leavesByCat.leave_paid} />}
-      </Section>
+      {(leavesByCat.leave_paid?.length ?? 0) > 0 && (
+        <Section icon={CalendarOff} title="Nghỉ theo ngày" subtitle={`${leavesByCat.leave_paid!.length} đơn`} empty="">
+          <LeaveList items={leavesByCat.leave_paid!} />
+        </Section>
+      )}
 
-      <Section icon={Hourglass} title="Nghỉ theo giờ" subtitle={`${(leavesByCat.leave_hourly ?? []).length} đơn`} empty="Không có đơn nghỉ theo giờ.">
-        {leavesByCat.leave_hourly && (
-          <LeaveList
-            items={leavesByCat.leave_hourly}
-            employeeId={employeeId}
-            editable={editable}
-          />
-        )}
-      </Section>
+      {(leavesByCat.leave_hourly?.length ?? 0) > 0 && (
+        <Section icon={Hourglass} title="Nghỉ theo giờ" subtitle={`${leavesByCat.leave_hourly!.length} đơn`} empty="">
+          <LeaveList items={leavesByCat.leave_hourly!} employeeId={employeeId} editable={editable} />
+        </Section>
+      )}
 
-      <Section icon={Wifi} title="Làm online" subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`} empty="Không có đơn làm online.">
-        {(leavesByCat.online_wfh || leavesByCat.online_rain) && (
+      {([...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length > 0) && (
+        <Section icon={Wifi} title="Làm online" subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`} empty="">
           <LeaveList items={[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].sort((a, b) => a.date.localeCompare(b.date))} />
-        )}
-      </Section>
+        </Section>
+      )}
 
-      <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
-      <BonusSection bonuses={result.selfBonuses} />
-      <ViolationSection violations={result.selfViolations} />
+      {result.overtimes.length > 0 && (
+        <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
+      )}
+      {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} />}
+      {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} />}
       <MissingDaysSection
         missingDays={result.missingDays}
         dayRate={result.dayRate}

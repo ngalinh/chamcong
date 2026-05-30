@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2 } from "lucide-react";
+import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2, Briefcase } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
@@ -46,6 +46,33 @@ async function deleteEmployee(formData: FormData) {
 
   revalidatePath("/admin/employees");
   revalidatePath("/admin");
+}
+
+async function updateEmploymentType(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id"));
+  const employmentType = String(formData.get("employment_type") ?? "fulltime");
+  if (employmentType !== "fulltime" && employmentType !== "parttime")
+    throw new Error("Loại nhân viên không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("employees")
+    .update({ employment_type: employmentType })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/admin/employees");
 }
 
 async function updateEmployeePayroll(formData: FormData) {
@@ -418,8 +445,31 @@ export default async function EmployeesPage({
                   )}
                 </div>
 
-                {/* Row 2: badges (chi nhánh / enroll / lock) */}
+                {/* Row 2: loại NV + badges */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Employment type toggle — server action, no JS state needed */}
+                  <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5 shrink-0">
+                    <form action={updateEmploymentType}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <input type="hidden" name="employment_type" value="fulltime" />
+                      <button
+                        type="submit"
+                        className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition inline-flex items-center gap-1 ${e.employment_type !== "parttime" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+                      >
+                        <Briefcase size={10} /> Fulltime
+                      </button>
+                    </form>
+                    <form action={updateEmploymentType}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <input type="hidden" name="employment_type" value="parttime" />
+                      <button
+                        type="submit"
+                        className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition ${e.employment_type === "parttime" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
+                      >
+                        Parttime
+                      </button>
+                    </form>
+                  </div>
                   <span
                     className={
                       office?.is_remote
@@ -446,9 +496,9 @@ export default async function EmployeesPage({
                   )}
                 </div>
 
-                {/* Row 3+4: chi nhánh + ảnh + loại NV + lương (cùng hàng trên màn rộng) */}
-                <div className="flex gap-2 items-start flex-wrap">
-                  <div className="flex items-center gap-2 flex-1 min-w-40">
+                {/* Row 3: chi nhánh + ảnh | lương */}
+                <div className="flex gap-2 items-end flex-wrap">
+                  <div className="flex items-center gap-2 shrink-0">
                     <EmployeeOfficeSelect
                       employeeId={e.id}
                       currentOfficeId={e.home_office_id}
