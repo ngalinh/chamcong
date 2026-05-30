@@ -37,6 +37,9 @@ export async function computePayrollForMonth(
   admin: SupabaseClient,
   employee: Employee,
   monthStr: string,
+  // Internal flag: skip balance chaining (prevents infinite recursion when
+  // computing M-1 to determine M's balanceStart).
+  _preventAccrual: boolean = false,
 ): Promise<PayrollSnapshotPayload> {
   const ym = parseYearMonth(monthStr);
   if (!ym) throw new Error(`Invalid year_month: ${monthStr}`);
@@ -189,29 +192,64 @@ export async function computePayrollForMonth(
     return { kind: "parttime", result, workShifts };
   }
 
-  // Auto-accrue: +1 ngày phép cho mỗi tháng giữa last_accrual và tháng tính lương.
-  // Chỉ áp với fulltime, NV tồn tại trước tháng đầu kỳ.
+  // Tính balanceStart cho fulltime:
+  //   Nếu monthStr > last_accrual_month → cần cộng phép mới.
+  //   Công thức đúng: balanceStart(M) = balanceEnd(M-1) + 1,
+  //   chứ KHÔNG chỉ cộng +1 vào DB leave_balance (vì DB chưa trừ phép đã nghỉ).
+  //   Chỉ cộng +1 khi today >= ngày 1 của tháng M (tháng đó đã bắt đầu).
+  //   _preventAccrual = true khi đang tính M-1 phục vụ cho M → tránh đệ quy.
   const lastAccrual = employee.last_accrual_month ?? "";
   let balanceStart = Number(employee.leave_balance);
-  if (lastAccrual < monthStr) {
+
+  if (!isParttime && !_preventAccrual && lastAccrual < monthStr) {
     const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
-    if (employee.created_at < monthStartIso) {
-      const monthsToAccrue = listMonthsBetween(lastAccrual, monthStr).length;
-      if (monthsToAccrue > 0) {
-        const newBalance = balanceStart + monthsToAccrue;
-        await admin.from("employees").update({
-          leave_balance: newBalance,
-          last_accrual_month: monthStr,
-        }).eq("id", employee.id);
-        await admin.from("leave_balance_log").insert({
-          employee_id: employee.id,
-          delta: monthsToAccrue,
-          balance_after: newBalance,
-          event_type: "accrual",
-          note: `Cộng phép ${monthsToAccrue} tháng (tự động đến ${monthStr})`,
-        });
-        balanceStart = newBalance;
-      }
+    const monthHasStarted = new Date().toISOString() >= monthStartIso;
+    const employeeExisted = employee.created_at < monthStartIso;
+
+    // Tính M-1 để lấy balanceEnd làm base
+    const prevMonthStr = ym.month === 1
+      ? `${ym.year - 1}-12`
+      : `${ym.year}-${String(ym.month - 1).padStart(2, "0")}`;
+
+    let prevBalanceEnd: number | null = null;
+
+    // Ưu tiên đọc snapshot của M-1 (nhanh, không cần re-fetch)
+    const { data: prevSnap } = await admin
+      .from("payroll_snapshots")
+      .select("data")
+      .eq("employee_id", employee.id)
+      .eq("year_month", prevMonthStr)
+      .maybeSingle();
+
+    if (prevSnap?.data) {
+      const p = prevSnap.data as PayrollSnapshotPayload;
+      if (p.kind === "fulltime") prevBalanceEnd = p.result.balanceEnd;
+    } else {
+      // Không có snapshot → tính M-1 với leave_balance làm anchor (no further recursion)
+      const prevPayload = await computePayrollForMonth(admin, employee, prevMonthStr, true);
+      if (prevPayload.kind === "fulltime") prevBalanceEnd = prevPayload.result.balanceEnd;
+    }
+
+    if (prevBalanceEnd !== null) {
+      balanceStart = prevBalanceEnd + (monthHasStarted && employeeExisted ? 1 : 0);
+    } else {
+      // Fallback: không lấy được M-1
+      balanceStart = Number(employee.leave_balance) + (monthHasStarted && employeeExisted ? 1 : 0);
+    }
+
+    // Cập nhật DB khi thực sự cộng phép (tháng đã bắt đầu, NV tồn tại trước tháng)
+    if (monthHasStarted && employeeExisted) {
+      await admin.from("employees").update({
+        leave_balance: balanceStart,
+        last_accrual_month: monthStr,
+      }).eq("id", employee.id);
+      await admin.from("leave_balance_log").insert({
+        employee_id: employee.id,
+        delta: 1,
+        balance_after: balanceStart,
+        event_type: "accrual",
+        note: `Cộng phép tháng ${monthStr} (tự động)`,
+      });
     }
   }
 

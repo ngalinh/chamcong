@@ -446,28 +446,30 @@ export default async function EmployeesPage({
                   )}
                 </div>
 
-                {/* Row 3: dropdown chi nhánh (flex-1) + nút đổi ảnh */}
-                <div className="flex items-center gap-2">
-                  <EmployeeOfficeSelect
-                    employeeId={e.id}
-                    currentOfficeId={e.home_office_id}
-                    offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
-                    action={updateEmployeeOffice}
-                  />
-                  {e.face_descriptor && (
-                    <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
-                  )}
+                {/* Row 3+4: chi nhánh + ảnh + loại NV + lương (cùng hàng trên màn rộng) */}
+                <div className="flex gap-2 items-start flex-wrap">
+                  <div className="flex items-center gap-2 flex-1 min-w-40">
+                    <EmployeeOfficeSelect
+                      employeeId={e.id}
+                      currentOfficeId={e.home_office_id}
+                      offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
+                      action={updateEmployeeOffice}
+                    />
+                    {e.face_descriptor && (
+                      <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-52">
+                    <EmployeePayrollEditor
+                      employeeId={e.id}
+                      initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
+                      initialSalary={Number(e.salary ?? 0)}
+                      initialHourlyRate={Number(e.hourly_rate ?? 0)}
+                      initialOvertimeRate={Number(e.overtime_rate ?? 0)}
+                      action={updateEmployeePayroll}
+                    />
+                  </div>
                 </div>
-
-                {/* Row 4: loại NV + lương + xem bảng lương (UI tự đổi field theo fulltime/parttime) */}
-                <EmployeePayrollEditor
-                  employeeId={e.id}
-                  initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
-                  initialSalary={Number(e.salary ?? 0)}
-                  initialHourlyRate={Number(e.hourly_rate ?? 0)}
-                  initialOvertimeRate={Number(e.overtime_rate ?? 0)}
-                  action={updateEmployeePayroll}
-                />
 
                 {/* Row 5: lương OT cố định/tháng */}
                 <OtFixedSalaryEditor
