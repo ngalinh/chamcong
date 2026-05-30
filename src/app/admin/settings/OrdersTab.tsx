@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import type { OrderFile, ProfitRule } from "@/types/db";
 import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
+import { resolveChannelName } from "@/lib/channelAlias";
 
 type DropshipEntry = { amount: number };
 import { uploadOrderFile, deleteOrderFile, upsertDropshipRevenue } from "./actions";
@@ -78,7 +79,8 @@ export async function OrdersTab({
       summaryRows = Array.from(map.entries())
         .map(([k, total]) => {
           const [sale_channel, brand, customer_group] = k.split("||");
-          const profit_pct = ruleMap.get(k) ?? null;
+          const ruleKey = `${resolveChannelName(sale_channel) ?? sale_channel}||${brand}||${customer_group}`;
+          const profit_pct = ruleMap.get(ruleKey) ?? null;
           const profit = profit_pct !== null ? Math.round(total * profit_pct) : null;
           return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit };
         })

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveChannelName, CHANNEL_ALIAS_MAP } from "@/lib/channelAlias";
 
 export type EmployeeProfit = {
   channel_name: string;
@@ -39,18 +40,25 @@ export async function computeProfitForEmployee(
   if (!rules?.length) return { items: [], total: 0 };
 
   // 3. Lấy order data cho tháng này
+  // Bao gồm cả tên gốc trong DB (vd "Thư") lẫn tên kênh chuẩn (vd "ShipUS")
+  const rawAliases = Object.entries(CHANNEL_ALIAS_MAP)
+    .filter(([, ch]) => channelNames.includes(ch))
+    .map(([raw]) => raw);
+  const saleChannelFilter = [...channelNames, ...rawAliases];
   const { data: orders } = await admin
     .from("order_data")
     .select("sale_channel, brand, customer_group, amount")
     .eq("month", month)
-    .in("sale_channel", channelNames);
+    .in("sale_channel", saleChannelFilter);
 
   if (!orders?.length) return { items: [], total: 0 };
 
   // 4. Aggregate revenue theo channel + brand + customer_group
+  // resolveChannelName để map tên NV trong DB (vd "Thư") → tên kênh profit (vd "ShipUS")
   const revenueMap = new Map<string, number>();
   for (const o of orders) {
-    const key = `${o.sale_channel}||${o.brand ?? ""}||${o.customer_group ?? ""}`;
+    const ch = resolveChannelName(o.sale_channel) ?? o.sale_channel;
+    const key = `${ch}||${o.brand ?? ""}||${o.customer_group ?? ""}`;
     revenueMap.set(key, (revenueMap.get(key) ?? 0) + Number(o.amount ?? 0));
   }
 
