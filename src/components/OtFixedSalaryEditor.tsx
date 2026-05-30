@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock, Save, X, Loader2 } from "lucide-react";
+import { Clock, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function OtFixedSalaryEditor({
@@ -13,9 +13,9 @@ export default function OtFixedSalaryEditor({
   initialValue: number | null;
   action: (fd: FormData) => Promise<void> | void;
 }) {
-  const [open, setOpen] = useState(false);
   const [value, setValue] = useState(initialValue ?? 0);
   const [saving, setSaving] = useState(false);
+  const dirty = value !== (initialValue ?? 0);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,62 +25,40 @@ export default function OtFixedSalaryEditor({
     fd.set("ot_fixed_salary", String(value));
     try {
       await action(fd);
-      setOpen(false);
     } finally {
       setSaving(false);
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="h-8 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5 text-neutral-700"
-      >
-        <Clock size={12} className="text-neutral-400" />
-        Lương ngoài giờ
-        {initialValue ? (
-          <span className="text-indigo-600 font-semibold">{formatNum(initialValue)}đ</span>
-        ) : (
-          <span className="text-neutral-400">chưa set</span>
-        )}
-      </button>
-    );
-  }
-
   return (
-    <form onSubmit={onSubmit} className="inline-flex items-center gap-1.5">
+    <form onSubmit={onSubmit} className="w-56 max-w-full">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500 mb-1 px-0.5 flex items-center gap-1">
+        <Clock size={11} className="text-neutral-400" /> Lương ngoài giờ (VND)
+      </span>
       <div className="relative">
-        <Clock size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
         <input
           type="text"
           inputMode="numeric"
           value={formatNum(value)}
           onChange={(e) => setValue(parseNum(e.target.value))}
-          autoFocus
-          placeholder="0"
-          className="h-8 w-40 rounded-lg border border-neutral-200 bg-white pl-6 pr-2 text-sm outline-none focus:border-indigo-500 tabular-nums"
+          placeholder="chưa set"
+          className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-2.5 pr-10 text-sm outline-none focus:border-neutral-900 tabular-nums"
         />
+        <button
+          type="submit"
+          disabled={!dirty || saving}
+          title="Lưu"
+          aria-label="Lưu"
+          className={cn(
+            "absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md inline-flex items-center justify-center transition",
+            dirty && !saving
+              ? "text-indigo-600 hover:bg-indigo-50"
+              : "text-neutral-300 cursor-not-allowed",
+          )}
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        </button>
       </div>
-      <button
-        type="submit"
-        disabled={saving}
-        className={cn(
-          "h-8 w-8 rounded-lg inline-flex items-center justify-center transition",
-          saving ? "text-neutral-300" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100",
-        )}
-      >
-        {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-      </button>
-      <button
-        type="button"
-        onClick={() => { setValue(initialValue ?? 0); setOpen(false); }}
-        className="h-8 w-8 rounded-lg inline-flex items-center justify-center text-neutral-400 hover:bg-neutral-100"
-      >
-        <X size={13} />
-      </button>
-      <span className="text-xs text-neutral-400">đ/tháng</span>
     </form>
   );
 }

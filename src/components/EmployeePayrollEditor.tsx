@@ -65,9 +65,11 @@ export default function EmployeePayrollEditor({
           </Field>
         </div>
       ) : (
-        <Field icon={Wallet} label="Lương cứng (VND)">
-          <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
-        </Field>
+        <div className="w-56 max-w-full">
+          <Field icon={Wallet} label="Lương cứng (VND)">
+            <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
+          </Field>
+        </div>
       )}
     </form>
   );

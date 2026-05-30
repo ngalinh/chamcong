@@ -31,7 +31,10 @@ export function listWorkingDaysInMonth(year: number, month: number, todayVN?: Da
   const daysInMonth = new Date(year, month, 0).getDate();
   const today = todayVN ?? new Date();
   const todayYM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const isCurrentMonth = todayYM === `${year}-${String(month).padStart(2, "0")}`;
+  const targetYM = `${year}-${String(month).padStart(2, "0")}`;
+  // Tháng tương lai: chưa tới ngày nào → không có ngày làm việc nào "đã qua".
+  if (targetYM > todayYM) return [];
+  const isCurrentMonth = todayYM === targetYM;
   const lastDay = isCurrentMonth ? Math.min(daysInMonth, today.getDate() - 1) : daysInMonth;
   // Chỉ tính ngày đã qua (hôm nay chưa kết thúc, không tính)
   for (let d = 1; d <= lastDay; d++) {

@@ -498,12 +498,14 @@ export default async function EmployeesPage({
 
                 {/* Row 3: chi nhánh + ảnh + thời gian làm việc (cùng hàng) */}
                 <div className="flex gap-2 items-center flex-wrap">
-                  <EmployeeOfficeSelect
-                    employeeId={e.id}
-                    currentOfficeId={e.home_office_id}
-                    offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
-                    action={updateEmployeeOffice}
-                  />
+                  <div className="w-56 max-w-full">
+                    <EmployeeOfficeSelect
+                      employeeId={e.id}
+                      currentOfficeId={e.home_office_id}
+                      offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
+                      action={updateEmployeeOffice}
+                    />
+                  </div>
                   {e.face_descriptor && (
                     <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
                   )}
@@ -520,16 +522,14 @@ export default async function EmployeesPage({
 
                 {/* Row 4: lương cứng + lương ngoài giờ + Xem lương (cùng hàng) */}
                 <div className="flex gap-2 items-end flex-wrap">
-                  <div className="flex-1 min-w-40">
-                    <EmployeePayrollEditor
-                      employeeId={e.id}
-                      initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
-                      initialSalary={Number(e.salary ?? 0)}
-                      initialHourlyRate={Number(e.hourly_rate ?? 0)}
-                      initialOvertimeRate={Number(e.overtime_rate ?? 0)}
-                      action={updateEmployeePayroll}
-                    />
-                  </div>
+                  <EmployeePayrollEditor
+                    employeeId={e.id}
+                    initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
+                    initialSalary={Number(e.salary ?? 0)}
+                    initialHourlyRate={Number(e.hourly_rate ?? 0)}
+                    initialOvertimeRate={Number(e.overtime_rate ?? 0)}
+                    action={updateEmployeePayroll}
+                  />
                   <OtFixedSalaryEditor
                     employeeId={e.id}
                     initialValue={e.ot_fixed_salary ?? null}
