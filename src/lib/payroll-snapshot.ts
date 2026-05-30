@@ -211,6 +211,7 @@ export async function computePayrollForMonth(
     excusedDays,
     selfViolations: selfViolationsInput,
     overtimes: otInputs,
+    exemptAbsence: !!(employee as { exempt_absence?: boolean }).exempt_absence,
   });
   return { kind: "fulltime", result };
 }

@@ -38,6 +38,7 @@ export type Employee = {
   work_end_time: string | null;
   work_shifts: WorkShift[];        // multi-shift, ưu tiên hơn work_start/end
   ot_fixed_salary: number | null;  // lương OT cố định/tháng
+  exempt_absence: boolean;         // true = không tính vắng không phép
   created_at: string;
 };
 

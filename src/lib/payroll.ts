@@ -208,8 +208,9 @@ export function computePayroll(args: {
   selfViolations: SelfViolationInput[]; // approved violation_reports (cả bonus + violation)
   overtimes: OvertimeInput[];      // approved overtime_requests trong tháng
   month?: string; // YYYY-MM — nếu < "2026-05" thì không tính vắng không phép
+  exemptAbsence?: boolean; // true = không tính vắng không phép (VD: NV không cần chấm công)
 }): PayrollResult {
-  const { workdays, workingDaysInMonth, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations, overtimes, month } = args;
+  const { workdays, workingDaysInMonth, salary, balanceStart, approvedLeaves, checkIns, excusedDays, selfViolations, overtimes, month, exemptAbsence } = args;
   const dayRate = workdays > 0 ? salary / workdays : 0;
   const hourRate = dayRate / HOURS_PER_WORKDAY;
 
@@ -342,7 +343,7 @@ export function computePayroll(args: {
   const checkInDateSet = new Set<string>();
   for (const ci of checkIns) checkInDateSet.add(ci.dateVN);
   const missingDays: MissingDay[] = [];
-  const applyMissingDeduction = !month || month >= "2026-05";
+  const applyMissingDeduction = !exemptAbsence && (!month || month >= "2026-05");
   for (const wd of applyMissingDeduction ? workingDaysInMonth : []) {
     if (checkInDateSet.has(wd.date)) continue;
     if (excusedDays.has(wd.date)) continue;
