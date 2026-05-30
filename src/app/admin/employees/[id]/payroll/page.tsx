@@ -528,8 +528,8 @@ function FulltimeView({
         editable={editable}
       />
 
-      <div className="rounded-2xl border border-neutral-200 bg-white/80 p-5 space-y-2">
-        <div className="flex items-center gap-2 text-neutral-800 mb-2">
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 space-y-2">
+        <div className="flex items-center gap-2 text-emerald-900 mb-2">
           <Wallet size={18} />
           <h2 className="font-semibold">Tổng kết — {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}</h2>
         </div>
@@ -560,9 +560,9 @@ function FulltimeView({
         {result.totalMissingDeduction > 0 && (
           <TotalRow label="Vắng không phép" value={result.totalMissingDeduction} />
         )}
-        <div className="pt-2 mt-2 border-t border-neutral-200 flex items-center justify-between">
-          <span className="font-semibold text-neutral-900">Tổng tiền lương</span>
-          <span className="text-2xl font-bold text-emerald-700 tabular-nums">
+        <div className="pt-2 mt-2 border-t border-emerald-300/60 flex items-center justify-between">
+          <span className="font-semibold text-emerald-900">Tổng tiền lương</span>
+          <span className="text-lg font-bold text-emerald-700 tabular-nums">
             {Math.max(0, Math.round(result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal)).toLocaleString("en-US")} VND
           </span>
         </div>
@@ -924,7 +924,7 @@ function TotalRow({ label, value, positive = false }: { label: string; value: nu
   const cls = positive ? "text-emerald-700" : "text-rose-700";
   return (
     <div className="flex items-center justify-between text-sm">
-      <span className="text-rose-800/80">{label}</span>
+      <span className="text-neutral-800">{label}</span>
       <span className={cn("font-medium tabular-nums", cls)}>{sign}{Math.round(value).toLocaleString("en-US")} VND</span>
     </div>
   );
