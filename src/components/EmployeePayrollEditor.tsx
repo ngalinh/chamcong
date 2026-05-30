@@ -7,7 +7,6 @@ import {
   Save,
   Loader2,
   ExternalLink,
-  Briefcase,
   Clock,
   Hourglass,
 } from "lucide-react";
@@ -29,24 +28,23 @@ export default function EmployeePayrollEditor({
   initialOvertimeRate: number;
   action: (fd: FormData) => Promise<void> | void;
 }) {
-  const [employmentType, setEmploymentType] = useState<EmploymentType>(initialEmploymentType);
   const [salary, setSalary] = useState(initialSalary);
   const [hourlyRate, setHourlyRate] = useState(initialHourlyRate);
   const [overtimeRate, setOvertimeRate] = useState(initialOvertimeRate);
   const [saving, setSaving] = useState(false);
 
-  const dirty =
-    employmentType !== initialEmploymentType ||
-    salary !== initialSalary ||
-    hourlyRate !== initialHourlyRate ||
-    overtimeRate !== initialOvertimeRate;
+  const isParttime = initialEmploymentType === "parttime";
+
+  const dirty = isParttime
+    ? hourlyRate !== initialHourlyRate || overtimeRate !== initialOvertimeRate
+    : salary !== initialSalary;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     const fd = new FormData();
     fd.set("id", employeeId);
-    fd.set("employment_type", employmentType);
+    fd.set("employment_type", initialEmploymentType);
     fd.set("salary", String(salary));
     fd.set("hourly_rate", String(hourlyRate));
     fd.set("overtime_rate", String(overtimeRate));
@@ -57,32 +55,10 @@ export default function EmployeePayrollEditor({
     }
   }
 
-  const isParttime = employmentType === "parttime";
-
   return (
-    <form onSubmit={onSubmit} className="space-y-2">
-      {/* Employment type toggle */}
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium px-0.5 flex items-center gap-1">
-          <Briefcase size={11} className="text-neutral-400" /> Loại
-        </span>
-        <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5">
-          <TypeBtn
-            active={!isParttime}
-            onClick={() => setEmploymentType("fulltime")}
-            label="Fulltime"
-          />
-          <TypeBtn
-            active={isParttime}
-            onClick={() => setEmploymentType("parttime")}
-            label="Parttime"
-          />
-        </div>
-      </div>
-
-      {/* Fields theo loại — save icon đặt cuối mỗi ô input (thay nút Lưu rời) */}
+    <form onSubmit={onSubmit}>
       {isParttime ? (
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
+        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
           <Field icon={Clock} label="Lương / giờ (VND)">
             <NumInput value={hourlyRate} onChange={setHourlyRate} dirty={dirty} saving={saving} />
           </Field>
@@ -92,7 +68,7 @@ export default function EmployeePayrollEditor({
           <ViewPayrollLink employeeId={employeeId} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
           <Field icon={Wallet} label="Lương cứng (VND)">
             <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
           </Field>
@@ -100,29 +76,6 @@ export default function EmployeePayrollEditor({
         </div>
       )}
     </form>
-  );
-}
-
-function TypeBtn({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "px-3 h-7 rounded-md text-xs font-medium transition",
-        active ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 
@@ -208,4 +161,3 @@ function Field({
     </label>
   );
 }
-
