@@ -248,19 +248,26 @@ export async function OrdersTab({
           </div>
         </div>
 
-        <form action={upsertDropshipRevenue} className="space-y-3">
-          <div className="flex items-end gap-3 flex-wrap">
-            <label className="block text-sm flex-none">
-              <div className="text-xs font-medium text-neutral-600 mb-1.5">Tháng</div>
-              <input
-                type="month"
-                name="month"
-                defaultValue={dropshipMonth}
-                required
-                className="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900"
-              />
-            </label>
-          </div>
+        {/* Form xem tháng — GET request, reload page với ds_month param */}
+        <form method="GET" action="/admin/settings" className="flex items-end gap-2">
+          <input type="hidden" name="tab" value="orders" />
+          <label className="block text-sm flex-none">
+            <div className="text-xs font-medium text-neutral-600 mb-1.5">Tháng</div>
+            <input
+              type="month"
+              name="ds_month"
+              defaultValue={dropshipMonth}
+              required
+              className="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900"
+            />
+          </label>
+          <button type="submit" className="h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm font-medium hover:bg-neutral-50 shrink-0">
+            Xem
+          </button>
+        </form>
+
+        <form action={upsertDropshipRevenue} className="space-y-2">
+          <input type="hidden" name="month" value={dropshipMonth} />
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
