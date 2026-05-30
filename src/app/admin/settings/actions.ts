@@ -151,6 +151,20 @@ export async function deleteProfitRuleGroup(formData: FormData) {
 
 // ─── order files ───────────────────────────────────────────────────────────
 
+// Map tên NV trong cột "NV duyệt đơn" → tên kênh trong bảng profit_rules
+const CHANNEL_NAME_MAP: Record<string, string> = {
+  "thư": "ShipUS",
+};
+
+function normalizeChannel(raw: string | null): string | null {
+  if (!raw) return null;
+  const key = raw.trim().toLowerCase();
+  for (const [pattern, channel] of Object.entries(CHANNEL_NAME_MAP)) {
+    if (key === pattern || key.includes(pattern)) return channel;
+  }
+  return raw.trim() || null;
+}
+
 function parseAmount(val: unknown): number {
   if (typeof val === "number") return Math.round(val);
   const s = String(val ?? "").replace(/[^\d]/g, "");
@@ -257,7 +271,7 @@ export async function uploadOrderFile(formData: FormData) {
       customer:     colCustomer    ? String(row.getCell(colCustomer).value    ?? "").trim() || null : null,
       brand:        colBrand       ? String(row.getCell(colBrand).value       ?? "").trim() || null : null,
       customer_group: colCustGroup ? String(row.getCell(colCustGroup).value   ?? "").trim() || null : null,
-      sale_channel: colSaleChannel ? String(row.getCell(colSaleChannel).value ?? "").trim() || null : null,
+      sale_channel: colSaleChannel ? normalizeChannel(String(row.getCell(colSaleChannel).value ?? "")) : null,
       amount,
     });
   });
