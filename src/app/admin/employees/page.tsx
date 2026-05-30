@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2, Briefcase } from "lucide-react";
+import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2, Briefcase, ExternalLink } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
@@ -496,20 +496,31 @@ export default async function EmployeesPage({
                   )}
                 </div>
 
-                {/* Row 3: chi nhánh + ảnh | lương */}
+                {/* Row 3: chi nhánh + ảnh + thời gian làm việc (cùng hàng) */}
+                <div className="flex gap-2 items-center flex-wrap">
+                  <EmployeeOfficeSelect
+                    employeeId={e.id}
+                    currentOfficeId={e.home_office_id}
+                    offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
+                    action={updateEmployeeOffice}
+                  />
+                  {e.face_descriptor && (
+                    <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
+                  )}
+                  <EmployeeWorkHoursEditor
+                    employeeId={e.id}
+                    initialShifts={Array.isArray(e.work_shifts) ? (e.work_shifts as { start: string; end: string }[]) : []}
+                    initialStart={e.work_start_time ?? null}
+                    initialEnd={e.work_end_time ?? null}
+                    officeStart={office?.work_start_time ?? null}
+                    officeEnd={office?.work_end_time ?? null}
+                    action={updateEmployeeWorkHours}
+                  />
+                </div>
+
+                {/* Row 4: lương cứng + lương ngoài giờ + Xem lương (cùng hàng) */}
                 <div className="flex gap-2 items-end flex-wrap">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <EmployeeOfficeSelect
-                      employeeId={e.id}
-                      currentOfficeId={e.home_office_id}
-                      offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
-                      action={updateEmployeeOffice}
-                    />
-                    {e.face_descriptor && (
-                      <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-52">
+                  <div className="flex-1 min-w-40">
                     <EmployeePayrollEditor
                       employeeId={e.id}
                       initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
@@ -519,26 +530,18 @@ export default async function EmployeesPage({
                       action={updateEmployeePayroll}
                     />
                   </div>
+                  <OtFixedSalaryEditor
+                    employeeId={e.id}
+                    initialValue={e.ot_fixed_salary ?? null}
+                    action={updateOtFixedSalary}
+                  />
+                  <Link
+                    href={`/admin/employees/${e.id}/payroll`}
+                    className="h-9 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 inline-flex items-center gap-1.5 shrink-0"
+                  >
+                    <ExternalLink size={14} /> Xem lương
+                  </Link>
                 </div>
-
-                {/* Row 5: lương OT cố định/tháng */}
-                <OtFixedSalaryEditor
-                  employeeId={e.id}
-                  initialValue={e.ot_fixed_salary ?? null}
-                  action={updateOtFixedSalary}
-                />
-
-                {/* Row 6: button "Thời gian làm việc" — click mới expand form,
-                    có thể nhập nhiều ca (parttime online) hoặc chỉ 1 ca */}
-                <EmployeeWorkHoursEditor
-                  employeeId={e.id}
-                  initialShifts={Array.isArray(e.work_shifts) ? (e.work_shifts as { start: string; end: string }[]) : []}
-                  initialStart={e.work_start_time ?? null}
-                  initialEnd={e.work_end_time ?? null}
-                  officeStart={office?.work_start_time ?? null}
-                  officeEnd={office?.work_end_time ?? null}
-                  action={updateEmployeeWorkHours}
-                />
               </div>
             );
           })}

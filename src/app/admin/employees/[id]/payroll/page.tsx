@@ -475,21 +475,17 @@ function FulltimeView({
     leavesByCat[k].push(lv);
   }
 
-  // Ẩn thẻ ngày phép khi tháng chưa bắt đầu (phép chưa chốt)
+  // Tháng chưa tới: phép chưa chốt → hiện thẻ phép nhưng để 0, ẩn mục "Vắng không phép".
   const currentMonthStr = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).slice(0, 7);
-  const showBalance = monthStr <= currentMonthStr;
+  const isFutureMonth = monthStr > currentMonthStr;
 
   return (
     <>
-      <div className={`grid gap-2.5 ${showBalance ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2"}`}>
+      <div className="grid gap-2.5 grid-cols-2 md:grid-cols-4">
         <SummaryCard icon={Calendar}    label="Ngày làm việc"    value={`${formatNum(result.workdays)} ngày`}             tone="sky" />
         <SummaryCard icon={Wallet}      label="Lương / ngày"      value={fmtVnd(result.dayRate)}                            tone="indigo" />
-        {showBalance && (
-          <SummaryCard icon={CalendarOff} label="Phép đầu kỳ"       value={`${formatNum(result.balanceStart)} ngày`}          tone="amber" />
-        )}
-        {showBalance && (
-          <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${formatNum(result.balanceEnd)} ngày`}            tone={result.balanceEnd < 0 ? "rose" : "emerald"} />
-        )}
+        <SummaryCard icon={CalendarOff} label="Phép đầu kỳ"       value={`${isFutureMonth ? 0 : formatNum(result.balanceStart)} ngày`}  tone="amber" />
+        <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${isFutureMonth ? 0 : formatNum(result.balanceEnd)} ngày`}    tone={!isFutureMonth && result.balanceEnd < 0 ? "rose" : "emerald"} />
       </div>
 
       {result.salary === 0 && (
@@ -530,12 +526,14 @@ function FulltimeView({
       )}
       {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} />}
       {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} />}
-      <MissingDaysSection
-        missingDays={result.missingDays}
-        dayRate={result.dayRate}
-        employeeId={employeeId}
-        editable={editable}
-      />
+      {!isFutureMonth && result.missingDays.length > 0 && (
+        <MissingDaysSection
+          missingDays={result.missingDays}
+          dayRate={result.dayRate}
+          employeeId={employeeId}
+          editable={editable}
+        />
+      )}
 
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 space-y-2">
         <div className="flex items-center gap-2 text-emerald-900 mb-2">

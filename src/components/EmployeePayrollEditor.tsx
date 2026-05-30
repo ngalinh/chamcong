@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Wallet,
   Save,
   Loader2,
-  ExternalLink,
   Clock,
   Hourglass,
 } from "lucide-react";
@@ -58,22 +56,18 @@ export default function EmployeePayrollEditor({
   return (
     <form onSubmit={onSubmit}>
       {isParttime ? (
-        <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+        <div className="grid grid-cols-2 gap-2 items-end">
           <Field icon={Clock} label="Lương / giờ (VND)">
             <NumInput value={hourlyRate} onChange={setHourlyRate} dirty={dirty} saving={saving} />
           </Field>
           <Field icon={Hourglass} label="Lương OT / giờ (VND)">
             <NumInput value={overtimeRate} onChange={setOvertimeRate} dirty={dirty} saving={saving} />
           </Field>
-          <ViewPayrollLink employeeId={employeeId} />
         </div>
       ) : (
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
-          <Field icon={Wallet} label="Lương cứng (VND)">
-            <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
-          </Field>
-          <ViewPayrollLink employeeId={employeeId} />
-        </div>
+        <Field icon={Wallet} label="Lương cứng (VND)">
+          <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
+        </Field>
       )}
     </form>
   );
@@ -120,17 +114,6 @@ function InlineSaveBtn({ dirty, saving }: { dirty: boolean; saving: boolean }) {
     >
       {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
     </button>
-  );
-}
-
-function ViewPayrollLink({ employeeId }: { employeeId: string }) {
-  return (
-    <Link
-      href={`/admin/employees/${employeeId}/payroll`}
-      className="h-9 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 inline-flex items-center gap-1.5"
-    >
-      <ExternalLink size={14} /> Xem lương
-    </Link>
   );
 }
 
