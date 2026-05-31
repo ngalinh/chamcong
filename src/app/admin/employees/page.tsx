@@ -4,7 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import { Users, Check, CircleSlash, Building2, Wifi, CalendarOff, Trash2, Briefcase, ExternalLink } from "lucide-react";
+import {
+  Users,
+  Check,
+  CircleSlash,
+  Building2,
+  Wifi,
+  CalendarOff,
+  Trash2,
+  Briefcase,
+  ExternalLink,
+} from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
 import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
@@ -30,9 +40,6 @@ async function deleteEmployee(formData: FormData) {
   const id = String(formData.get("id"));
   if (me?.id === id) throw new Error("Không thể tự xoá tài khoản của chính mình");
 
-  // Soft delete: giữ row để history (check_ins, leave_requests, violations…) còn ref được.
-  // Clear user_id để re-login Google không tự attach lại; clear face_descriptor để
-  // không match được trên flow check-in nữa. Lịch sử + ảnh selfie giữ nguyên.
   const admin = createAdminClient();
   const { error } = await admin
     .from("employees")
@@ -139,8 +146,6 @@ async function updateOtFixedSalary(formData: FormData) {
   revalidatePath("/admin/employees");
 }
 
-
-
 async function addCompanyHoliday(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -163,7 +168,6 @@ async function addCompanyHoliday(formData: FormData) {
     .insert({ holiday_date: date, reason, created_by: me?.id ?? null });
   if (error && error.code !== "23505") throw new Error(error.message);
 
-  // Invalidate snapshot tháng tương ứng để recompute
   const ym = date.slice(0, 7);
   await admin.from("payroll_snapshots").delete().eq("year_month", ym);
 
@@ -225,7 +229,6 @@ async function updateEmployeeWorkHours(formData: FormData) {
       throw new Error("Giờ ca làm không hợp lệ");
     }
   }
-  // Normalize HH:MM → HH:MM:SS, sort by start
   const normalized = shifts
     .map((s) => ({
       start: s.start.length === 5 ? `${s.start}:00` : s.start,
@@ -233,7 +236,6 @@ async function updateEmployeeWorkHours(formData: FormData) {
     }))
     .sort((a, b) => a.start.localeCompare(b.start));
 
-  // Đồng thời sync work_start/end với first/last để legacy callers vẫn đọc đúng
   const updates: Record<string, unknown> = {
     work_shifts: normalized,
     work_start_time: normalized[0]?.start ?? null,
@@ -284,9 +286,6 @@ export default async function EmployeesPage({
   const { data: { user } } = await supabase.auth.getUser();
   const admin = createAdminClient();
   const [{ data: employees }, { data: offices }] = await Promise.all([
-    // Ẩn NV đã soft-delete (user_id null + is_active false). NV chưa login lần nào
-    // (user_id null nhưng is_active vẫn true) hoặc bị khoá thường (is_active false
-    // nhưng user_id còn) thì vẫn hiện.
     admin
       .from("employees")
       .select("*")
@@ -295,8 +294,6 @@ export default async function EmployeesPage({
     admin.from("offices").select("*").eq("is_active", true).order("is_remote").order("name"),
   ]);
 
-  // Lấy ngày nghỉ chung từ đầu năm hiện tại trở đi (không hiện ngày quá khứ
-  // năm cũ để list khỏi dài). Sort tăng dần.
   const yearStart = `${new Date().getFullYear()}-01-01`;
   const { data: holidays } = await admin
     .from("company_holidays")
@@ -313,8 +310,26 @@ export default async function EmployeesPage({
   });
   const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
 
+  const total = sortedEmployees.length;
+  const enrolledCount = sortedEmployees.filter((e) => !!e.face_descriptor).length;
+  const onlineCount = sortedEmployees.filter((e) => {
+    if (!e.home_office_id) return false;
+    return officeMap.get(e.home_office_id)?.is_remote === true;
+  }).length;
+  const sgCount = sortedEmployees.filter((e) => {
+    if (!e.home_office_id) return false;
+    const o = officeMap.get(e.home_office_id);
+    return o && !o.is_remote && o.name.toLowerCase().includes("sài gòn");
+  }).length;
+  const hnCount = sortedEmployees.filter((e) => {
+    if (!e.home_office_id) return false;
+    const o = officeMap.get(e.home_office_id);
+    return o && !o.is_remote && o.name.toLowerCase().includes("hà nội");
+  }).length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Nhân viên</h1>
@@ -351,7 +366,6 @@ export default async function EmployeesPage({
               <p className="text-[11px] text-neutral-500 mb-2 leading-snug">
                 Áp cho mọi NV: không yêu cầu check-in, không tính vắng. NV vẫn nhận đủ lương tháng.
               </p>
-
               <form action={addCompanyHoliday} className="flex flex-col gap-1.5 mb-2">
                 <input
                   type="date"
@@ -374,12 +388,11 @@ export default async function EmployeesPage({
                   </button>
                 </div>
               </form>
-
               {(holidays ?? []).length === 0 ? (
                 <p className="text-xs text-neutral-400 text-center py-2">Chưa có ngày nghỉ nào trong năm.</p>
               ) : (
                 <ul className="max-h-60 overflow-y-auto rounded-md border border-neutral-200/60 divide-y divide-neutral-200/60 bg-white/60">
-                  {(holidays ?? []).map((h) => (
+                  {(holidays ?? []).map((h: { id: string; holiday_date: string; reason: string | null }) => (
                     <li key={h.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
                       <span className="font-mono tabular-nums text-neutral-700 w-20 shrink-0">
                         {h.holiday_date}
@@ -407,6 +420,28 @@ export default async function EmployeesPage({
         </div>
       </div>
 
+      {/* Stats chips */}
+      {total > 0 && (
+        <div className="flex gap-3 flex-wrap">
+          <StatChip icon={<Users size={12} />} label="Tổng nhân viên">
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{total}</span>
+          </StatChip>
+          <StatChip icon={<Check size={12} />} label="Đã enroll">
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{enrolledCount}</span>
+            <span className="text-sm font-semibold text-neutral-400 mb-0.5">/{total}</span>
+          </StatChip>
+          <StatChip icon={<Wifi size={12} />} label="Làm online">
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{onlineCount}</span>
+          </StatChip>
+          <StatChip icon={<Building2 size={12} />} label="SG · HN">
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{sgCount}</span>
+            <span className="mx-1.5 text-neutral-300 text-xl font-light">·</span>
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{hnCount}</span>
+          </StatChip>
+        </div>
+      )}
+
+      {/* Employee list */}
       {!employees?.length ? (
         <Empty
           icon={Users}
@@ -414,25 +449,28 @@ export default async function EmployeesPage({
           description="Nhân viên login Google đầu tiên sẽ tự xuất hiện ở đây."
         />
       ) : (
-        <div className="rounded-2xl border border-white/60 glass overflow-hidden divide-y divide-neutral-200/60">
+        <div className="flex flex-col gap-3">
           {(sortedEmployees as Employee[]).map((e) => {
             const office = e.home_office_id ? officeMap.get(e.home_office_id) : undefined;
             const canDelete = e.email !== meEmail;
             return (
-              <div key={e.id} className="p-4 space-y-3">
+              <div
+                key={e.id}
+                className="bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl p-4 space-y-3 shadow-sm"
+              >
                 {/* Row 1: avatar + tên + email + delete */}
                 <div className="flex items-start gap-3">
                   <Avatar name={e.name} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate flex items-center gap-1.5">
+                    <div className="font-semibold text-[15px] tracking-tight flex items-center gap-1.5 flex-wrap">
                       <span className="truncate">{e.name}</span>
                       {e.is_admin && (
-                        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-neutral-900 text-white">
                           Admin
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-neutral-500 truncate">{e.email}</div>
+                    <div className="text-xs text-neutral-500 mt-0.5 truncate">{e.email}</div>
                   </div>
                   {canDelete && (
                     <div className="shrink-0">
@@ -445,9 +483,8 @@ export default async function EmployeesPage({
                   )}
                 </div>
 
-                {/* Row 2: loại NV + badges */}
+                {/* Row 2: loại HĐ + badges trạng thái */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Employment type toggle — server action, no JS state needed */}
                   <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5 shrink-0">
                     <form action={updateEmploymentType}>
                       <input type="hidden" name="id" value={e.id} />
@@ -470,39 +507,48 @@ export default async function EmployeesPage({
                       </button>
                     </form>
                   </div>
-                  <span
-                    className={
-                      office?.is_remote
-                        ? "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-violet-50 text-violet-700"
-                        : office
-                        ? "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-sky-50 text-sky-700"
-                        : "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-neutral-100 text-neutral-500"
-                    }
-                  >
-                    {office?.is_remote ? <Wifi size={12} /> : <Building2 size={12} />}
-                    {office?.name ?? "Chưa có chi nhánh"}
-                  </span>
-                  {e.face_descriptor ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">
-                      <Check size={12} /> Đã enroll
+
+                  {office?.is_remote ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-violet-50 text-violet-700">
+                      <Wifi size={11} /> Làm online
+                    </span>
+                  ) : office ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-sky-50 text-sky-700">
+                      <Building2 size={11} /> {office.name}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-700">
-                      <CircleSlash size={12} /> Chưa enroll
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-500">
+                      <Building2 size={11} /> Chưa có chi nhánh
+                    </span>
+                  )}
+
+                  {e.face_descriptor ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">
+                      <Check size={11} /> Đã enroll
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700">
+                      <CircleSlash size={11} /> Chưa enroll
                     </span>
                   )}
                   {!e.is_active && (
-                    <span className="text-[11px] font-medium px-2 py-1 rounded-md bg-neutral-100 text-neutral-600">Khoá</span>
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-500">
+                      Khoá
+                    </span>
                   )}
                 </div>
 
-                {/* Row 3: chi nhánh + ảnh + thời gian làm việc (cùng hàng) */}
+                {/* Row 3: chi nhánh + đổi ảnh + thời gian làm việc */}
                 <div className="flex gap-2 items-center flex-wrap">
-                  <div className="w-56 max-w-full">
+                  <div className="w-52 max-w-full">
                     <EmployeeOfficeSelect
                       employeeId={e.id}
                       currentOfficeId={e.home_office_id}
-                      offices={((offices as Office[]) ?? []).map((o) => ({ id: o.id, name: o.name, is_remote: o.is_remote }))}
+                      offices={((offices as Office[]) ?? []).map((o) => ({
+                        id: o.id,
+                        name: o.name,
+                        is_remote: o.is_remote,
+                      }))}
                       action={updateEmployeeOffice}
                     />
                   </div>
@@ -511,7 +557,11 @@ export default async function EmployeesPage({
                   )}
                   <EmployeeWorkHoursEditor
                     employeeId={e.id}
-                    initialShifts={Array.isArray(e.work_shifts) ? (e.work_shifts as { start: string; end: string }[]) : []}
+                    initialShifts={
+                      Array.isArray(e.work_shifts)
+                        ? (e.work_shifts as { start: string; end: string }[])
+                        : []
+                    }
                     initialStart={e.work_start_time ?? null}
                     initialEnd={e.work_end_time ?? null}
                     officeStart={office?.work_start_time ?? null}
@@ -520,11 +570,13 @@ export default async function EmployeesPage({
                   />
                 </div>
 
-                {/* Row 4: lương cứng + lương ngoài giờ + Xem lương (cùng hàng) */}
+                {/* Row 4: lương + OT + xem lương */}
                 <div className="flex gap-2 items-end flex-wrap">
                   <EmployeePayrollEditor
                     employeeId={e.id}
-                    initialEmploymentType={(e.employment_type ?? "fulltime") as "fulltime" | "parttime"}
+                    initialEmploymentType={
+                      (e.employment_type ?? "fulltime") as "fulltime" | "parttime"
+                    }
                     initialSalary={Number(e.salary ?? 0)}
                     initialHourlyRate={Number(e.hourly_rate ?? 0)}
                     initialOvertimeRate={Number(e.overtime_rate ?? 0)}
@@ -552,6 +604,26 @@ export default async function EmployeesPage({
         💡 Nhân viên có chi nhánh <b>Làm online</b> sẽ chấm công không cần selfie/định vị, chỉ ghi nhận thời điểm.
         Xoá tài khoản sẽ <b>khoá</b> và ẩn NV khỏi danh sách, nhưng <b>lịch sử check-in vẫn được giữ</b> để admin tham chiếu.
       </p>
+    </div>
+  );
+}
+
+function StatChip({
+  icon,
+  label,
+  children,
+}: {
+  icon: import("react").ReactNode;
+  label: string;
+  children: import("react").ReactNode;
+}) {
+  return (
+    <div className="bg-white/80 backdrop-blur-sm border border-neutral-200/70 rounded-2xl px-4 py-3 min-w-[120px] shadow-sm">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 flex items-center gap-1.5 mb-1">
+        {icon}
+        {label}
+      </div>
+      <div className="flex items-baseline gap-0.5">{children}</div>
     </div>
   );
 }
