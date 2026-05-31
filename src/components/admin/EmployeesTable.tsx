@@ -59,7 +59,8 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
         id: o.id,
         name: o.name,
         count: employees.filter((e) => e.home_office_id === o.id).length,
-      }));
+      }))
+      .filter((o) => o.count > 0);
     return { total, online, perOffice };
   }, [employees, offices, officeMap]);
 
