@@ -276,12 +276,30 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                           action={actions.updateEmployeeOffice}
                         />
                       </div>
-                      {e.work_start_time && (
-                        <div className="text-[10.5px] text-violet-700 flex items-center gap-1">
-                          Giờ riêng: {e.work_start_time.slice(0, 5)} →{" "}
-                          {e.work_end_time?.slice(0, 5)}
-                        </div>
-                      )}
+                      {(() => {
+                        const shifts = Array.isArray(e.work_shifts) && e.work_shifts.length > 0
+                          ? (e.work_shifts as { start: string; end: string }[])
+                          : null;
+                        if (shifts) return (
+                          <div className="flex flex-col gap-0.5">
+                            {shifts.map((s, i) => (
+                              <div key={i} className="text-[10.5px] text-violet-700 flex items-center gap-1">
+                                <span className="font-semibold">
+                                  {shifts.length > 1 ? `Ca ${i + 1}:` : "Giờ riêng:"}
+                                </span>
+                                {s.start.slice(0, 5)} → {s.end.slice(0, 5)}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                        if (e.work_start_time) return (
+                          <div className="text-[10.5px] text-violet-700 flex items-center gap-1">
+                            <span className="font-semibold">Giờ riêng:</span>
+                            {e.work_start_time.slice(0, 5)} → {e.work_end_time?.slice(0, 5)}
+                          </div>
+                        );
+                        return null;
+                      })()}
                     </div>
                   </td>
 
@@ -298,11 +316,13 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                         initialOvertimeRate={Number(e.overtime_rate ?? 0)}
                         action={actions.updateEmployeePayroll}
                       />
-                      <OtFixedSalaryEditor
-                        employeeId={e.id}
-                        initialValue={e.ot_fixed_salary ?? null}
-                        action={actions.updateOtFixedSalary}
-                      />
+                      {e.employment_type !== "parttime" && (
+                        <OtFixedSalaryEditor
+                          employeeId={e.id}
+                          initialValue={e.ot_fixed_salary ?? null}
+                          action={actions.updateOtFixedSalary}
+                        />
+                      )}
                     </div>
                   </td>
 
