@@ -1,13 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Wallet,
-  Save,
-  Loader2,
-  Clock,
-  Hourglass,
-} from "lucide-react";
+import { Loader2, Check, Pencil } from "lucide-react";
 import type { EmploymentType } from "@/types/db";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +24,7 @@ export default function EmployeePayrollEditor({
   const [hourlyRate, setHourlyRate] = useState(initialHourlyRate);
   const [overtimeRate, setOvertimeRate] = useState(initialOvertimeRate);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const isParttime = initialEmploymentType === "parttime";
 
@@ -39,6 +34,7 @@ export default function EmployeePayrollEditor({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!dirty) return;
     setSaving(true);
     const fd = new FormData();
     fd.set("id", employeeId);
@@ -48,74 +44,137 @@ export default function EmployeePayrollEditor({
     fd.set("overtime_rate", String(overtimeRate));
     try {
       await action(fd);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} className="flex flex-col gap-1">
       {isParttime ? (
-        <div className="grid grid-cols-2 gap-2 items-end">
-          <Field icon={Clock} label="Lương / giờ (VND)">
-            <NumInput value={hourlyRate} onChange={setHourlyRate} dirty={dirty} saving={saving} />
-          </Field>
-          <Field icon={Hourglass} label="Lương OT / giờ (VND)">
-            <NumInput value={overtimeRate} onChange={setOvertimeRate} dirty={dirty} saving={saving} />
-          </Field>
-        </div>
+        <>
+          <PayRow
+            label="Giờ"
+            value={hourlyRate}
+            onChange={setHourlyRate}
+            unit="VND/giờ"
+            dirty={dirty}
+            saving={saving}
+            saved={saved}
+          />
+          <PayRow
+            label="OT"
+            value={overtimeRate}
+            onChange={setOvertimeRate}
+            unit="VND/giờ"
+            dirty={dirty}
+            saving={saving}
+            saved={saved}
+          />
+        </>
       ) : (
-        <div className="w-56 max-w-full">
-          <Field icon={Wallet} label="Lương cứng (VND)">
-            <NumInput value={salary} onChange={setSalary} dirty={dirty} saving={saving} />
-          </Field>
-        </div>
+        <PayRow
+          label="Cứng"
+          value={salary}
+          onChange={setSalary}
+          unit="VND"
+          dirty={dirty}
+          saving={saving}
+          saved={saved}
+        />
       )}
     </form>
   );
 }
 
-function NumInput({
+function PayRow({
+  label,
   value,
   onChange,
+  unit,
   dirty,
   saving,
+  saved,
 }: {
+  label: string;
   value: number;
   onChange: (n: number) => void;
+  unit: string;
   dirty: boolean;
   saving: boolean;
+  saved: boolean;
 }) {
   return (
-    <div className="relative">
-      <input
-        type="text"
-        inputMode="numeric"
-        value={formatNum(value)}
-        onChange={(e) => onChange(parseNum(e.target.value))}
-        className="h-9 w-full rounded-lg border border-neutral-200 bg-white pl-2.5 pr-10 text-sm outline-none focus:border-neutral-900 tabular-nums"
-      />
-      <InlineSaveBtn dirty={dirty} saving={saving} />
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 w-8 shrink-0">
+        {label}
+      </span>
+      <div className="relative">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={formatNum(value)}
+          onChange={(e) => onChange(parseNum(e.target.value))}
+          placeholder="chưa set"
+          className={cn(
+            "h-[34px] w-[128px] rounded-lg border text-right tabular-nums text-[13px] font-semibold outline-none transition px-2.5 pr-8",
+            "border-transparent bg-transparent text-neutral-800",
+            "hover:bg-neutral-100 hover:border-neutral-100",
+            "focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100",
+            "placeholder:text-neutral-300 placeholder:font-normal",
+          )}
+        />
+        <SaveIndicator dirty={dirty} saving={saving} saved={saved} />
+      </div>
+      <span className="text-[10px] text-neutral-400 min-w-[38px]">
+        {saved && !dirty ? <span className="text-emerald-600 font-semibold">Đã lưu</span> : unit}
+      </span>
     </div>
   );
 }
 
-function InlineSaveBtn({ dirty, saving }: { dirty: boolean; saving: boolean }) {
+function SaveIndicator({
+  dirty,
+  saving,
+  saved,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  saved: boolean;
+}) {
+  if (saving) {
+    return (
+      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400">
+        <Loader2 size={13} className="animate-spin" />
+      </span>
+    );
+  }
+  if (dirty) {
+    return (
+      <button
+        type="submit"
+        title="Lưu (Enter)"
+        onMouseDown={(e) => e.preventDefault()}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700"
+      >
+        <Check size={12} />
+      </button>
+    );
+  }
+  if (saved) {
+    return (
+      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
+        <Check size={12} />
+      </span>
+    );
+  }
   return (
-    <button
-      type="submit"
-      disabled={!dirty || saving}
-      title="Lưu"
-      aria-label="Lưu"
-      className={cn(
-        "absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md inline-flex items-center justify-center transition",
-        dirty && !saving
-          ? "text-indigo-600 hover:bg-indigo-50"
-          : "text-neutral-300 cursor-not-allowed",
-      )}
-    >
-      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-    </button>
+    <Pencil
+      size={11}
+      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-300 opacity-0 group-hover:opacity-100 pointer-events-none"
+    />
   );
 }
 
@@ -126,23 +185,4 @@ function formatNum(n: number): string {
 function parseNum(s: string): number {
   const digits = s.replace(/\D/g, "");
   return digits ? Number(digits) : 0;
-}
-
-function Field({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-neutral-500 mb-1 px-0.5 flex items-center gap-1">
-        <Icon size={11} className="text-neutral-400" /> {label}
-      </span>
-      {children}
-    </label>
-  );
 }
