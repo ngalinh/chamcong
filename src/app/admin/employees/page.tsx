@@ -4,24 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import {
-  Users,
-  Check,
-  CircleSlash,
-  Building2,
-  Wifi,
-  CalendarOff,
-  Trash2,
-  Briefcase,
-  ExternalLink,
-} from "lucide-react";
+import { Users, CalendarOff, Trash2 } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
-import EmployeeOfficeSelect from "@/components/EmployeeOfficeSelect";
-import { ChangeEmployeePhoto } from "@/components/ChangeEmployeePhoto";
-import { DeleteEmployeeButton } from "@/components/DeleteEmployeeButton";
-import EmployeePayrollEditor from "@/components/EmployeePayrollEditor";
-import EmployeeWorkHoursEditor from "@/components/EmployeeWorkHoursEditor";
-import OtFixedSalaryEditor from "@/components/OtFixedSalaryEditor";
+import { EmployeesTable } from "@/components/admin/EmployeesTable";
 
 export const dynamic = "force-dynamic";
 
@@ -43,11 +28,7 @@ async function deleteEmployee(formData: FormData) {
   const admin = createAdminClient();
   const { error } = await admin
     .from("employees")
-    .update({
-      is_active: false,
-      user_id: null,
-      face_descriptor: null,
-    })
+    .update({ is_active: false, user_id: null, face_descriptor: null })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
@@ -108,12 +89,7 @@ async function updateEmployeePayroll(formData: FormData) {
   const admin = createAdminClient();
   const { error } = await admin
     .from("employees")
-    .update({
-      employment_type: employmentType,
-      salary,
-      hourly_rate: hourlyRate,
-      overtime_rate: overtimeRate,
-    })
+    .update({ employment_type: employmentType, salary, hourly_rate: hourlyRate, overtime_rate: overtimeRate })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
@@ -225,9 +201,8 @@ async function updateEmployeeWorkHours(formData: FormData) {
   }
   const TIME_RX = /^\d{2}:\d{2}(:\d{2})?$/;
   for (const s of shifts) {
-    if (!s || typeof s !== "object" || !TIME_RX.test(s.start) || !TIME_RX.test(s.end)) {
+    if (!s || typeof s !== "object" || !TIME_RX.test(s.start) || !TIME_RX.test(s.end))
       throw new Error("Giờ ca làm không hợp lệ");
-    }
   }
   const normalized = shifts
     .map((s) => ({
@@ -308,24 +283,6 @@ export default async function EmployeesPage({
     if (aAdmin !== bAdmin) return aAdmin - bAdmin;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
-  const officeMap = new Map<string, Office>(((offices as Office[]) ?? []).map((o) => [o.id, o]));
-
-  const total = sortedEmployees.length;
-  const enrolledCount = sortedEmployees.filter((e) => !!e.face_descriptor).length;
-  const onlineCount = sortedEmployees.filter((e) => {
-    if (!e.home_office_id) return false;
-    return officeMap.get(e.home_office_id)?.is_remote === true;
-  }).length;
-  const sgCount = sortedEmployees.filter((e) => {
-    if (!e.home_office_id) return false;
-    const o = officeMap.get(e.home_office_id);
-    return o && !o.is_remote && o.name.toLowerCase().includes("sài gòn");
-  }).length;
-  const hnCount = sortedEmployees.filter((e) => {
-    if (!e.home_office_id) return false;
-    const o = officeMap.get(e.home_office_id);
-    return o && !o.is_remote && o.name.toLowerCase().includes("hà nội");
-  }).length;
 
   return (
     <div className="space-y-5">
@@ -355,11 +312,7 @@ export default async function EmployeesPage({
                 <h2 className="text-xs font-semibold flex items-center gap-1.5">
                   <CalendarOff size={13} /> Ngày nghỉ chung công ty
                 </h2>
-                <Link
-                  href="/admin/employees"
-                  scroll={false}
-                  className="text-xs text-neutral-500 hover:text-neutral-900"
-                >
+                <Link href="/admin/employees" scroll={false} className="text-xs text-neutral-500 hover:text-neutral-900">
                   Đóng
                 </Link>
               </div>
@@ -394,9 +347,7 @@ export default async function EmployeesPage({
                 <ul className="max-h-60 overflow-y-auto rounded-md border border-neutral-200/60 divide-y divide-neutral-200/60 bg-white/60">
                   {(holidays ?? []).map((h: { id: string; holiday_date: string; reason: string | null }) => (
                     <li key={h.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
-                      <span className="font-mono tabular-nums text-neutral-700 w-20 shrink-0">
-                        {h.holiday_date}
-                      </span>
+                      <span className="font-mono tabular-nums text-neutral-700 w-20 shrink-0">{h.holiday_date}</span>
                       <span className="text-neutral-700 flex-1 truncate">
                         {h.reason ?? <span className="text-neutral-400">(chưa ghi lý do)</span>}
                       </span>
@@ -420,28 +371,6 @@ export default async function EmployeesPage({
         </div>
       </div>
 
-      {/* Stats chips */}
-      {total > 0 && (
-        <div className="flex gap-3 flex-wrap">
-          <StatChip icon={<Users size={12} />} label="Tổng nhân viên">
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{total}</span>
-          </StatChip>
-          <StatChip icon={<Check size={12} />} label="Đã enroll">
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{enrolledCount}</span>
-            <span className="text-sm font-semibold text-neutral-400 mb-0.5">/{total}</span>
-          </StatChip>
-          <StatChip icon={<Wifi size={12} />} label="Làm online">
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{onlineCount}</span>
-          </StatChip>
-          <StatChip icon={<Building2 size={12} />} label="SG · HN">
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{sgCount}</span>
-            <span className="mx-1.5 text-neutral-300 text-xl font-light">·</span>
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight">{hnCount}</span>
-          </StatChip>
-        </div>
-      )}
-
-      {/* Employee list */}
       {!employees?.length ? (
         <Empty
           icon={Users}
@@ -449,196 +378,25 @@ export default async function EmployeesPage({
           description="Nhân viên login Google đầu tiên sẽ tự xuất hiện ở đây."
         />
       ) : (
-        <div className="flex flex-col gap-3">
-          {(sortedEmployees as Employee[]).map((e) => {
-            const office = e.home_office_id ? officeMap.get(e.home_office_id) : undefined;
-            const canDelete = e.email !== meEmail;
-            return (
-              <div
-                key={e.id}
-                className="bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl p-4 space-y-3 shadow-sm"
-              >
-                {/* Row 1: avatar + tên + email + delete */}
-                <div className="flex items-start gap-3">
-                  <Avatar name={e.name} />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-[15px] tracking-tight flex items-center gap-1.5 flex-wrap">
-                      <span className="truncate">{e.name}</span>
-                      {e.is_admin && (
-                        <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-neutral-900 text-white">
-                          Admin
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-neutral-500 mt-0.5 truncate">{e.email}</div>
-                  </div>
-                  {canDelete && (
-                    <div className="shrink-0">
-                      <DeleteEmployeeButton
-                        employeeId={e.id}
-                        employeeName={e.name}
-                        action={deleteEmployee}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Row 2: loại HĐ + badges trạng thái */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5 shrink-0">
-                    <form action={updateEmploymentType}>
-                      <input type="hidden" name="id" value={e.id} />
-                      <input type="hidden" name="employment_type" value="fulltime" />
-                      <button
-                        type="submit"
-                        className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition inline-flex items-center gap-1 ${e.employment_type !== "parttime" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
-                      >
-                        <Briefcase size={10} /> Fulltime
-                      </button>
-                    </form>
-                    <form action={updateEmploymentType}>
-                      <input type="hidden" name="id" value={e.id} />
-                      <input type="hidden" name="employment_type" value="parttime" />
-                      <button
-                        type="submit"
-                        className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition ${e.employment_type === "parttime" ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-700"}`}
-                      >
-                        Parttime
-                      </button>
-                    </form>
-                  </div>
-
-                  {office?.is_remote ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-violet-50 text-violet-700">
-                      <Wifi size={11} /> Làm online
-                    </span>
-                  ) : office ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-sky-50 text-sky-700">
-                      <Building2 size={11} /> {office.name}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-500">
-                      <Building2 size={11} /> Chưa có chi nhánh
-                    </span>
-                  )}
-
-                  {e.face_descriptor ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">
-                      <Check size={11} /> Đã enroll
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700">
-                      <CircleSlash size={11} /> Chưa enroll
-                    </span>
-                  )}
-                  {!e.is_active && (
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-500">
-                      Khoá
-                    </span>
-                  )}
-                </div>
-
-                {/* Row 3: chi nhánh + đổi ảnh + thời gian làm việc */}
-                <div className="flex gap-2 items-center flex-wrap">
-                  <div className="w-52 max-w-full">
-                    <EmployeeOfficeSelect
-                      employeeId={e.id}
-                      currentOfficeId={e.home_office_id}
-                      offices={((offices as Office[]) ?? []).map((o) => ({
-                        id: o.id,
-                        name: o.name,
-                        is_remote: o.is_remote,
-                      }))}
-                      action={updateEmployeeOffice}
-                    />
-                  </div>
-                  {e.face_descriptor && (
-                    <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
-                  )}
-                  <EmployeeWorkHoursEditor
-                    employeeId={e.id}
-                    initialShifts={
-                      Array.isArray(e.work_shifts)
-                        ? (e.work_shifts as { start: string; end: string }[])
-                        : []
-                    }
-                    initialStart={e.work_start_time ?? null}
-                    initialEnd={e.work_end_time ?? null}
-                    officeStart={office?.work_start_time ?? null}
-                    officeEnd={office?.work_end_time ?? null}
-                    action={updateEmployeeWorkHours}
-                  />
-                </div>
-
-                {/* Row 4: lương + OT + xem lương */}
-                <div className="flex gap-2 items-end flex-wrap">
-                  <EmployeePayrollEditor
-                    employeeId={e.id}
-                    initialEmploymentType={
-                      (e.employment_type ?? "fulltime") as "fulltime" | "parttime"
-                    }
-                    initialSalary={Number(e.salary ?? 0)}
-                    initialHourlyRate={Number(e.hourly_rate ?? 0)}
-                    initialOvertimeRate={Number(e.overtime_rate ?? 0)}
-                    action={updateEmployeePayroll}
-                  />
-                  <OtFixedSalaryEditor
-                    employeeId={e.id}
-                    initialValue={e.ot_fixed_salary ?? null}
-                    action={updateOtFixedSalary}
-                  />
-                  <Link
-                    href={`/admin/employees/${e.id}/payroll`}
-                    className="h-9 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium hover:bg-indigo-100 inline-flex items-center gap-1.5 shrink-0"
-                  >
-                    <ExternalLink size={14} /> Xem lương
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <EmployeesTable
+          employees={sortedEmployees as Employee[]}
+          offices={(offices as Office[]) ?? []}
+          meEmail={meEmail}
+          actions={{
+            deleteEmployee,
+            updateEmploymentType,
+            updateEmployeePayroll,
+            updateOtFixedSalary,
+            updateEmployeeWorkHours,
+            updateEmployeeOffice,
+          }}
+        />
       )}
 
       <p className="text-xs text-neutral-500 max-w-2xl">
         💡 Nhân viên có chi nhánh <b>Làm online</b> sẽ chấm công không cần selfie/định vị, chỉ ghi nhận thời điểm.
         Xoá tài khoản sẽ <b>khoá</b> và ẩn NV khỏi danh sách, nhưng <b>lịch sử check-in vẫn được giữ</b> để admin tham chiếu.
       </p>
-    </div>
-  );
-}
-
-function StatChip({
-  icon,
-  label,
-  children,
-}: {
-  icon: import("react").ReactNode;
-  label: string;
-  children: import("react").ReactNode;
-}) {
-  return (
-    <div className="bg-white/80 backdrop-blur-sm border border-neutral-200/70 rounded-2xl px-4 py-3 min-w-[120px] shadow-sm">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 flex items-center gap-1.5 mb-1">
-        {icon}
-        {label}
-      </div>
-      <div className="flex items-baseline gap-0.5">{children}</div>
-    </div>
-  );
-}
-
-function Avatar({ name }: { name: string }) {
-  const initial = name.charAt(0).toUpperCase() || "?";
-  const hue = (name.charCodeAt(0) * 137) % 360;
-  return (
-    <div
-      className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-semibold text-white shrink-0"
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue} 70% 55%), hsl(${(hue + 40) % 360} 60% 40%))`,
-      }}
-    >
-      {initial}
     </div>
   );
 }
