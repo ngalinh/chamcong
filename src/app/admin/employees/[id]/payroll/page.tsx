@@ -157,6 +157,60 @@ async function clearLateEarlyViolation(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function addPayrollAdjustment(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const month = String(formData.get("month") ?? "");
+  const label = String(formData.get("label") ?? "").trim();
+  const amountRaw = Number(String(formData.get("amount") ?? "0").replace(/[,\s]/g, ""));
+  if (!employeeId || !/^\d{4}-\d{2}$/.test(month)) throw new Error("Dữ liệu không hợp lệ");
+  if (!label) throw new Error("Thiếu mô tả");
+  if (!Number.isFinite(amountRaw) || amountRaw === 0) throw new Error("Số tiền không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("payroll_adjustments").insert({
+    employee_id: employeeId,
+    month,
+    label,
+    amount: Math.round(amountRaw),
+    created_by: user.email,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
+async function removePayrollAdjustment(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id") ?? "");
+  const employeeId = String(formData.get("employee_id") ?? "");
+  if (!id) throw new Error("Thiếu id");
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("payroll_adjustments").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 export const dynamic = "force-dynamic";
 
 const fmtVnd = (n: number) => `${Math.round(n).toLocaleString("en-US")} VND`;
@@ -213,6 +267,15 @@ export default async function PayrollPage({
   const profitData = fromSnapshot
     ? { items: [] as EmployeeProfit[], total: 0 }
     : await computeProfitForEmployee(emp.id, monthStr);
+
+  const { data: adjustmentsRaw } = await admin
+    .from("payroll_adjustments")
+    .select("id, label, amount")
+    .eq("employee_id", emp.id)
+    .eq("month", monthStr)
+    .order("created_at");
+  const adjustments = (adjustmentsRaw ?? []) as { id: string; label: string; amount: number }[];
+  const adjustmentsTotal = adjustments.reduce((s, a) => s + Number(a.amount), 0);
 
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
@@ -281,6 +344,10 @@ export default async function PayrollPage({
           otFixedSalary={otFixedSalary}
           profitItems={profitData.items}
           profitTotal={profitData.total}
+          adjustments={adjustments}
+          adjustmentsTotal={adjustmentsTotal}
+          addAdjustment={addPayrollAdjustment}
+          removeAdjustment={removePayrollAdjustment}
         />
       </div>
     );
@@ -298,6 +365,10 @@ export default async function PayrollPage({
         otFixedSalary={otFixedSalary}
         profitItems={profitData.items}
         profitTotal={profitData.total}
+        adjustments={adjustments}
+        adjustmentsTotal={adjustmentsTotal}
+        addAdjustment={addPayrollAdjustment}
+        removeAdjustment={removePayrollAdjustment}
       />
     </div>
   );
@@ -315,6 +386,9 @@ function SnapshotBanner() {
 // =============================================================================
 // PARTTIME VIEW
 // =============================================================================
+type PayrollAdjustment = { id: string; label: string; amount: number };
+type AdjustmentAction = (formData: FormData) => Promise<void>;
+
 function ParttimeView({
   result,
   monthStr,
@@ -324,6 +398,10 @@ function ParttimeView({
   otFixedSalary,
   profitItems,
   profitTotal,
+  adjustments,
+  adjustmentsTotal,
+  addAdjustment,
+  removeAdjustment,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
@@ -333,6 +411,10 @@ function ParttimeView({
   otFixedSalary: number;
   profitItems: EmployeeProfit[];
   profitTotal: number;
+  adjustments: PayrollAdjustment[];
+  adjustmentsTotal: number;
+  addAdjustment: AdjustmentAction;
+  removeAdjustment: AdjustmentAction;
 }) {
   const shiftsLabel = workShifts.length === 1
     ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
@@ -436,10 +518,17 @@ function ParttimeView({
         {profitTotal > 0 && (
           <EarnRow label="Profit từ doanh số" value={profitTotal} positive />
         )}
+        <AdjustmentsSection
+          adjustments={adjustments}
+          employeeId={employeeId}
+          monthStr={monthStr}
+          addAdjustment={addAdjustment}
+          removeAdjustment={removeAdjustment}
+        />
         <div className="pt-2 mt-2 border-t border-emerald-300/60 flex items-center justify-between">
           <span className="font-semibold text-emerald-900">Lương thực nhận tạm tính</span>
           <span className="text-2xl font-bold text-emerald-700 tabular-nums">
-            {Math.max(0, Math.round(result.grandEarning + otFixedSalary + profitTotal)).toLocaleString("en-US")} VND
+            {Math.max(0, Math.round(result.grandEarning + otFixedSalary + profitTotal + adjustmentsTotal)).toLocaleString("en-US")} VND
           </span>
         </div>
       </div>
@@ -459,6 +548,10 @@ function FulltimeView({
   otFixedSalary,
   profitItems,
   profitTotal,
+  adjustments,
+  adjustmentsTotal,
+  addAdjustment,
+  removeAdjustment,
 }: {
   result: PayrollResult;
   monthStr: string;
@@ -467,6 +560,10 @@ function FulltimeView({
   otFixedSalary: number;
   profitItems: EmployeeProfit[];
   profitTotal: number;
+  adjustments: PayrollAdjustment[];
+  adjustmentsTotal: number;
+  addAdjustment: AdjustmentAction;
+  removeAdjustment: AdjustmentAction;
 }) {
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -567,10 +664,17 @@ function FulltimeView({
         {result.totalMissingDeduction > 0 && (
           <TotalRow label="Vắng không phép" value={result.totalMissingDeduction} />
         )}
+        <AdjustmentsSection
+          adjustments={adjustments}
+          employeeId={employeeId}
+          monthStr={monthStr}
+          addAdjustment={addAdjustment}
+          removeAdjustment={removeAdjustment}
+        />
         <div className="pt-2 mt-2 border-t border-emerald-300/60 flex items-center justify-between">
           <span className="font-semibold text-emerald-900">Tổng tiền lương</span>
           <span className="text-lg font-bold text-emerald-700 tabular-nums">
-            {Math.max(0, Math.round(result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal)).toLocaleString("en-US")} VND
+            {Math.max(0, Math.round(result.salary - result.grandTotal + result.totalSelfBonus + result.totalOTPay + otFixedSalary + profitTotal + adjustmentsTotal)).toLocaleString("en-US")} VND
           </span>
         </div>
       </div>
@@ -1000,5 +1104,67 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
         ))}
       </div>
     </section>
+  );
+}
+
+function AdjustmentsSection({
+  adjustments,
+  employeeId,
+  monthStr,
+  addAdjustment,
+  removeAdjustment,
+}: {
+  adjustments: PayrollAdjustment[];
+  employeeId: string;
+  monthStr: string;
+  addAdjustment: AdjustmentAction;
+  removeAdjustment: AdjustmentAction;
+}) {
+  return (
+    <>
+      {adjustments.map((a) => (
+        <div key={a.id} className="flex items-center gap-2 py-0.5">
+          <span className="flex-1 text-sm text-emerald-900">{a.label}</span>
+          <span className={`tabular-nums font-semibold text-sm ${a.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+            {a.amount >= 0 ? "+" : "−"}{Math.abs(Math.round(a.amount)).toLocaleString("en-US")}
+          </span>
+          <form action={removeAdjustment}>
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="employee_id" value={employeeId} />
+            <button
+              type="submit"
+              title="Xoá khoản này"
+              className="h-6 w-6 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center"
+            >
+              <Trash2 size={12} />
+            </button>
+          </form>
+        </div>
+      ))}
+      <form action={addAdjustment} className="flex gap-1.5 pt-1">
+        <input type="hidden" name="employee_id" value={employeeId} />
+        <input type="hidden" name="month" value={monthStr} />
+        <input
+          type="text"
+          name="label"
+          placeholder="Mô tả (vd: Thưởng KPI)"
+          required
+          className="h-8 flex-1 min-w-0 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs outline-none focus:border-emerald-400 placeholder:text-neutral-400"
+        />
+        <input
+          type="number"
+          name="amount"
+          placeholder="Số tiền"
+          required
+          className="h-8 w-32 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs tabular-nums outline-none focus:border-emerald-400 placeholder:text-neutral-400"
+        />
+        <button
+          type="submit"
+          className="h-8 px-3 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 shrink-0 transition"
+        >
+          + Thêm
+        </button>
+      </form>
+    </>
   );
 }
