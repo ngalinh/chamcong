@@ -14,7 +14,8 @@ async function run(request: NextRequest): Promise<NextResponse> {
     pathname.startsWith("/icons") ||
     pathname === "/api/health" ||
     pathname === "/api/admin/audit-absences" ||
-    pathname === "/api/admin/cleanup-history";
+    pathname === "/api/admin/cleanup-history" ||
+    pathname === "/api/admin/shift-reminders";
   if (isPublic) return NextResponse.next();
 
   const isAuthRoute =
