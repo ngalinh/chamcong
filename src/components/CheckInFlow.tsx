@@ -52,6 +52,8 @@ export default function CheckInFlow({
   const [matchedOffice, setMatchedOffice] = useState<{ name: string; distM: number } | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [lateEarly, setLateEarly] = useState<string | null>(null);
+  // Tách biệt "đang ở bước camera" vs "video đã có frame thật" để tránh flash màn đen
+  const [cameraVisible, setCameraVisible] = useState(false);
 
   const stopCamera = useCallback(() => {
     const v = videoRef.current;
@@ -81,6 +83,7 @@ export default function CheckInFlow({
     setError(null);
     setScore(null);
     setMatchedOffice(null);
+    setCameraVisible(false);
     cancelledRef.current = false;
     let currentStep: Step = "idle";
     const goStep = (s: Step) => { currentStep = s; setStep(s); };
@@ -112,8 +115,6 @@ export default function CheckInFlow({
       // mà OS không re-prompt; fail nhanh để hiển thị lỗi cho user.
       const stream = await Promise.race([
         navigator.mediaDevices.getUserMedia({
-          // ideal height > width → yêu cầu portrait stream, tránh iOS trả về landscape
-          // rồi object-cover phải scale ~1.75× để phủ màn hình dọc (trông bị zoom).
           video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 640 } },
           audio: false,
         }),
@@ -130,7 +131,29 @@ export default function CheckInFlow({
       }
       const v = videoRef.current!;
       v.srcObject = stream;
-      await v.play();
+
+      // Đợi frame thật sự xuất hiện (playing event) thay vì play() promise.
+      // play() resolve ngay khi browser *bắt đầu* play, nhưng GPU buffer có thể
+      // chưa có pixel → màn đen. playing/canplay đảm bảo frame đầu tiên đã decode.
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => { cleanup(); reject(new Error("Camera không hiển thị được. Thử lại.")); },
+          12000,
+        );
+        const cleanup = () => {
+          clearTimeout(timer);
+          v.onplaying = null;
+          v.oncanplay = null;
+        };
+        v.onplaying = () => { cleanup(); resolve(); };
+        // canplay làm fallback — một số trình duyệt không fire playing ngay
+        v.oncanplay = () => { cleanup(); resolve(); };
+        v.play().catch((err: unknown) => { cleanup(); reject(err); });
+      });
+      if (cancelledRef.current) return;
+
+      // Chỉ show video sau khi có frame thật — tránh flash màn đen
+      setCameraVisible(true);
 
       setMessage("Đang tải mô hình nhận diện...");
       await loadFaceModels();
@@ -255,10 +278,14 @@ export default function CheckInFlow({
         <video
           ref={videoRef}
           playsInline
+          autoPlay
           muted
           className={cn(
-            "h-full w-full object-cover scale-x-[-1] transition-opacity duration-500",
-            showCamera ? "opacity-100" : "opacity-0",
+            // object-contain giữ nguyên tỉ lệ camera, không crop/zoom.
+            // object-cover buộc scale up để phủ màn hình → mặt to gấp ~1.5–1.75×
+            // (đặc biệt khi camera trả về landscape stream trên màn hình portrait).
+            "h-full w-full object-contain scale-x-[-1] transition-opacity duration-500",
+            cameraVisible ? "opacity-100" : "opacity-0",
           )}
         />
         <canvas ref={canvasRef} className="hidden" />
