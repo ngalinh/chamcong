@@ -162,8 +162,187 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl shadow-sm overflow-x-auto">
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-3">
+        {filtered.map((e) => {
+          const office = e.home_office_id ? officeMap.get(e.home_office_id) : undefined;
+          const canDelete = e.email !== meEmail;
+          const shifts = Array.isArray(e.work_shifts) && e.work_shifts.length > 0
+            ? (e.work_shifts as { start: string; end: string }[])
+            : null;
+          return (
+            <div key={e.id} className="bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl shadow-sm overflow-hidden">
+              {/* Card header: avatar + identity */}
+              <div className="flex items-start gap-3 px-4 pt-4 pb-3">
+                <Avatar name={e.name} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm tracking-tight flex items-center gap-1.5 flex-wrap">
+                    <span>{e.name}</span>
+                    {e.is_admin && (
+                      <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-neutral-900 text-white">
+                        Admin
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11.5px] text-neutral-500 mt-0.5 truncate">{e.email}</div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {e.face_descriptor ? (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700">
+                        <Check size={10} /> Đã enroll
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700">
+                        <CircleSlash size={10} /> Chưa enroll
+                      </span>
+                    )}
+                    {office?.is_remote && (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-700">
+                        <Wifi size={10} /> Làm online
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-neutral-100 divide-y divide-neutral-100">
+                {/* Loại HĐ + Chi nhánh */}
+                <div className="px-4 py-3 space-y-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 w-20 shrink-0">Loại HĐ</span>
+                    <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5">
+                      <form action={actions.updateEmploymentType}>
+                        <input type="hidden" name="id" value={e.id} />
+                        <input type="hidden" name="employment_type" value="fulltime" />
+                        <button
+                          type="submit"
+                          className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition inline-flex items-center gap-1 ${
+                            e.employment_type !== "parttime"
+                              ? "bg-white text-neutral-900 shadow-sm"
+                              : "text-neutral-500 hover:text-neutral-700"
+                          }`}
+                        >
+                          <Briefcase size={10} /> Fulltime
+                        </button>
+                      </form>
+                      <form action={actions.updateEmploymentType}>
+                        <input type="hidden" name="id" value={e.id} />
+                        <input type="hidden" name="employment_type" value="parttime" />
+                        <button
+                          type="submit"
+                          className={`px-2.5 h-6 rounded-md text-[11px] font-medium transition ${
+                            e.employment_type === "parttime"
+                              ? "bg-white text-neutral-900 shadow-sm"
+                              : "text-neutral-500 hover:text-neutral-700"
+                          }`}
+                        >
+                          Parttime
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 w-20 shrink-0 pt-1.5">Chi nhánh</span>
+                    <div className="flex-1 space-y-1">
+                      <EmployeeOfficeSelect
+                        employeeId={e.id}
+                        currentOfficeId={e.home_office_id}
+                        offices={officeOptions}
+                        action={actions.updateEmployeeOffice}
+                      />
+                      {shifts ? (
+                        <div className="flex flex-col gap-0.5 mt-1">
+                          {shifts.map((s, i) => (
+                            <div key={i} className="text-[10.5px] text-violet-700 flex items-center gap-1">
+                              <span className="font-semibold">
+                                {shifts.length > 1 ? `Ca ${i + 1}:` : "Giờ riêng:"}
+                              </span>
+                              {s.start.slice(0, 5)} → {s.end.slice(0, 5)}
+                            </div>
+                          ))}
+                        </div>
+                      ) : e.work_start_time ? (
+                        <div className="text-[10.5px] text-violet-700 flex items-center gap-1 mt-1">
+                          <span className="font-semibold">Giờ riêng:</span>
+                          {e.work_start_time.slice(0, 5)} → {e.work_end_time?.slice(0, 5)}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lương */}
+                <div className="px-4 py-3 space-y-2">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 flex items-center gap-1">
+                    Lương cứng / OT <Pencil size={9} className="opacity-50" />
+                  </div>
+                  <EmployeePayrollEditor
+                    employeeId={e.id}
+                    initialEmploymentType={
+                      (e.employment_type ?? "fulltime") as "fulltime" | "parttime"
+                    }
+                    initialSalary={Number(e.salary ?? 0)}
+                    initialHourlyRate={Number(e.hourly_rate ?? 0)}
+                    initialOvertimeRate={Number(e.overtime_rate ?? 0)}
+                    action={actions.updateEmployeePayroll}
+                  />
+                  {e.employment_type !== "parttime" && (
+                    <OtFixedSalaryEditor
+                      employeeId={e.id}
+                      initialValue={e.ot_fixed_salary ?? null}
+                      action={actions.updateOtFixedSalary}
+                    />
+                  )}
+                </div>
+
+                {/* Thao tác */}
+                <div className="px-4 py-3 flex flex-wrap gap-2">
+                  <Link
+                    href={`/admin/employees/${e.id}/payroll`}
+                    className="h-8 px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[12.5px] font-semibold hover:bg-indigo-100 inline-flex items-center gap-1.5 transition"
+                  >
+                    <ExternalLink size={13} /> Xem lương
+                  </Link>
+                  <EmployeeWorkHoursEditor
+                    employeeId={e.id}
+                    initialShifts={
+                      Array.isArray(e.work_shifts)
+                        ? (e.work_shifts as { start: string; end: string }[])
+                        : []
+                    }
+                    initialStart={e.work_start_time ?? null}
+                    initialEnd={e.work_end_time ?? null}
+                    officeStart={office?.work_start_time ?? null}
+                    officeEnd={office?.work_end_time ?? null}
+                    initialReminderIndices={
+                      Array.isArray(e.reminder_shift_indices)
+                        ? (e.reminder_shift_indices as number[])
+                        : []
+                    }
+                    action={actions.updateEmployeeWorkHours}
+                  />
+                  {e.face_descriptor && (
+                    <ChangeEmployeePhoto employeeId={e.id} employeeName={e.name} />
+                  )}
+                  {canDelete && (
+                    <DeleteEmployeeButton
+                      employeeId={e.id}
+                      employeeName={e.name}
+                      action={actions.deleteEmployee}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div className="text-[11.5px] text-neutral-500 text-center py-1">
+          Hiển thị <b className="text-neutral-700">{filtered.length}</b> / {employees.length} nhân viên
+          {q || branchFilter !== "all" || typeFilter !== "all" ? " (đang lọc)" : ""}
+        </div>
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl shadow-sm overflow-x-auto">
         <table className="w-full min-w-[1080px] border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-neutral-100">
