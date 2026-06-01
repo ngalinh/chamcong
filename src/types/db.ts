@@ -37,6 +37,7 @@ export type Employee = {
   work_start_time: string | null;  // legacy single-shift override
   work_end_time: string | null;
   work_shifts: WorkShift[];        // multi-shift, ưu tiên hơn work_start/end
+  reminder_shift_indices: number[]; // ca muốn nhận push reminder; [] = tất cả
   ot_fixed_salary: number | null;  // lương OT cố định/tháng
   exempt_absence: boolean;         // true = không tính vắng không phép
   created_at: string;

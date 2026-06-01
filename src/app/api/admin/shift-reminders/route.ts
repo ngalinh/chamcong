@@ -23,7 +23,6 @@ import type { WorkShift } from "@/types/db";
  */
 
 const TITLE = "Chấm công";
-const BODY = "Bạn ơi, hãy chấm công nhé! :D";
 
 type EmployeeRow = {
   id: string;
@@ -32,6 +31,7 @@ type EmployeeRow = {
   work_start_time: string | null;
   work_end_time: string | null;
   work_shifts: WorkShift[] | null;
+  reminder_shift_indices: number[] | null;
 };
 
 type OfficeRow = {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
   const { data: employees } = await admin
     .from("employees")
-    .select("id, name, home_office_id, work_start_time, work_end_time, work_shifts")
+    .select("id, name, home_office_id, work_start_time, work_end_time, work_shifts, reminder_shift_indices")
     .eq("is_active", true)
     .returns<EmployeeRow[]>();
 
@@ -116,6 +116,10 @@ export async function POST(request: NextRequest) {
       if (endMin >= bucketStart && endMin < bucketEnd) matches.push({ kind: "end", time: shift.end });
       if (matches.length === 0) continue;
 
+      // Bỏ qua ca không được chọn (khi NV đã tự chọn ca cụ thể)
+      const enabledIndices = emp.reminder_shift_indices;
+      if (enabledIndices && enabledIndices.length > 0 && !enabledIndices.includes(i)) continue;
+
       for (const m of matches) {
         if (!dryRun) {
           // Dedup: chèn marker trước, nếu đã có (23505 unique_violation) → skip
@@ -133,7 +137,7 @@ export async function POST(request: NextRequest) {
 
           const r = await sendPushToEmployee(emp.id, {
             title: TITLE,
-            body: BODY,
+            body: `${emp.name} ơi, hãy nhớ chấm công nhé ;)`,
             tag: `shift-${m.kind}-${emp.id}-${dateVN}-${i}`,
             url: "/checkin",
           });
