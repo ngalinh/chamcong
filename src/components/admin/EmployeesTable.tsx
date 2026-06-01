@@ -348,6 +348,11 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                           initialEnd={e.work_end_time ?? null}
                           officeStart={office?.work_start_time ?? null}
                           officeEnd={office?.work_end_time ?? null}
+                          initialReminderIndices={
+                            Array.isArray(e.reminder_shift_indices)
+                              ? (e.reminder_shift_indices as number[])
+                              : []
+                          }
                           action={actions.updateEmployeeWorkHours}
                         />
                         {e.face_descriptor && (
