@@ -132,9 +132,19 @@ export default function CheckInFlow({
       const v = videoRef.current!;
       v.srcObject = stream;
 
+      // requestVideoFrameCallback fires khi frame đã vào GPU compositor (= pixel thật trên màn).
+      // Dùng chung ở cả display lẫn capture để tránh màn đen / ảnh đen.
+      type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
+      const waitFrame = () =>
+        new Promise<void>((resolve) => {
+          const ext = v as RVFC;
+          if (ext.requestVideoFrameCallback) ext.requestVideoFrameCallback(() => resolve());
+          else requestAnimationFrame(() => resolve());
+        });
+
       // Đợi frame thật sự xuất hiện (playing event) thay vì play() promise.
       // play() resolve ngay khi browser *bắt đầu* play, nhưng GPU buffer có thể
-      // chưa có pixel → màn đen. playing/canplay đảm bảo frame đầu tiên đã decode.
+      // chưa có pixel → màn đen. playing/canplay đảm bảo data đã decode.
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(
           () => { cleanup(); reject(new Error("Camera không hiển thị được. Thử lại.")); },
@@ -152,7 +162,11 @@ export default function CheckInFlow({
       });
       if (cancelledRef.current) return;
 
-      // Chỉ show video sau khi có frame thật — tránh flash màn đen
+      // Đợi thêm 1 frame vào GPU compositor sau playing event —
+      // playing/canplay có thể fire trước khi pixel thật xuất hiện trên màn
+      // (đặc biệt trên PWA iOS do WKWebView resume từ suspended state).
+      // +33ms max (1 frame @ 30fps), không cảm nhận được nhưng loại hết flash đen.
+      await waitFrame();
       setCameraVisible(true);
 
       setMessage("Đang tải mô hình nhận diện...");
@@ -195,13 +209,6 @@ export default function CheckInFlow({
       }
       if (!v.videoWidth) throw new Error("Camera chưa sẵn sàng, vui lòng thử lại.");
 
-      type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
-      const waitFrame = () =>
-        new Promise<void>((resolve) => {
-          const ext = v as RVFC;
-          if (ext.requestVideoFrameCallback) ext.requestVideoFrameCallback(() => resolve());
-          else requestAnimationFrame(() => resolve());
-        });
       await waitFrame();
       await waitFrame();
 
