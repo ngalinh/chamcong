@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Clock, Save, Loader2, RotateCcw, X, Plus } from "lucide-react";
+import { Bell, Clock, Save, Loader2, RotateCcw, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkShift } from "@/types/db";
 import { TimeInput } from "@/components/ui/TimeInput";
@@ -14,6 +14,7 @@ export default function EmployeeWorkHoursEditor({
   initialEnd,
   officeStart,
   officeEnd,
+  initialReminderIndices,
   action,
 }: {
   employeeId: string;
@@ -22,6 +23,7 @@ export default function EmployeeWorkHoursEditor({
   initialEnd: string | null;
   officeStart: string | null;
   officeEnd: string | null;
+  initialReminderIndices: number[];
   action: (fd: FormData) => Promise<void> | void;
 }) {
   const initialEffective: WorkShift[] = initialShifts.length > 0
@@ -30,12 +32,23 @@ export default function EmployeeWorkHoursEditor({
       ? [{ start: initialStart, end: initialEnd }]
       : [];
 
+  // For each shift, whether it gets push reminders ([] in DB = all enabled)
+  const computeInitialEnabled = (shifts: WorkShift[]) =>
+    shifts.map((_, i) => initialReminderIndices.length === 0 || initialReminderIndices.includes(i));
+
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [shifts, setShifts] = useState<WorkShift[]>(
     initialEffective.length > 0
       ? initialEffective
       : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }],
+  );
+  const [reminderEnabled, setReminderEnabled] = useState<boolean[]>(
+    computeInitialEnabled(
+      initialEffective.length > 0
+        ? initialEffective
+        : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }],
+    ),
   );
   const [saving, setSaving] = useState(false);
 
@@ -50,13 +63,13 @@ export default function EmployeeWorkHoursEditor({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
-  const dirty = JSON.stringify(shifts.map(toHM)) !== JSON.stringify(initialEffective.map(toHM));
+  const dirty = JSON.stringify(shifts.map(toHM)) !== JSON.stringify(initialEffective.map(toHM))
+    || JSON.stringify(reminderEnabled) !== JSON.stringify(computeInitialEnabled(initialEffective));
   const officeStartHM = officeStart?.slice(0, 5);
   const officeEndHM = officeEnd?.slice(0, 5);
   const hasOverride = initialEffective.length > 0;
   const isMulti = initialEffective.length > 1;
 
-  // Tooltip text for the trigger button
   const title = !hasOverride
     ? "Thời gian làm việc"
     : isMulti
@@ -69,6 +82,14 @@ export default function EmployeeWorkHoursEditor({
     const fd = new FormData();
     fd.set("id", employeeId);
     fd.set("work_shifts", JSON.stringify(shifts));
+
+    // Convert reminderEnabled[] → indices. If all enabled → [] (all).
+    const enabledIndices = reminderEnabled
+      .map((v, i) => (v ? i : -1))
+      .filter((i) => i >= 0);
+    const toSave = enabledIndices.length === shifts.length ? [] : enabledIndices;
+    fd.set("reminder_shift_indices", JSON.stringify(toSave));
+
     try {
       await action(fd);
       setOpen(false);
@@ -78,16 +99,17 @@ export default function EmployeeWorkHoursEditor({
   }
 
   function close() {
-    setShifts(
-      initialEffective.length > 0
-        ? initialEffective
-        : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }],
-    );
+    const restored = initialEffective.length > 0
+      ? initialEffective
+      : [{ start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" }];
+    setShifts(restored);
+    setReminderEnabled(computeInitialEnabled(restored));
     setOpen(false);
   }
 
   function clearAll() {
     setShifts([]);
+    setReminderEnabled([]);
   }
 
   function addShift() {
@@ -95,14 +117,20 @@ export default function EmployeeWorkHoursEditor({
       ...prev,
       { start: officeStart ?? "09:00:00", end: officeEnd ?? "18:00:00" },
     ]);
+    setReminderEnabled((prev) => [...prev, true]);
   }
 
   function removeShift(idx: number) {
     setShifts((prev) => prev.filter((_, i) => i !== idx));
+    setReminderEnabled((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function updateShift(idx: number, patch: Partial<WorkShift>) {
     setShifts((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
+  function toggleReminder(idx: number) {
+    setReminderEnabled((prev) => prev.map((v, i) => (i === idx ? !v : v)));
   }
 
   return (
@@ -154,7 +182,8 @@ export default function EmployeeWorkHoursEditor({
             {/* Body */}
             <div className="px-5 py-4 space-y-2">
               <p className="text-[11px] text-neutral-500 mb-3">
-                Để trống = dùng giờ chi nhánh. Có thể thêm nhiều ca.
+                Để trống = dùng giờ chi nhánh. Có thể thêm nhiều ca.{" "}
+                <Bell size={10} className="inline mb-0.5" /> = nhắc chấm công.
               </p>
 
               {shifts.length === 0 ? (
@@ -179,6 +208,20 @@ export default function EmployeeWorkHoursEditor({
                         onChange={(v) => updateShift(i, { end: v })}
                         className="h-9 flex-1 min-w-0 rounded-lg border border-neutral-200 bg-white px-2 text-sm outline-none focus:border-neutral-900 tabular-nums"
                       />
+                      {/* Bell: toggle push reminder cho ca này */}
+                      <button
+                        type="button"
+                        onClick={() => toggleReminder(i)}
+                        title={reminderEnabled[i] ? "Tắt nhắc chấm công ca này" : "Bật nhắc chấm công ca này"}
+                        className={cn(
+                          "h-9 w-9 shrink-0 rounded-lg border flex items-center justify-center transition",
+                          reminderEnabled[i]
+                            ? "border-indigo-200 bg-indigo-50 text-indigo-600"
+                            : "border-neutral-200 bg-white text-neutral-300 hover:text-neutral-500",
+                        )}
+                      >
+                        <Bell size={13} />
+                      </button>
                       {shifts.length > 1 && (
                         <button
                           type="button"

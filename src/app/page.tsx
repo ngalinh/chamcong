@@ -30,7 +30,6 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { formatVN } from "@/lib/time";
-import { effectiveWorkShifts } from "@/lib/workHours";
 import { LEAVE_CATEGORIES, type LeaveCategory, type LeaveStatus, type CheckInKind } from "@/types/db";
 
 export const dynamic = "force-dynamic";
@@ -92,22 +91,14 @@ export default async function Home() {
 
   // Nhân viên Làm online (chi nhánh remote) không cần enroll khuôn mặt
   let isRemoteEmployee = false;
-  let homeOffice: { is_remote: boolean; work_start_time: string; work_end_time: string } | null = null;
   if (employee.home_office_id) {
     const { data: home } = await admin
       .from("offices")
-      .select("is_remote, work_start_time, work_end_time")
+      .select("is_remote")
       .eq("id", employee.home_office_id)
       .maybeSingle();
-    homeOffice = home ?? null;
     isRemoteEmployee = !!home?.is_remote;
   }
-
-  const employeeShifts = effectiveWorkShifts(
-    employee,
-    homeOffice?.work_start_time ?? "09:00:00",
-    homeOffice?.work_end_time ?? "18:00:00",
-  );
   if (!employee.face_descriptor && !isRemoteEmployee) redirect("/enroll");
 
   const sevenDaysAgo = new Date(Date.now() - 14 * 86400_000).toISOString();
@@ -282,10 +273,7 @@ export default async function Home() {
           />
         </section>
 
-        <NotificationToggle
-          shifts={employeeShifts}
-          initialReminderIndices={employee.reminder_shift_indices ?? []}
-        />
+        <NotificationToggle />
 
         {canCheckIn && (
           <Link href="/checkin" className="group block">
