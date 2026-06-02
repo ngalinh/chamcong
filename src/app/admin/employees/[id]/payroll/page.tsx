@@ -1141,30 +1141,35 @@ function AdjustmentsSection({
           </form>
         </div>
       ))}
-      <form action={addAdjustment} className="flex gap-1.5 pt-1">
-        <input type="hidden" name="employee_id" value={employeeId} />
-        <input type="hidden" name="month" value={monthStr} />
-        <input
-          type="text"
-          name="label"
-          placeholder="Mô tả (vd: Thưởng KPI)"
-          required
-          className="h-8 flex-1 min-w-0 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs outline-none focus:border-emerald-400 placeholder:text-neutral-400"
-        />
-        <input
-          type="number"
-          name="amount"
-          placeholder="Số tiền"
-          required
-          className="h-8 w-32 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs tabular-nums outline-none focus:border-emerald-400 placeholder:text-neutral-400"
-        />
-        <button
-          type="submit"
-          className="h-8 px-3 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 shrink-0 transition"
-        >
-          + Thêm
-        </button>
-      </form>
+      <details className="mt-1 group">
+        <summary className="text-xs text-emerald-700 hover:text-emerald-900 cursor-pointer select-none w-fit list-none [&::-webkit-details-marker]:hidden">
+          + Thêm khoản
+        </summary>
+        <form action={addAdjustment} className="flex gap-1.5 pt-2">
+          <input type="hidden" name="employee_id" value={employeeId} />
+          <input type="hidden" name="month" value={monthStr} />
+          <input
+            type="text"
+            name="label"
+            placeholder="Mô tả (vd: Thưởng KPI)"
+            required
+            className="h-8 flex-1 min-w-0 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs outline-none focus:border-emerald-400 placeholder:text-neutral-400"
+          />
+          <input
+            type="number"
+            name="amount"
+            placeholder="Số tiền"
+            required
+            className="h-8 w-32 rounded-lg border border-emerald-200 bg-white/70 px-2.5 text-xs tabular-nums outline-none focus:border-emerald-400 placeholder:text-neutral-400"
+          />
+          <button
+            type="submit"
+            className="h-8 px-3 rounded-lg bg-emerald-700 text-white text-xs font-semibold hover:bg-emerald-800 shrink-0 transition"
+          >
+            Thêm
+          </button>
+        </form>
+      </details>
     </>
   );
 }
