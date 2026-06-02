@@ -36,6 +36,12 @@ export type EmployeeProfit = {
   total_employee_profit: number;
 };
 
+// Override % chia profit cho trường hợp đặc biệt theo từng tháng.
+// Format key: "YYYY-MM|channel_name|sale hoặc cskh"
+const SHARE_PCT_OVERRIDES: Record<string, number> = {
+  "2026-05|Linh Dương|cskh": 0.10, // Tuyền Nguyễn tháng 5/2026 chỉ 10% thay vì 30%
+};
+
 export async function computeProfitForEmployee(
   employeeId: string,
   month: string, // YYYY-MM
@@ -124,7 +130,9 @@ export async function computeProfitForEmployee(
       if (!revenue) continue;
 
       const profit = revenue * rule.profit_pct;
-      const share_pct = isSale ? (ch as { sale_pct: number }).sale_pct : (ch as { cskh_pct: number }).cskh_pct;
+      const role = isSale ? "sale" : "cskh";
+      const share_pct = SHARE_PCT_OVERRIDES[`${month}|${ch.channel_name}|${role}`]
+        ?? (isSale ? (ch as { sale_pct: number }).sale_pct : (ch as { cskh_pct: number }).cskh_pct);
       const employee_profit = profit * share_pct;
 
       details.push({
