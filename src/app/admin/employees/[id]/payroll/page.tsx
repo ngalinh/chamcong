@@ -1079,7 +1079,7 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
             {item.details.length > 0 && (
               <table className="w-full text-[11px] text-neutral-600">
                 <tbody>
-                  {item.details.map((d, j) => (
+                  {item.details.slice().sort((a, b) => a.brand.localeCompare(b.brand, "vi")).map((d, j) => (
                     <tr key={j} className="border-t border-violet-100/60">
                       <td className="py-1 pr-2">{d.brand}</td>
                       <td className="py-1 pr-2 text-neutral-500">{d.customer_group}</td>
