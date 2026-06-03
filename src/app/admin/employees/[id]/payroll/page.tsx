@@ -157,6 +157,68 @@ async function clearLateEarlyViolation(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function setOpeningBalance(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const monthStr = String(formData.get("month") ?? "");
+  const balanceRaw = parseFloat(String(formData.get("balance") ?? ""));
+  if (!employeeId || !/^\d{4}-\d{2}$/.test(monthStr) || isNaN(balanceRaw)) {
+    throw new Error("Dữ liệu không hợp lệ");
+  }
+  const balance = Math.round(balanceRaw * 100) / 100;
+
+  const admin = createAdminClient();
+
+  // Cập nhật leave_balance + last_accrual_month = monthStr (anchor tháng đầu)
+  await admin.from("employees").update({
+    leave_balance: balance,
+    last_accrual_month: monthStr,
+  }).eq("id", employeeId);
+
+  // Upsert accrual log cho tháng này (để Case A lookup tìm được)
+  const { data: existingLog } = await admin
+    .from("leave_balance_log")
+    .select("id")
+    .eq("employee_id", employeeId)
+    .eq("event_type", "accrual")
+    .ilike("note", `%${monthStr}%`)
+    .order("changed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingLog) {
+    await admin.from("leave_balance_log").update({
+      balance_after: balance,
+    }).eq("id", existingLog.id);
+  } else {
+    await admin.from("leave_balance_log").insert({
+      employee_id: employeeId,
+      delta: balance,
+      balance_after: balance,
+      event_type: "accrual",
+      note: `Cộng phép tháng ${monthStr} (tự động)`,
+    });
+  }
+
+  // Xoá snapshot của tháng này và tất cả tháng sau → recompute
+  await admin.from("payroll_snapshots")
+    .delete()
+    .eq("employee_id", employeeId)
+    .gte("year_month", monthStr);
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 async function addPayrollAdjustment(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -369,6 +431,7 @@ export default async function PayrollPage({
         adjustmentsTotal={adjustmentsTotal}
         addAdjustment={addPayrollAdjustment}
         removeAdjustment={removePayrollAdjustment}
+        setOpeningBalance={setOpeningBalance}
       />
     </div>
   );
@@ -552,6 +615,7 @@ function FulltimeView({
   adjustmentsTotal,
   addAdjustment,
   removeAdjustment,
+  setOpeningBalance,
 }: {
   result: PayrollResult;
   monthStr: string;
@@ -564,6 +628,7 @@ function FulltimeView({
   adjustmentsTotal: number;
   addAdjustment: AdjustmentAction;
   removeAdjustment: AdjustmentAction;
+  setOpeningBalance: AdjustmentAction;
 }) {
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -584,6 +649,26 @@ function FulltimeView({
         <SummaryCard icon={CalendarOff} label="Phép đầu kỳ"       value={`${isFutureMonth ? 0 : formatNum(result.balanceStart)} ngày`}  tone="amber" />
         <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${isFutureMonth ? 0 : formatNum(result.balanceEnd)} ngày`}    tone={!isFutureMonth && result.balanceEnd < 0 ? "rose" : "emerald"} />
       </div>
+
+      {editable && !isFutureMonth && (
+        <form action={setOpeningBalance} className="flex items-center gap-2 text-sm">
+          <input type="hidden" name="employee_id" value={employeeId} />
+          <input type="hidden" name="month" value={monthStr} />
+          <span className="text-neutral-500 shrink-0">Sửa phép đầu kỳ:</span>
+          <input
+            type="number"
+            name="balance"
+            step="0.25"
+            min="0"
+            defaultValue={result.balanceStart}
+            className="w-24 h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
+          />
+          <span className="text-neutral-400 text-xs">ngày</span>
+          <button type="submit" className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-sm font-medium hover:bg-neutral-50">
+            Lưu
+          </button>
+        </form>
+      )}
 
       {result.salary === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-800 flex items-start gap-2">
