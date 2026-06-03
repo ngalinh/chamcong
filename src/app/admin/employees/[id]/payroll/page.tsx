@@ -11,6 +11,7 @@ import { parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { formatVN } from "@/lib/time";
 import { computePayrollForMonth, type PayrollSnapshotPayload } from "@/lib/payroll-snapshot";
 import { LeaveHourlyDeductionEditor } from "@/components/LeaveHourlyDeductionEditor";
+import OpeningBalanceEditor from "@/components/OpeningBalanceEditor";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -652,22 +653,12 @@ function FulltimeView({
               <CalendarOff size={14} />
             </div>
             <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium mb-1">Phép đầu kỳ</div>
-            <form action={setOpeningBalance} className="flex items-center gap-1.5">
-              <input type="hidden" name="employee_id" value={employeeId} />
-              <input type="hidden" name="month" value={monthStr} />
-              <input
-                type="number"
-                name="balance"
-                step="0.25"
-                min="0"
-                defaultValue={result.balanceStart}
-                className="w-20 h-7 rounded-md border border-neutral-300 bg-white px-2 text-sm font-semibold tabular-nums outline-none focus:border-neutral-900"
-              />
-              <span className="text-xs text-neutral-400">ngày</span>
-              <button type="submit" className="h-7 px-2 rounded-md border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50">
-                Lưu
-              </button>
-            </form>
+            <OpeningBalanceEditor
+              employeeId={employeeId}
+              monthStr={monthStr}
+              initialValue={result.balanceStart}
+              action={setOpeningBalance}
+            />
           </div>
         ) : (
           <SummaryCard icon={CalendarOff} label="Phép đầu kỳ" value={`${isFutureMonth ? 0 : formatNum(result.balanceStart)} ngày`} tone="amber" />
