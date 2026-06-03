@@ -20,14 +20,14 @@
 --   FROM leave_balance_log
 --   WHERE event_type = 'accrual'
 --     AND note = 'Cộng phép tháng 2026-05 (tự động)'
---   ORDER BY employee_id, created_at DESC
+--   ORDER BY employee_id, changed_at DESC
 -- ),
 -- t6 AS (
 --   SELECT DISTINCT ON (employee_id) employee_id, balance_after
 --   FROM leave_balance_log
 --   WHERE event_type = 'accrual'
 --     AND note = 'Cộng phép tháng 2026-06 (tự động)'
---   ORDER BY employee_id, created_at DESC
+--   ORDER BY employee_id, changed_at DESC
 -- )
 -- SELECT
 --   e.name, e.email,
@@ -53,14 +53,14 @@ WITH t5 AS (
   FROM leave_balance_log
   WHERE event_type = 'accrual'
     AND note = 'Cộng phép tháng 2026-05 (tự động)'
-  ORDER BY employee_id, created_at DESC
+  ORDER BY employee_id, changed_at DESC
 ),
 t6 AS (
   SELECT DISTINCT ON (employee_id) employee_id, balance_after
   FROM leave_balance_log
   WHERE event_type = 'accrual'
     AND note = 'Cộng phép tháng 2026-06 (tự động)'
-  ORDER BY employee_id, created_at DESC
+  ORDER BY employee_id, changed_at DESC
 ),
 affected AS (
   SELECT
@@ -84,14 +84,14 @@ WITH t5 AS (
   FROM leave_balance_log
   WHERE event_type = 'accrual'
     AND note = 'Cộng phép tháng 2026-05 (tự động)'
-  ORDER BY employee_id, created_at DESC
+  ORDER BY employee_id, changed_at DESC
 ),
 t6 AS (
   SELECT DISTINCT ON (employee_id) employee_id, balance_after
   FROM leave_balance_log
   WHERE event_type = 'accrual'
     AND note = 'Cộng phép tháng 2026-06 (tự động)'
-  ORDER BY employee_id, created_at DESC
+  ORDER BY employee_id, changed_at DESC
 )
 INSERT INTO leave_balance_log (employee_id, delta, balance_after, event_type, note)
 SELECT
