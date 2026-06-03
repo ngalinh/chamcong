@@ -675,26 +675,6 @@ function FulltimeView({
         <SummaryCard icon={CalendarOff} label="Phép cuối kỳ"       value={`${isFutureMonth ? 0 : formatNum(result.balanceEnd)} ngày`}    tone={!isFutureMonth && result.balanceEnd < 0 ? "rose" : "emerald"} />
       </div>
 
-      {editable && !isFutureMonth && (
-        <form action={setOpeningBalance} className="flex items-center gap-2 text-sm">
-          <input type="hidden" name="employee_id" value={employeeId} />
-          <input type="hidden" name="month" value={monthStr} />
-          <span className="text-neutral-500 shrink-0">Sửa phép đầu kỳ:</span>
-          <input
-            type="number"
-            name="balance"
-            step="0.25"
-            min="0"
-            defaultValue={result.balanceStart}
-            className="w-24 h-8 rounded-lg border border-neutral-200 bg-white px-2.5 text-sm outline-none focus:border-neutral-900 tabular-nums"
-          />
-          <span className="text-neutral-400 text-xs">ngày</span>
-          <button type="submit" className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-sm font-medium hover:bg-neutral-50">
-            Lưu
-          </button>
-        </form>
-      )}
-
       {result.salary === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-800 flex items-start gap-2">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
