@@ -4,6 +4,16 @@ import { useState } from "react";
 import { Loader2, Check, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+function formatDisplay(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function parseInput(s: string): number | null {
+  const normalized = s.replace(",", ".");
+  const n = parseFloat(normalized);
+  return isNaN(n) ? null : n;
+}
+
 export default function OpeningBalanceEditor({
   employeeId,
   monthStr,
@@ -15,19 +25,21 @@ export default function OpeningBalanceEditor({
   initialValue: number;
   action: (fd: FormData) => Promise<void> | void;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const [raw, setRaw] = useState(formatDisplay(initialValue));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const dirty = value !== initialValue;
+
+  const parsed = parseInput(raw);
+  const dirty = parsed !== null && parsed !== initialValue;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!dirty) return;
+    if (!dirty || parsed === null) return;
     setSaving(true);
     const fd = new FormData();
     fd.set("employee_id", employeeId);
     fd.set("month", monthStr);
-    fd.set("balance", String(value));
+    fd.set("balance", String(parsed));
     try {
       await action(fd);
       setSaved(true);
@@ -39,17 +51,17 @@ export default function OpeningBalanceEditor({
 
   return (
     <form onSubmit={onSubmit}>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <div className="relative">
           <input
-            type="number"
-            step="0.25"
-            min="0"
-            value={value}
-            onChange={(e) => setValue(Number(e.target.value))}
+            type="text"
+            inputMode="decimal"
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
             className={cn(
-              "h-[34px] w-[96px] rounded-lg border text-right tabular-nums text-[13px] font-semibold outline-none transition px-2.5 pr-8",
-              "border-transparent bg-transparent text-neutral-800",
+              "text-base font-semibold tabular-nums outline-none transition",
+              "w-[72px] rounded-lg border px-2 py-0.5 pr-7",
+              "border-transparent bg-transparent",
               "hover:bg-neutral-100 hover:border-neutral-100",
               "focus:bg-white focus:border-amber-400 focus:ring-2 focus:ring-amber-100",
             )}
@@ -63,27 +75,23 @@ export default function OpeningBalanceEditor({
               type="submit"
               title="Lưu (Enter)"
               onMouseDown={(e) => e.preventDefault()}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md bg-emerald-600 text-white flex items-center justify-center hover:bg-emerald-700"
             >
-              <Check size={12} />
+              <Check size={11} />
             </button>
           ) : saved ? (
-            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Check size={12} />
+            <span className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Check size={11} />
             </span>
           ) : (
             <Pencil
-              size={11}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none"
+              size={10}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-300 pointer-events-none"
             />
           )}
         </div>
-        <span className="text-[10px] text-neutral-400">
-          {saved && !dirty ? (
-            <span className="text-emerald-600 font-semibold">Đã lưu</span>
-          ) : (
-            "ngày"
-          )}
+        <span className="text-base font-semibold tabular-nums text-neutral-700">
+          {saved && !dirty ? <span className="text-sm text-emerald-600 font-medium">Đã lưu</span> : "ngày"}
         </span>
       </div>
     </form>
