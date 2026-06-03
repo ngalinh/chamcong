@@ -193,22 +193,32 @@ export async function computePayrollForMonth(
   }
 
   // Tính balanceStart cho fulltime:
-  //   leave_balance trong DB = balanceStart của tháng last_accrual_month (tháng cuối đã cộng phép).
-  //   Ba trường hợp:
-  //   A) lastAccrual > monthStr (xem tháng cũ): trừ đi số tháng đã cộng phép sau monthStr.
-  //   B) _preventAccrual + lastAccrual < monthStr (tháng này bị bỏ qua vì tháng mới hơn
-  //      được xem trước): cộng bù các tháng bị miss để prevBalanceEnd đúng cho caller.
-  //   C) lastAccrual >= monthStr + không _preventAccrual: dùng leave_balance trực tiếp,
-  //      hoặc chạy accrual nếu lastAccrual < monthStr.
+  //   leave_balance trong DB = balanceStart của tháng last_accrual_month.
+  //   A) lastAccrual > monthStr (xem tháng cũ): tra log accrual của tháng đó.
+  //      Không dùng phép trừ đơn giản vì NV có thể đã nghỉ phép giữa 2 tháng.
+  //   B) _preventAccrual + lastAccrual < monthStr: cộng bù tháng bị skip.
+  //   C) Còn lại: dùng leave_balance trực tiếp hoặc chạy accrual.
   const lastAccrual = employee.last_accrual_month ?? "";
   let balanceStart: number;
 
   if (!isParttime && lastAccrual > monthStr) {
-    // (A) Xem tháng cũ hơn last_accrual_month → trừ lại các tháng đã accrued sau monthStr
-    const [ly, lm] = lastAccrual.split("-").map(Number);
-    const [my, mm] = monthStr.split("-").map(Number);
-    const accrualCount = (ly - my) * 12 + (lm - mm);
-    balanceStart = Math.max(0, Number(employee.leave_balance) - accrualCount);
+    // (A) Xem tháng cũ — tra accrual log của đúng tháng đó để lấy balanceStart chính xác.
+    // Không tính `leave_balance - n` vì phép nghỉ giữa 2 tháng làm lệch kết quả.
+    const { data: logEntry } = await admin
+      .from("leave_balance_log")
+      .select("balance_after")
+      .eq("employee_id", employee.id)
+      .eq("event_type", "accrual")
+      .ilike("note", `%${monthStr}%`)
+      .order("changed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (logEntry) {
+      balanceStart = Number(logEntry.balance_after);
+    } else {
+      // Không có log cho tháng này (chưa bao giờ accrued riêng) — fallback leave_balance
+      balanceStart = Number(employee.leave_balance);
+    }
   } else if (!isParttime && _preventAccrual && lastAccrual < monthStr) {
     // (B) _preventAccrual mode nhưng tháng này chưa accrued (bị bỏ qua): cộng bù
     const [ly, lm] = lastAccrual ? lastAccrual.split("-").map(Number) : [0, 0];
