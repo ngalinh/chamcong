@@ -193,13 +193,35 @@ export async function computePayrollForMonth(
   }
 
   // Tính balanceStart cho fulltime:
-  //   Nếu monthStr > last_accrual_month → cần cộng phép mới.
-  //   Công thức đúng: balanceStart(M) = balanceEnd(M-1) + 1,
-  //   chứ KHÔNG chỉ cộng +1 vào DB leave_balance (vì DB chưa trừ phép đã nghỉ).
-  //   Chỉ cộng +1 khi today >= ngày 1 của tháng M (tháng đó đã bắt đầu).
-  //   _preventAccrual = true khi đang tính M-1 phục vụ cho M → tránh đệ quy.
+  //   leave_balance trong DB = balanceStart của tháng last_accrual_month (tháng cuối đã cộng phép).
+  //   Ba trường hợp:
+  //   A) lastAccrual > monthStr (xem tháng cũ): trừ đi số tháng đã cộng phép sau monthStr.
+  //   B) _preventAccrual + lastAccrual < monthStr (tháng này bị bỏ qua vì tháng mới hơn
+  //      được xem trước): cộng bù các tháng bị miss để prevBalanceEnd đúng cho caller.
+  //   C) lastAccrual >= monthStr + không _preventAccrual: dùng leave_balance trực tiếp,
+  //      hoặc chạy accrual nếu lastAccrual < monthStr.
   const lastAccrual = employee.last_accrual_month ?? "";
-  let balanceStart = Number(employee.leave_balance);
+  let balanceStart: number;
+
+  if (!isParttime && lastAccrual > monthStr) {
+    // (A) Xem tháng cũ hơn last_accrual_month → trừ lại các tháng đã accrued sau monthStr
+    const [ly, lm] = lastAccrual.split("-").map(Number);
+    const [my, mm] = monthStr.split("-").map(Number);
+    const accrualCount = (ly - my) * 12 + (lm - mm);
+    balanceStart = Math.max(0, Number(employee.leave_balance) - accrualCount);
+  } else if (!isParttime && _preventAccrual && lastAccrual < monthStr) {
+    // (B) _preventAccrual mode nhưng tháng này chưa accrued (bị bỏ qua): cộng bù
+    const [ly, lm] = lastAccrual ? lastAccrual.split("-").map(Number) : [0, 0];
+    const [my, mm] = monthStr.split("-").map(Number);
+    const missedMonths = lastAccrual ? (my - ly) * 12 + (mm - lm) : 1;
+    const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
+    const canAccrue = new Date().toISOString() >= monthStartIso && employee.created_at < monthStartIso;
+    balanceStart = canAccrue
+      ? Number(employee.leave_balance) + missedMonths
+      : Number(employee.leave_balance);
+  } else {
+    balanceStart = Number(employee.leave_balance);
+  }
 
   if (!isParttime && !_preventAccrual && lastAccrual < monthStr) {
     const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
