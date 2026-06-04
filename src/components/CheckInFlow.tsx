@@ -80,6 +80,26 @@ export default function CheckInFlow({
   }, [router, stopCamera]);
 
   async function run() {
+    // Pre-arm video trong gesture context — TRƯỚC mọi await.
+    // iOS 17+ yêu cầu user gesture cho camera stream play().
+    // Sau await getCurrentCoords()/getUserMedia(), gesture đã hết hạn → play() bị block.
+    // Workaround: play() một canvas 1×1 (không cần camera, không cần gesture đặc biệt)
+    // ngay trong click handler để "đánh dấu" element này đã được gesture cho phép.
+    // Khi srcObject đổi sang camera stream sau đó, iOS giữ lại permission này.
+    {
+      const vPre = videoRef.current;
+      if (vPre && !vPre.srcObject) {
+        const dummy = document.createElement("canvas");
+        dummy.width = 1; dummy.height = 1;
+        type CS = HTMLCanvasElement & { captureStream?: () => MediaStream };
+        const cap = (dummy as CS).captureStream;
+        if (cap) {
+          vPre.srcObject = cap.call(dummy);
+          vPre.play().catch(() => {});
+        }
+      }
+    }
+
     setError(null);
     setScore(null);
     setMatchedOffice(null);
@@ -130,6 +150,9 @@ export default function CheckInFlow({
         return;
       }
       const v = videoRef.current!;
+      // Dừng dummy canvas stream (pre-arm) trước khi gán camera stream
+      const prevStream = v.srcObject as MediaStream | null;
+      if (prevStream) prevStream.getTracks().forEach((t) => t.stop());
       v.srcObject = stream;
 
       // Hiện camera NGAY sau khi có stream — TRƯỚC cả play() và event registration.
