@@ -161,6 +161,10 @@ export default function CheckInFlow({
       const v = videoRef.current!;
       v.srcObject = stream;
       setCameraVisible(true);
+      // Gọi play() ngay sau khi attach stream — càng gần getUserMedia callback càng tốt
+      // để tận dụng user-gesture context (iOS có thể expire gesture sau vài giây await).
+      v.play().catch(() => {});
+      const cameraAttachedAt = Date.now();
 
       // requestVideoFrameCallback có timeout — không bao giờ treo vô hạn.
       type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
@@ -189,11 +193,8 @@ export default function CheckInFlow({
       const cameraReady = await new Promise<boolean>((resolve) => {
         let settled = false;
         let streamReadyAt: number | null = null;
-        // Track whether getImageData works on this device/browser.
-        // On some iOS versions (14-15), getUserMedia streams taint the canvas
-        // and getImageData throws SecurityError. If that happens, we fall back
-        // to a time-based wait instead of immediately proceeding with a black frame.
         let pixelSampleWorking = true;
+        let lastPlayRetry = 0;
 
         const finish = (ok: boolean) => {
           if (settled) return;
@@ -208,6 +209,23 @@ export default function CheckInFlow({
         const timer = setTimeout(() => finish(false), 12000);
 
         const poll = setInterval(() => {
+          const now = Date.now();
+
+          // Retry play() mỗi 1.5s nếu video vẫn paused — play() đầu có thể fail
+          // silently do iOS gesture context hoặc stream chưa sẵn sàng.
+          if (v.paused && now - lastPlayRetry > 1500) {
+            lastPlayRetry = now;
+            v.play().catch(() => {});
+          }
+
+          // Fast-fail: nếu sau 5s stream vẫn rs=0 + 0x0 → stream "chết" (track không
+          // produce data, thường do iOS camera bị lock bởi process khác). Fail nhanh
+          // để caller có thể retry getUserMedia thay vì đợi 12s vô ích.
+          if (now - cameraAttachedAt > 5000 && v.readyState === 0 && !v.videoWidth) {
+            finish(false);
+            return;
+          }
+
           // Phase 1: chờ stream có metadata (dimension)
           if (!v.videoWidth || v.readyState < 2) return;
           if (!streamReadyAt) streamReadyAt = Date.now();
@@ -225,37 +243,81 @@ export default function CheckInFlow({
               const d = sampleCtx.getImageData(0, 0, 16, 16).data;
               for (let i = 0; i < d.length; i += 4) {
                 if (d[i] > 20 || d[i + 1] > 20 || d[i + 2] > 20) {
-                  finish(true); // camera có pixel thật
+                  finish(true);
                   return;
                 }
               }
             } catch {
-              // SecurityError hoặc lỗi khác khi sample — KHÔNG proceed ngay.
-              // Mark sampling as broken; dùng time-based fallback thay vì bỏ qua warm-up.
               pixelSampleWorking = false;
             }
           }
 
-          // Time-based fallback:
-          // • Sampling hoạt động nhưng frame vẫn đen → 5s (phòng tối hoặc HW warm-up chậm)
-          // • Sampling bị lỗi (SecurityError) → 2s tối thiểu (không biết trạng thái camera)
+          // Time-based fallback
           const maxWait = pixelSampleWorking ? 5000 : 2000;
           if (elapsed > maxWait) finish(true);
         }, 200);
 
         v.onplaying = () => { if (!streamReadyAt) streamReadyAt = Date.now(); };
         v.oncanplay = () => { if (!streamReadyAt) streamReadyAt = Date.now(); };
-        v.play().catch(() => {});
+        // Note: v.play() đã được gọi trước promise này
       });
       if (cancelledRef.current) return;
 
       if (!cameraReady) {
-        throw new Error(
-          "Camera không khởi động được. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại.",
-        );
+        // Stream "chết" (rs=0, 0x0) — iOS camera bị lock bởi process khác, hoặc
+        // play() fail do timing. Dừng stream hiện tại và thử lại với constraint tối giản.
+        const isDeadStream = v.readyState === 0 && !v.videoWidth;
+        if (!isDeadStream) {
+          throw new Error(
+            "Camera không khởi động được. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại.",
+          );
+        }
+
+        stream.getTracks().forEach((t) => t.stop());
+        v.srcObject = null;
+        setMessage("Camera chưa phản hồi, đang thử lại...");
+        await new Promise((r) => setTimeout(r, 1000));
+        if (cancelledRef.current) return;
+
+        let retryStream: MediaStream;
+        try {
+          // Dùng constraint tối giản — bỏ facingMode/resolution để iOS không reject
+          retryStream = await Promise.race([
+            navigator.mediaDevices.getUserMedia({ video: true, audio: false }),
+            new Promise<MediaStream>((_, reject) =>
+              setTimeout(() => reject(new Error("timeout")), 10000),
+            ),
+          ]);
+        } catch {
+          throw new Error(
+            "Camera không phản hồi. Thử: mở app Camera gốc rồi đóng lại, sau đó thử lại. Nếu vẫn lỗi — tắt nguồn điện thoại hoàn toàn và bật lại.",
+          );
+        }
+
+        v.srcObject = retryStream;
+        v.play().catch(() => {});
+
+        // Chờ retry stream có data (8s)
+        const retryOk = await new Promise<boolean>((resolve) => {
+          const t = setTimeout(() => resolve(false), 8000);
+          const iv = setInterval(() => {
+            if (v.paused) v.play().catch(() => {});
+            if (v.videoWidth && v.readyState >= 2) {
+              clearTimeout(t); clearInterval(iv); resolve(true);
+            }
+          }, 200);
+        });
+        if (cancelledRef.current) return;
+
+        if (!retryOk) {
+          throw new Error(
+            "Camera vẫn không phản hồi sau khi thử lại. Tắt nguồn điện thoại hoàn toàn (không chỉ sleep) và bật lại.",
+          );
+        }
+        // retryStream đang hoạt động — tiếp tục bình thường
       }
 
-      // Pixel sampling có thể resolve qua 4s timeout khi camera vẫn đen (play() failed
+      // Pixel sampling có thể resolve qua timeout khi camera vẫn đen (play() failed
       // silent hoặc hardware stuck). Thử play() lại; muted+playsInline không cần gesture.
       if (v.paused) {
         try { await v.play(); } catch {}
