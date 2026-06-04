@@ -115,7 +115,9 @@ export default function CheckInFlow({
       // mà OS không re-prompt; fail nhanh để hiển thị lỗi cho user.
       const stream = await Promise.race([
         navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 640 } },
+          // facingMode ideal (soft constraint) thay vì hard — nếu front camera momentarily
+          // busy thì fallback về bất kỳ camera nào thay vì reject hoàn toàn.
+          video: { facingMode: { ideal: "user" }, width: { ideal: 480 }, height: { ideal: 640 } },
           audio: false,
         }),
         new Promise<MediaStream>((_, reject) =>
@@ -214,11 +216,23 @@ export default function CheckInFlow({
         );
       }
 
+      // Pixel sampling có thể resolve qua 4s timeout khi camera vẫn đen (play() failed
+      // silent hoặc hardware stuck). Thử play() lại; muted+playsInline không cần gesture.
+      if (v.paused) {
+        try { await v.play(); } catch {}
+        await new Promise((r) => setTimeout(r, 500));
+        if (cancelledRef.current) return;
+      }
+
       await waitFrame(2000);
 
       setMessage("Đang tải mô hình nhận diện...");
       await loadFaceModels();
       if (cancelledRef.current) return;
+
+      // iOS có thể pause camera stream trong khi loadFaceModels chạy nặng (WebGL compile).
+      // Kiểm tra và resume trước khi bắt đầu nhận diện.
+      if (v.paused) { v.play().catch(() => {}); }
 
       goStep("match");
       setMessage("Nhìn thẳng vào camera...");
@@ -228,6 +242,8 @@ export default function CheckInFlow({
 
       while (Date.now() < deadline && framesWithFace < 2) {
         if (cancelledRef.current) return;
+        // Nếu camera bị pause giữa chừng (iOS background/interrupt), resume ngay
+        if (v.paused) { v.play().catch(() => {}); }
         const result = await detectDescriptor(v);
         if (cancelledRef.current) return;
         if (result) {
@@ -329,19 +345,23 @@ export default function CheckInFlow({
     <main className="relative min-h-dvh bg-neutral-950 text-white overflow-hidden">
       {/* Background video (mirrored selfie) */}
       <div className="absolute inset-0">
-        <video
-          ref={videoRef}
-          playsInline
-          autoPlay
-          muted
-          className={cn(
-            // object-contain giữ nguyên tỉ lệ camera, không crop/zoom.
-            // object-cover buộc scale up để phủ màn hình → mặt to gấp ~1.5–1.75×
-            // (đặc biệt khi camera trả về landscape stream trên màn hình portrait).
-            "h-full w-full object-contain scale-x-[-1] transition-opacity duration-500",
-            cameraVisible ? "opacity-100" : "opacity-0",
-          )}
-        />
+        {/*
+          scale-x-[-1] đặt trên wrapper div, KHÔNG trên <video> trực tiếp.
+          iOS Safari bug: CSS transform trên video element gây black render do GPU
+          compositor conflict với live camera stream. Wrapper div tránh được issue này.
+        */}
+        <div className="h-full w-full scale-x-[-1]">
+          <video
+            ref={videoRef}
+            playsInline
+            autoPlay
+            muted
+            className={cn(
+              "h-full w-full object-contain transition-opacity duration-500",
+              cameraVisible ? "opacity-100" : "opacity-0",
+            )}
+          />
+        </div>
         <canvas ref={canvasRef} className="hidden" />
         {/* Subtle gradient overlay for text legibility */}
         <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.5), transparent, rgba(0,0,0,0.7))" }} />
