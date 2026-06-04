@@ -132,13 +132,17 @@ export default function CheckInFlow({
       const v = videoRef.current!;
       v.srcObject = stream;
 
-      // requestVideoFrameCallback fires khi frame đã vào GPU compositor.
-      // QUAN TRỌNG: luôn có timeout — trên iOS PWA, callback KHÔNG fire nếu
-      // element chưa được composit (opacity:0 có thể bị GPU optimizer bỏ qua).
+      // Hiện camera NGAY sau khi có stream — TRƯỚC cả play() và event registration.
+      // iOS WKWebView (cả PWA lẫn Safari) không fire playing/canplay cho element
+      // opacity:0 vì compositor không đưa element vào render pipeline.
+      // → Phải visible trước, rồi mới play/detect events.
+      setCameraVisible(true);
+
+      // requestVideoFrameCallback có timeout — không bao giờ treo vô hạn.
       type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
-      const waitFrame = (timeoutMs = 3000) =>
+      const waitFrame = (timeoutMs = 2000) =>
         new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, timeoutMs); // fallback: không treo vô tận
+          const timer = setTimeout(resolve, timeoutMs);
           const ext = v as RVFC;
           if (ext.requestVideoFrameCallback) {
             ext.requestVideoFrameCallback(() => { clearTimeout(timer); resolve(); });
@@ -148,41 +152,38 @@ export default function CheckInFlow({
           }
         });
 
-      // Đợi frame thật sự xuất hiện (playing event) thay vì play() promise.
-      // play() resolve ngay khi browser *bắt đầu* play, nhưng GPU buffer có thể
-      // chưa có pixel → màn đen. playing/canplay đảm bảo data đã decode.
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(
-          () => { cleanup(); reject(new Error("Camera không hiển thị được. Thử lại.")); },
-          12000,
-        );
-        const cleanup = () => {
+      // Đợi camera sẵn sàng: kết hợp events + polling readyState.
+      // Chỉ dùng events không đủ — iOS hay không fire đúng lúc.
+      // Polling 200ms check readyState >= HAVE_FUTURE_DATA (3) hoặc videoWidth > 0.
+      const cameraReady = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
           clearTimeout(timer);
+          clearInterval(poll);
           v.onplaying = null;
           v.oncanplay = null;
+          resolve(ok);
         };
-        v.onplaying = () => { cleanup(); resolve(); };
-        // canplay làm fallback — một số trình duyệt không fire playing ngay
-        v.oncanplay = () => { cleanup(); resolve(); };
-        v.play().catch((err: unknown) => { cleanup(); reject(err); });
+        const timer = setTimeout(() => finish(false), 10000);
+        const poll = setInterval(() => {
+          if (v.readyState >= 3 || v.videoWidth > 0) finish(true);
+        }, 200);
+        v.onplaying = () => finish(true);
+        v.oncanplay = () => finish(true);
+        v.play().catch(() => finish(false));
       });
       if (cancelledRef.current) return;
 
-      // Hiển thị camera TRƯỚC khi gọi waitFrame — iOS PWA bắt buộc element phải
-      // được composite (visible) thì requestVideoFrameCallback mới fire được.
-      // Nếu để opacity:0 rồi mới waitFrame → deadlock: callback không bao giờ fire,
-      // setCameraVisible(true) không bao giờ được gọi → màn đen vĩnh viễn.
-      setCameraVisible(true);
-      await waitFrame(3000); // timeout 3s: nếu không có frame thì vẫn tiếp tục
-      if (cancelledRef.current) return;
-
-      // Kiểm tra camera thực sự cung cấp frame — phát hiện "silent fail" trên iOS
-      // (stream active, playing event fired, nhưng hardware không cung cấp pixel)
-      if (!v.videoWidth) {
+      if (!cameraReady || !v.videoWidth) {
         throw new Error(
-          "Camera không cung cấp được hình ảnh. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại thử.",
+          "Camera không khởi động được. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại.",
         );
       }
+
+      // Chờ 1 frame vào GPU trước khi face detection để tránh phân tích frame đen
+      await waitFrame(2000);
 
       setMessage("Đang tải mô hình nhận diện...");
       await loadFaceModels();
