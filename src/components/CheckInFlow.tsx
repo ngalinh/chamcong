@@ -55,6 +55,33 @@ export default function CheckInFlow({
   // Tách biệt "đang ở bước camera" vs "video đã có frame thật" để tránh flash màn đen
   const [cameraVisible, setCameraVisible] = useState(false);
 
+  // ---- DEBUG overlay (tạm thời để chẩn đoán black camera) ----
+  const [dbg, setDbg] = useState<string | null>(null);
+  const dbgStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!cameraVisible) { setDbg(null); dbgStartRef.current = null; return; }
+    if (!dbgStartRef.current) dbgStartRef.current = Date.now();
+    const iv = setInterval(() => {
+      const v = videoRef.current;
+      if (!v) return;
+      const t = ((Date.now() - dbgStartRef.current!) / 1000).toFixed(1);
+      let px = "N/A", pxErr = "";
+      try {
+        const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+        const ctx = c.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(v, 0, 0, 8, 8);
+          const d = ctx.getImageData(0, 0, 8, 8).data;
+          let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i+1] + d[i+2];
+          px = `avg=${Math.round(s / (d.length / 4 * 3))} rgb(${d[0]},${d[1]},${d[2]})`;
+        }
+      } catch (e) { pxErr = ` ERR:${e instanceof Error ? e.name : "?"}` ; }
+      setDbg(`t=${t}s rs=${v.readyState} ${v.videoWidth}x${v.videoHeight} ${v.paused?"PAUSED":"play"}\npx: ${px}${pxErr}`);
+    }, 500);
+    return () => clearInterval(iv);
+  }, [cameraVisible]);
+  // ---- end DEBUG ----
+
   const stopCamera = useCallback(() => {
     const v = videoRef.current;
     const stream = v?.srcObject as MediaStream | null;
@@ -406,6 +433,13 @@ export default function CheckInFlow({
       <div className="absolute top-20 inset-x-0 flex justify-center z-10">
         <StatusPill step={step} message={message} />
       </div>
+
+      {/* DEBUG overlay — xoá sau khi chẩn đoán xong */}
+      {dbg && (
+        <div className="absolute bottom-52 inset-x-2 z-20 bg-black/85 rounded-lg p-2 font-mono text-[11px] text-green-300 whitespace-pre-wrap pointer-events-none">
+          {dbg}
+        </div>
+      )}
 
       {/* Bottom content */}
       <div className="absolute bottom-0 inset-x-0 pb-safe px-safe pt-8 z-10">
