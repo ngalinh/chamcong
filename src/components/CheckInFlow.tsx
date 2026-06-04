@@ -80,26 +80,6 @@ export default function CheckInFlow({
   }, [router, stopCamera]);
 
   async function run() {
-    // Pre-arm video trong gesture context — TRƯỚC mọi await.
-    // iOS 17+ yêu cầu user gesture cho camera stream play().
-    // Sau await getCurrentCoords()/getUserMedia(), gesture đã hết hạn → play() bị block.
-    // Workaround: play() một canvas 1×1 (không cần camera, không cần gesture đặc biệt)
-    // ngay trong click handler để "đánh dấu" element này đã được gesture cho phép.
-    // Khi srcObject đổi sang camera stream sau đó, iOS giữ lại permission này.
-    {
-      const vPre = videoRef.current;
-      if (vPre && !vPre.srcObject) {
-        const dummy = document.createElement("canvas");
-        dummy.width = 1; dummy.height = 1;
-        type CS = HTMLCanvasElement & { captureStream?: () => MediaStream };
-        const cap = (dummy as CS).captureStream;
-        if (cap) {
-          vPre.srcObject = cap.call(dummy);
-          vPre.play().catch(() => {});
-        }
-      }
-    }
-
     setError(null);
     setScore(null);
     setMatchedOffice(null);
@@ -150,15 +130,7 @@ export default function CheckInFlow({
         return;
       }
       const v = videoRef.current!;
-      // Dừng dummy canvas stream (pre-arm) trước khi gán camera stream
-      const prevStream = v.srcObject as MediaStream | null;
-      if (prevStream) prevStream.getTracks().forEach((t) => t.stop());
       v.srcObject = stream;
-
-      // Hiện camera NGAY sau khi có stream — TRƯỚC cả play() và event registration.
-      // iOS WKWebView (cả PWA lẫn Safari) không fire playing/canplay cho element
-      // opacity:0 vì compositor không đưa element vào render pipeline.
-      // → Phải visible trước, rồi mới play/detect events.
       setCameraVisible(true);
 
       // requestVideoFrameCallback có timeout — không bao giờ treo vô hạn.
@@ -175,11 +147,20 @@ export default function CheckInFlow({
           }
         });
 
-      // Đợi camera sẵn sàng: kết hợp events + polling readyState.
-      // Chỉ dùng events không đủ — iOS hay không fire đúng lúc.
-      // Polling 200ms check readyState >= HAVE_FUTURE_DATA (3) hoặc videoWidth > 0.
+      // Đợi camera có pixel thật — không chỉ readyState.
+      // iOS camera sensor cần 300-1500ms warm-up sau khi stream attach: trong thời gian
+      // đó readyState đã >= 3 nhưng toàn bộ frame vẫn đen → face detection fail.
+      // Polling sample 16×16 pixel ở giữa: nếu thấy bất kỳ pixel nào sáng (> 20/255)
+      // thì camera thật sự đã sẵn sàng. Nếu sau 4s vẫn đen → có thể phòng tối / hardware
+      // issue → proceed anyway để face detection báo lỗi cụ thể hơn.
+      const sampleCanvas = document.createElement("canvas");
+      sampleCanvas.width = 16; sampleCanvas.height = 16;
+      const sampleCtx = sampleCanvas.getContext("2d");
+
       const cameraReady = await new Promise<boolean>((resolve) => {
         let settled = false;
+        let streamReadyAt: number | null = null;
+
         const finish = (ok: boolean) => {
           if (settled) return;
           settled = true;
@@ -189,23 +170,50 @@ export default function CheckInFlow({
           v.oncanplay = null;
           resolve(ok);
         };
-        const timer = setTimeout(() => finish(false), 10000);
+
+        const timer = setTimeout(() => finish(false), 12000);
+
         const poll = setInterval(() => {
-          if (v.readyState >= 3 || v.videoWidth > 0) finish(true);
+          // Phase 1: chờ stream có metadata (dimension)
+          if (!v.videoWidth || v.readyState < 2) return;
+          if (!streamReadyAt) streamReadyAt = Date.now();
+
+          // Phase 2: sample pixel để phát hiện warm-up xong
+          if (sampleCtx) {
+            try {
+              sampleCtx.drawImage(v, 0, 0, 16, 16);
+              const d = sampleCtx.getImageData(0, 0, 16, 16).data;
+              for (let i = 0; i < d.length; i += 4) {
+                if (d[i] > 20 || d[i + 1] > 20 || d[i + 2] > 20) {
+                  finish(true); // camera có pixel thật
+                  return;
+                }
+              }
+            } catch {
+              finish(true); // không sample được → tiếp tục
+              return;
+            }
+          } else {
+            finish(true); // không có ctx → tiếp tục
+            return;
+          }
+
+          // Vẫn đen sau 4s → phòng tối hoặc hardware issue → tiếp tục anyway
+          if (Date.now() - streamReadyAt > 4000) finish(true);
         }, 200);
-        v.onplaying = () => finish(true);
-        v.oncanplay = () => finish(true);
-        v.play().catch(() => finish(false));
+
+        v.onplaying = () => { if (!streamReadyAt) streamReadyAt = Date.now(); };
+        v.oncanplay = () => { if (!streamReadyAt) streamReadyAt = Date.now(); };
+        v.play().catch(() => {});
       });
       if (cancelledRef.current) return;
 
-      if (!cameraReady || !v.videoWidth) {
+      if (!cameraReady) {
         throw new Error(
           "Camera không khởi động được. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại.",
         );
       }
 
-      // Chờ 1 frame vào GPU trước khi face detection để tránh phân tích frame đen
       await waitFrame(2000);
 
       setMessage("Đang tải mô hình nhận diện...");
