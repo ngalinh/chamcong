@@ -162,6 +162,11 @@ export default function CheckInFlow({
       const cameraReady = await new Promise<boolean>((resolve) => {
         let settled = false;
         let streamReadyAt: number | null = null;
+        // Track whether getImageData works on this device/browser.
+        // On some iOS versions (14-15), getUserMedia streams taint the canvas
+        // and getImageData throws SecurityError. If that happens, we fall back
+        // to a time-based wait instead of immediately proceeding with a black frame.
+        let pixelSampleWorking = true;
 
         const finish = (ok: boolean) => {
           if (settled) return;
@@ -180,8 +185,14 @@ export default function CheckInFlow({
           if (!v.videoWidth || v.readyState < 2) return;
           if (!streamReadyAt) streamReadyAt = Date.now();
 
+          const elapsed = Date.now() - streamReadyAt;
+
+          // Bắt buộc chờ ít nhất 600ms sau khi stream có dimension — sensor cần thời gian
+          // khởi động: iOS camera thường produce all-black frame trong ~300-800ms đầu.
+          if (elapsed < 600) return;
+
           // Phase 2: sample pixel để phát hiện warm-up xong
-          if (sampleCtx) {
+          if (sampleCtx && pixelSampleWorking) {
             try {
               sampleCtx.drawImage(v, 0, 0, 16, 16);
               const d = sampleCtx.getImageData(0, 0, 16, 16).data;
@@ -192,16 +203,17 @@ export default function CheckInFlow({
                 }
               }
             } catch {
-              finish(true); // không sample được → tiếp tục
-              return;
+              // SecurityError hoặc lỗi khác khi sample — KHÔNG proceed ngay.
+              // Mark sampling as broken; dùng time-based fallback thay vì bỏ qua warm-up.
+              pixelSampleWorking = false;
             }
-          } else {
-            finish(true); // không có ctx → tiếp tục
-            return;
           }
 
-          // Vẫn đen sau 4s → phòng tối hoặc hardware issue → tiếp tục anyway
-          if (Date.now() - streamReadyAt > 4000) finish(true);
+          // Time-based fallback:
+          // • Sampling hoạt động nhưng frame vẫn đen → 5s (phòng tối hoặc HW warm-up chậm)
+          // • Sampling bị lỗi (SecurityError) → 2s tối thiểu (không biết trạng thái camera)
+          const maxWait = pixelSampleWorking ? 5000 : 2000;
+          if (elapsed > maxWait) finish(true);
         }, 200);
 
         v.onplaying = () => { if (!streamReadyAt) streamReadyAt = Date.now(); };
