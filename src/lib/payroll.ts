@@ -7,7 +7,7 @@ const HEAVY_LATE_THRESHOLD = 30;      // late > 30p → heavy (KHÔNG miễn ph�
 const HEAVY_BLOCK_MINUTES = 15;       // mỗi block 15p phụ trội bị tính lương
 const ONLINE_WFH_FREE_DAYS = 3;       // 3 ngày online_wfh đầu/tháng miễn phí
 const ONLINE_WFH_PHEP_RATIO = 0.5;    // 1 ngày online vượt = 0.5 phép
-const HOURS_PER_WORKDAY = 8;
+const HOURS_PER_WORKDAY = 7.5;
 
 function heavyLatePenalty(lateMinutes: number, hourRate: number): number {
   const beyondMin = Math.max(0, lateMinutes - HEAVY_LATE_THRESHOLD);
