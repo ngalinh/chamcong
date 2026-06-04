@@ -132,14 +132,20 @@ export default function CheckInFlow({
       const v = videoRef.current!;
       v.srcObject = stream;
 
-      // requestVideoFrameCallback fires khi frame đã vào GPU compositor (= pixel thật trên màn).
-      // Dùng chung ở cả display lẫn capture để tránh màn đen / ảnh đen.
+      // requestVideoFrameCallback fires khi frame đã vào GPU compositor.
+      // QUAN TRỌNG: luôn có timeout — trên iOS PWA, callback KHÔNG fire nếu
+      // element chưa được composit (opacity:0 có thể bị GPU optimizer bỏ qua).
       type RVFC = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
-      const waitFrame = () =>
+      const waitFrame = (timeoutMs = 3000) =>
         new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, timeoutMs); // fallback: không treo vô tận
           const ext = v as RVFC;
-          if (ext.requestVideoFrameCallback) ext.requestVideoFrameCallback(() => resolve());
-          else requestAnimationFrame(() => resolve());
+          if (ext.requestVideoFrameCallback) {
+            ext.requestVideoFrameCallback(() => { clearTimeout(timer); resolve(); });
+          } else {
+            clearTimeout(timer);
+            requestAnimationFrame(() => resolve());
+          }
         });
 
       // Đợi frame thật sự xuất hiện (playing event) thay vì play() promise.
@@ -162,12 +168,21 @@ export default function CheckInFlow({
       });
       if (cancelledRef.current) return;
 
-      // Đợi thêm 1 frame vào GPU compositor sau playing event —
-      // playing/canplay có thể fire trước khi pixel thật xuất hiện trên màn
-      // (đặc biệt trên PWA iOS do WKWebView resume từ suspended state).
-      // +33ms max (1 frame @ 30fps), không cảm nhận được nhưng loại hết flash đen.
-      await waitFrame();
+      // Hiển thị camera TRƯỚC khi gọi waitFrame — iOS PWA bắt buộc element phải
+      // được composite (visible) thì requestVideoFrameCallback mới fire được.
+      // Nếu để opacity:0 rồi mới waitFrame → deadlock: callback không bao giờ fire,
+      // setCameraVisible(true) không bao giờ được gọi → màn đen vĩnh viễn.
       setCameraVisible(true);
+      await waitFrame(3000); // timeout 3s: nếu không có frame thì vẫn tiếp tục
+      if (cancelledRef.current) return;
+
+      // Kiểm tra camera thực sự cung cấp frame — phát hiện "silent fail" trên iOS
+      // (stream active, playing event fired, nhưng hardware không cung cấp pixel)
+      if (!v.videoWidth) {
+        throw new Error(
+          "Camera không cung cấp được hình ảnh. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại thử.",
+        );
+      }
 
       setMessage("Đang tải mô hình nhận diện...");
       await loadFaceModels();
@@ -209,8 +224,8 @@ export default function CheckInFlow({
       }
       if (!v.videoWidth) throw new Error("Camera chưa sẵn sàng, vui lòng thử lại.");
 
-      await waitFrame();
-      await waitFrame();
+      await waitFrame(2000);
+      await waitFrame(2000);
 
       const canvas = canvasRef.current!;
       // Cap 480px max chiều dài lớn nhất + quality 0.7 → ~12-25KB/ảnh thay vì
@@ -229,8 +244,8 @@ export default function CheckInFlow({
         if (sample[i] > 8 || sample[i + 1] > 8 || sample[i + 2] > 8) { isBlack = false; break; }
       }
       if (isBlack) {
-        await waitFrame();
-        await waitFrame();
+        await waitFrame(2000);
+        await waitFrame(2000);
         ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       }
 
