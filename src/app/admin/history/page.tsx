@@ -208,6 +208,13 @@ async function updateCheckIn(formData: FormData) {
     .eq("id", id);
   if (error) throw new Error(error.message);
 
+  // Invalidate payroll snapshot tháng đó
+  await admin
+    .from("payroll_snapshots")
+    .delete()
+    .eq("employee_id", ci.employee_id)
+    .eq("year_month", dateStr.slice(0, 7));
+
   revalidatePath("/admin/history");
   revalidatePath("/admin");
   revalidatePath("/history");
@@ -290,6 +297,13 @@ async function createManualCheckIn(formData: FormData) {
     edit_reason: reason,
   });
   if (error) throw new Error(error.message);
+
+  // Invalidate payroll snapshot tháng đó để bảng lương recompute từ check-in mới
+  await admin
+    .from("payroll_snapshots")
+    .delete()
+    .eq("employee_id", employeeId)
+    .eq("year_month", dateStr.slice(0, 7));
 
   revalidatePath("/admin/history");
   revalidatePath("/admin");
