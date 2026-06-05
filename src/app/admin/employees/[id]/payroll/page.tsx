@@ -74,6 +74,42 @@ async function excuseAbsence(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function restoreAbsence(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const date = String(formData.get("absence_date") ?? "");
+  if (!employeeId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error("Dữ liệu không hợp lệ");
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("excused_absences")
+    .delete()
+    .eq("employee_id", employeeId)
+    .eq("absence_date", date);
+  if (error) throw new Error(error.message);
+
+  const ym = date.slice(0, 7);
+  await admin
+    .from("payroll_snapshots")
+    .delete()
+    .eq("employee_id", employeeId)
+    .eq("year_month", ym);
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 async function setLeaveWageOverride(formData: FormData) {
   "use server";
   const supabase = await createClient();
@@ -340,6 +376,18 @@ export default async function PayrollPage({
   const adjustments = (adjustmentsRaw ?? []) as { id: string; label: string; amount: number }[];
   const adjustmentsTotal = adjustments.reduce((s, a) => s + Number(a.amount), 0);
 
+  // Excused absences tháng này (để hiện nút Khôi phục)
+  const dayStart = `${monthStr}-01`;
+  const dayEnd = `${ym.month === 12 ? ym.year + 1 : ym.year}-${String(ym.month === 12 ? 1 : ym.month + 1).padStart(2, "0")}-01`;
+  const { data: excusedRaw } = await admin
+    .from("excused_absences")
+    .select("id, absence_date, reason")
+    .eq("employee_id", emp.id)
+    .gte("absence_date", dayStart)
+    .lt("absence_date", dayEnd)
+    .order("absence_date");
+  const excusedAbsences = (excusedRaw ?? []) as { id: string; absence_date: string; reason: string | null }[];
+
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
   const next = ym.month === 12 ? { y: ym.year + 1, m: 1 } : { y: ym.year, m: ym.month + 1 };
@@ -433,6 +481,8 @@ export default async function PayrollPage({
         addAdjustment={addPayrollAdjustment}
         removeAdjustment={removePayrollAdjustment}
         setOpeningBalance={setOpeningBalance}
+        excusedAbsences={excusedAbsences}
+        restoreAbsence={restoreAbsence}
       />
     </div>
   );
@@ -604,6 +654,8 @@ function ParttimeView({
 // =============================================================================
 // FULLTIME VIEW
 // =============================================================================
+type ExcusedAbsence = { id: string; absence_date: string; reason: string | null };
+
 function FulltimeView({
   result,
   monthStr,
@@ -617,6 +669,8 @@ function FulltimeView({
   addAdjustment,
   removeAdjustment,
   setOpeningBalance,
+  excusedAbsences,
+  restoreAbsence,
 }: {
   result: PayrollResult;
   monthStr: string;
@@ -630,6 +684,8 @@ function FulltimeView({
   addAdjustment: AdjustmentAction;
   removeAdjustment: AdjustmentAction;
   setOpeningBalance: AdjustmentAction;
+  excusedAbsences: ExcusedAbsence[];
+  restoreAbsence: AdjustmentAction;
 }) {
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -704,12 +760,14 @@ function FulltimeView({
       )}
       {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} />}
       {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} />}
-      {!isFutureMonth && result.missingDays.length > 0 && (
+      {!isFutureMonth && (result.missingDays.length > 0 || excusedAbsences.length > 0) && (
         <MissingDaysSection
           missingDays={result.missingDays}
           dayRate={result.dayRate}
           employeeId={employeeId}
           editable={editable}
+          excusedAbsences={excusedAbsences}
+          restoreAbsence={restoreAbsence}
         />
       )}
 
@@ -900,12 +958,17 @@ function MissingDaysSection({
   dayRate,
   employeeId,
   editable,
+  excusedAbsences,
+  restoreAbsence,
 }: {
   missingDays: PayrollResult["missingDays"];
   dayRate: number;
   employeeId: string;
   editable: boolean;
+  excusedAbsences: ExcusedAbsence[];
+  restoreAbsence: AdjustmentAction;
 }) {
+  const hasExcused = excusedAbsences.length > 0;
   return (
     <Section
       icon={AlertTriangle}
@@ -913,7 +976,7 @@ function MissingDaysSection({
       subtitle={missingDays.length > 0
         ? `${missingDays.length} ngày · ${fmtVnd(missingDays.reduce((s, d) => s + d.amount, 0))}`
         : `0 ngày · trừ ${fmtVnd(dayRate)}/ngày T2-T6 (T7 làm online, không yêu cầu check-in)`}
-      empty="Không có ngày nào vắng không phép. Admin có thể 'Thêm chấm công' nếu NV quên chấm."
+      empty={hasExcused ? undefined : "Không có ngày nào vắng không phép. Admin có thể 'Thêm chấm công' nếu NV quên chấm."}
     >
       {missingDays.length > 0 && (
         <ul className="divide-y divide-neutral-200/60">
@@ -945,6 +1008,38 @@ function MissingDaysSection({
             </li>
           ))}
         </ul>
+      )}
+      {hasExcused && editable && (
+        <details className="group">
+          <summary className="px-3 py-2.5 text-xs text-neutral-500 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-2 hover:bg-white/50 border-t border-neutral-200/60">
+            <span className="flex-1 font-medium">Đã miễn trừ ({excusedAbsences.length} ngày) — click để khôi phục</span>
+            <span className="text-neutral-400 group-open:rotate-180 transition-transform">▾</span>
+          </summary>
+          <ul className="divide-y divide-amber-100 bg-amber-50/40">
+            {excusedAbsences.map((ea) => (
+              <li key={ea.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                <span className="h-5 w-5 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 text-[10px]">✓</span>
+                <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">
+                  {formatVN(ea.absence_date + "T00:00:00+07:00", "EEEE, dd/MM")}
+                </span>
+                <span className="text-xs text-neutral-500 flex-1 truncate">
+                  {ea.reason ?? "Đã miễn trừ"}
+                </span>
+                <form action={restoreAbsence}>
+                  <input type="hidden" name="employee_id" value={employeeId} />
+                  <input type="hidden" name="absence_date" value={ea.absence_date} />
+                  <button
+                    type="submit"
+                    title="Khôi phục — tính lại là ngày vắng không phép"
+                    className="h-7 px-2 rounded-md text-xs font-medium text-amber-700 bg-amber-100 hover:bg-amber-200 transition shrink-0"
+                  >
+                    Khôi phục
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </Section>
   );
@@ -999,7 +1094,7 @@ function Section({
   icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
   subtitle?: string;
-  empty: string;
+  empty?: string;
   children?: React.ReactNode;
 }) {
   const hasChildren = !!children;
@@ -1011,7 +1106,7 @@ function Section({
         {subtitle && <span className="text-xs text-neutral-500 ml-auto">{subtitle}</span>}
       </header>
       {hasChildren ? children : (
-        <div className="px-3 py-4 text-xs text-neutral-400 text-center">{empty}</div>
+        <div className="px-3 py-4 text-xs text-neutral-400 text-center">{empty ?? ""}</div>
       )}
     </section>
   );
