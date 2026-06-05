@@ -269,7 +269,7 @@ export default function CheckInFlow({
         const isDeadStream = v.readyState === 0 && !v.videoWidth;
         if (!isDeadStream) {
           throw new Error(
-            "Camera không khởi động được. Tắt hoàn toàn ứng dụng (vuốt lên → đóng app) rồi mở lại.",
+            "Camera không khởi động được. Vuốt lên tắt app, mở lại, thử lại.",
           );
         }
 
@@ -290,7 +290,7 @@ export default function CheckInFlow({
           ]);
         } catch {
           throw new Error(
-            "Camera không phản hồi. Thử: mở app Camera gốc rồi đóng lại, sau đó thử lại. Nếu vẫn lỗi — tắt nguồn điện thoại hoàn toàn và bật lại.",
+            "Camera bị iOS khóa. Mở app Camera gốc → chờ 2 giây → đóng lại → quay lại đây thử lại.",
           );
         }
 
@@ -311,7 +311,7 @@ export default function CheckInFlow({
 
         if (!retryOk) {
           throw new Error(
-            "Camera vẫn không phản hồi sau khi thử lại. Tắt nguồn điện thoại hoàn toàn (không chỉ sleep) và bật lại.",
+            "Camera bị iOS khóa. Mở app Camera gốc → chờ 2 giây → đóng lại → quay lại đây thử lại. Nếu vẫn lỗi — tắt nguồn điện thoại hoàn toàn.",
           );
         }
         // retryStream đang hoạt động — tiếp tục bình thường
