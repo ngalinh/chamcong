@@ -47,6 +47,11 @@ export async function computePayrollForMonth(
   const dayStart = `${ym.year}-${String(ym.month).padStart(2, "0")}-01`;
   const dayEnd = monthEndDate(ym.year, ym.month);
   const isParttime = employee.employment_type === "parttime";
+  // Parttime có ca đêm (vd 20:00–00:00): check-out đúng 00:00 đầu tháng sau
+  // sẽ bị .lt(endIso) loại ra. Mở rộng thêm 2h để bắt các check-out trễ này.
+  const checkInEndIso = isParttime
+    ? new Date(new Date(endIso).getTime() + 2 * 3600_000).toISOString()
+    : endIso;
 
   const [
     { data: checkIns },
@@ -61,7 +66,7 @@ export async function computePayrollForMonth(
       .select("id, kind, checked_in_at, late_minutes, early_minutes, offices(name)")
       .eq("employee_id", employee.id)
       .gte("checked_in_at", startIso)
-      .lt("checked_in_at", endIso)
+      .lt("checked_in_at", checkInEndIso)
       .order("checked_in_at", { ascending: true }),
     admin
       .from("violation_reports")
