@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
-import { Users, CalendarOff, Trash2 } from "lucide-react";
+import { Users, CalendarOff, Trash2, Wallet } from "lucide-react";
 import type { Employee, Office } from "@/types/db";
 import { EmployeesTable } from "@/components/admin/EmployeesTable";
 
@@ -308,6 +308,13 @@ export default async function EmployeesPage({
           </p>
         </div>
         <div className="relative flex items-center gap-2 flex-wrap">
+          <Link
+            href="/admin/employees/payroll-summary"
+            className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5 select-none"
+          >
+            <Wallet size={14} />
+            Tổng kết lương
+          </Link>
           <Link
             href={showHolidays ? "/admin/employees" : "/admin/employees?holidays=open"}
             className="h-8 px-3 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center gap-1.5 select-none"

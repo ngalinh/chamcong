@@ -26,6 +26,7 @@ import {
   TrendingUp,
   ShieldAlert,
   BookOpen,
+  Wallet,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -359,20 +360,33 @@ export default async function Home() {
           )}
         </section>
 
-        {/* Nội quy — đặt cuối trang */}
-        <Link
-          href="/noi-quy"
-          className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition flex items-center gap-3"
-        >
-          <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <BookOpen size={18} strokeWidth={1.8} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm leading-tight">Nội quy</p>
-            <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">Quy định công ty</p>
-          </div>
-          <ArrowRight size={16} className="text-neutral-400 shrink-0" />
-        </Link>
+        {/* Bảng lương + Nội quy — đặt cuối trang */}
+        <div className="grid grid-cols-2 gap-3">
+          <Link
+            href="/payroll"
+            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition flex items-center gap-3"
+          >
+            <div className="h-10 w-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+              <Wallet size={18} strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm leading-tight">Bảng lương</p>
+              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">Lương của tôi</p>
+            </div>
+          </Link>
+          <Link
+            href="/noi-quy"
+            className="rounded-2xl glass border border-white/60 p-4 hover:bg-white/80 transition flex items-center gap-3"
+          >
+            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <BookOpen size={18} strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm leading-tight">Nội quy</p>
+              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">Quy định công ty</p>
+            </div>
+          </Link>
+        </div>
       </div>
 
       {isAdmin && (
