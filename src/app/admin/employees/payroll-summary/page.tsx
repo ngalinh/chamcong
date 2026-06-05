@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
 import { computePayrollForMonth } from "@/lib/payroll-snapshot";
+import { computeProfitForEmployee } from "@/lib/profit";
 import { yearMonthVN, parseYearMonth } from "@/lib/workdays";
 import { formatVN } from "@/lib/time";
 import type { Employee } from "@/types/db";
@@ -48,7 +49,6 @@ export default async function PayrollSummaryPage({
     (e) => e.is_active !== false,
   );
 
-  // Compute payroll totals for each employee in parallel
   const rows = await Promise.all(
     activeEmployees.map(async (emp) => {
       const { data: snapshotRow } = await admin
@@ -58,6 +58,7 @@ export default async function PayrollSummaryPage({
         .eq("year_month", monthStr)
         .maybeSingle();
 
+      const fromSnapshot = !!snapshotRow?.data;
       let total = 0;
       try {
         const payload = snapshotRow?.data
@@ -77,6 +78,10 @@ export default async function PayrollSummaryPage({
           0,
         );
 
+        const profitTotal = fromSnapshot
+          ? 0
+          : (await computeProfitForEmployee(emp.id, monthStr)).total;
+
         if (payload.kind === "fulltime") {
           const r = payload.result;
           total =
@@ -85,10 +90,11 @@ export default async function PayrollSummaryPage({
             r.totalSelfBonus +
             r.totalOTPay +
             otFixed +
+            profitTotal +
             adjTotal;
         } else {
           const r = payload.result;
-          total = r.grandEarning + otFixed + adjTotal;
+          total = r.grandEarning + otFixed + profitTotal + adjTotal;
         }
       } catch {
         total = 0;
@@ -98,7 +104,6 @@ export default async function PayrollSummaryPage({
     }),
   );
 
-  // Sort: admins first, then by name
   rows.sort((a, b) => {
     const aA = a.emp.is_admin ? 1 : 0;
     const bA = b.emp.is_admin ? 1 : 0;
@@ -118,6 +123,7 @@ export default async function PayrollSummaryPage({
       : { y: ym.year, m: ym.month + 1 };
   const prevHref = `/admin/employees/payroll-summary?month=${prev.y}-${String(prev.m).padStart(2, "0")}`;
   const nextHref = `/admin/employees/payroll-summary?month=${next.y}-${String(next.m).padStart(2, "0")}`;
+  const monthLabel = formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy");
 
   return (
     <div className="space-y-5">
@@ -178,101 +184,80 @@ export default async function PayrollSummaryPage({
         <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
           <Wallet size={18} />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-xs text-emerald-700 font-medium uppercase tracking-wider">
-            Tổng quỹ lương tháng{" "}
-            {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}
+            Tổng quỹ lương tháng {monthLabel}
           </p>
           <p className="text-2xl font-bold text-emerald-800 tabular-nums">
             {fmtVnd(grandSum)}
           </p>
           <p className="text-[11px] text-emerald-600 mt-0.5">
-            {rows.length} nhân viên · chưa bao gồm profit từ doanh số
+            {rows.length} nhân viên · đã bao gồm profit từ doanh số
           </p>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Employee list — dùng list thay table để tránh overflow trên mobile */}
       <div className="rounded-2xl border border-white/60 glass overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-neutral-200/60 bg-white/40">
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                Nhân viên
-              </th>
-              <th className="text-left px-4 py-2.5 text-xs font-semibold text-neutral-500 uppercase tracking-wider hidden sm:table-cell">
-                Loại
-              </th>
-              <th className="text-right px-4 py-2.5 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                Lương tháng {formatVN(`${monthStr}-01T00:00:00+07:00`, "MM/yyyy")}
-              </th>
-              <th className="text-right px-4 py-2.5 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-                Chi tiết
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-200/60">
-            {rows.map(({ emp, total }) => (
-              <tr key={emp.id} className="hover:bg-white/40 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-neutral-900">{emp.name}</div>
-                  <div className="text-xs text-neutral-500 truncate">
+        <div className="px-4 py-2.5 border-b border-neutral-200/60 bg-white/40 flex items-center gap-3">
+          <span className="flex-1 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+            Nhân viên
+          </span>
+          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider shrink-0">
+            Lương tháng {monthLabel}
+          </span>
+          <span className="w-10" />
+        </div>
+
+        <div className="divide-y divide-neutral-200/60">
+          {rows.map(({ emp, total }) => (
+            <div key={emp.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/40 transition-colors">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-neutral-900 truncate">
+                  {emp.name}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className="text-xs text-neutral-500 truncate">
                     {emp.email}
-                  </div>
-                </td>
-                <td className="px-4 py-3 hidden sm:table-cell">
+                  </span>
                   <span
-                    className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                    className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
                       emp.employment_type === "parttime"
                         ? "bg-violet-50 text-violet-700"
                         : "bg-sky-50 text-sky-700"
                     }`}
                   >
-                    {emp.employment_type === "parttime"
-                      ? "Parttime"
-                      : "Fulltime"}
+                    {emp.employment_type === "parttime" ? "PT" : "FT"}
                   </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <span className="font-semibold tabular-nums text-emerald-700">
-                    {fmtVnd(total)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Link
-                    href={`/admin/employees/${emp.id}/payroll?month=${monthStr}`}
-                    className="text-xs text-sky-600 hover:text-sky-800 hover:underline"
-                  >
-                    Xem →
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-neutral-200 bg-emerald-50/60">
-              <td
-                colSpan={2}
-                className="px-4 py-3 font-semibold text-neutral-700 hidden sm:table-cell"
-              >
-                Tổng cộng
-              </td>
-              <td className="px-4 py-3 font-semibold text-neutral-700 sm:hidden">
-                Tổng cộng
-              </td>
-              <td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-800">
-                {fmtVnd(grandSum)}
-              </td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <span className="font-semibold tabular-nums text-emerald-700 text-sm whitespace-nowrap">
+                  {fmtVnd(total)}
+                </span>
+              </div>
+              <div className="shrink-0 w-10 text-right">
+                <Link
+                  href={`/admin/employees/${emp.id}/payroll?month=${monthStr}`}
+                  className="text-xs text-sky-600 hover:text-sky-800"
+                >
+                  →
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
 
-      <p className="text-xs text-neutral-500">
-        * Số liệu tạm tính, chưa bao gồm profit từ doanh số. Xem chi tiết từng
-        nhân viên để có con số đầy đủ.
-      </p>
+        <div className="px-4 py-3 border-t border-neutral-200 bg-emerald-50/60 flex items-center gap-3">
+          <span className="flex-1 font-semibold text-neutral-700 text-sm">
+            Tổng cộng
+          </span>
+          <span className="font-bold tabular-nums text-emerald-800 text-sm whitespace-nowrap">
+            {fmtVnd(grandSum)}
+          </span>
+          <span className="w-10" />
+        </div>
+      </div>
     </div>
   );
 }
