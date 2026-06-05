@@ -1,5 +1,5 @@
 // Service worker — PWA asset cache + Web Push + App Badge.
-const VERSION = "v13";
+const VERSION = "v14";
 const CACHE_NAME = `cham-cong-${VERSION}`;
 const HTML_CACHE = `cham-cong-html-${VERSION}`;
 // Models cache tách khỏi VERSION: bump SW không wipe ~7MB models đã tải.
