@@ -451,9 +451,11 @@ export function computeParttimePayroll(args: {
         shifts.push({ date: pendingIn.dateVN, startAt: pendingIn.checked_in_at, endAt: null, hours: 0, actualHours: 0 });
       }
       pendingIn = ci;
-      // Forgiven cho hours = late nhưng không bị phạt (trong 3 lần free; heavy luôn bị phạt → never forgiven)
-      const isLate = (ci.late_minutes ?? 0) > 5;
-      pendingInForgiven = isLate && (penaltyByCheckInId.get(ci.id) ?? 0) === 0;
+      // Forgiven nếu muộn ≤5 phút (grace), hoặc muộn >5 phút nhưng chưa bị phạt (pool free)
+      const lateMin = ci.late_minutes ?? 0;
+      const isGrace = lateMin > 0 && lateMin <= 5;
+      const isLate = lateMin > 5;
+      pendingInForgiven = isGrace || (isLate && (penaltyByCheckInId.get(ci.id) ?? 0) === 0);
     } else if (ci.kind === "out") {
       if (pendingIn) {
         const ms = new Date(ci.checked_in_at).getTime() - new Date(pendingIn.checked_in_at).getTime();
