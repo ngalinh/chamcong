@@ -238,7 +238,7 @@ export default async function PayrollSummaryPage({
               </div>
               <div className="shrink-0 w-10 text-right">
                 <Link
-                  href={`/admin/employees/${emp.id}/payroll?month=${monthStr}`}
+                  href={`/admin/employees/${emp.id}/payroll?month=${monthStr}&from=summary`}
                   className="text-xs text-sky-600 hover:text-sky-800"
                 >
                   →
