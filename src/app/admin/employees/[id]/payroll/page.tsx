@@ -320,7 +320,7 @@ export default async function PayrollPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; from?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -337,6 +337,9 @@ export default async function PayrollPage({
 
   const monthStr = sp.month && parseYearMonth(sp.month) ? sp.month : yearMonthVN();
   const ym = parseYearMonth(monthStr)!;
+  const backHref = sp.from === "summary"
+    ? `/admin/employees/payroll-summary?month=${monthStr}`
+    : "/admin/employees";;
 
   const admin = createAdminClient();
   const { data: emp } = await admin
@@ -391,14 +394,15 @@ export default async function PayrollPage({
   // Prev/next month link
   const prev = ym.month === 1 ? { y: ym.year - 1, m: 12 } : { y: ym.year, m: ym.month - 1 };
   const next = ym.month === 12 ? { y: ym.year + 1, m: 1 } : { y: ym.year, m: ym.month + 1 };
-  const prevHref = `/admin/employees/${id}/payroll?month=${prev.y}-${String(prev.m).padStart(2, "0")}`;
-  const nextHref = `/admin/employees/${id}/payroll?month=${next.y}-${String(next.m).padStart(2, "0")}`;
+  const fromSuffix = sp.from === "summary" ? "&from=summary" : "";
+  const prevHref = `/admin/employees/${id}/payroll?month=${prev.y}-${String(prev.m).padStart(2, "0")}${fromSuffix}`;
+  const nextHref = `/admin/employees/${id}/payroll?month=${next.y}-${String(next.m).padStart(2, "0")}${fromSuffix}`;
 
   const header = (
     <>
       <div className="flex items-center gap-3">
         <Link
-          href="/admin/employees"
+          href={backHref}
           className="h-9 w-9 rounded-full hover:bg-white/50 flex items-center justify-center text-neutral-600"
         >
           <ArrowLeft size={16} />
