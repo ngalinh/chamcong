@@ -12,6 +12,7 @@ import { formatVN } from "@/lib/time";
 import { computePayrollForMonth, type PayrollSnapshotPayload } from "@/lib/payroll-snapshot";
 import { LeaveHourlyDeductionEditor } from "@/components/LeaveHourlyDeductionEditor";
 import OpeningBalanceEditor from "@/components/OpeningBalanceEditor";
+import { ConfirmForm } from "@/components/ConfirmForm";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -310,6 +311,36 @@ async function removePayrollAdjustment(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
+async function deleteSelfBonus(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const id = String(formData.get("id") ?? "");
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const monthStr = String(formData.get("month") ?? "");
+  if (!id || !employeeId) throw new Error("Thiếu id");
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("violation_reports").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+
+  if (/^\d{4}-\d{2}$/.test(monthStr)) {
+    await admin.from("payroll_snapshots").delete()
+      .eq("employee_id", employeeId)
+      .eq("year_month", monthStr);
+  }
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
 export const dynamic = "force-dynamic";
 
 const fmtVnd = (n: number) => `${Math.round(n).toLocaleString("en-US")} VND`;
@@ -463,6 +494,7 @@ export default async function PayrollPage({
           adjustmentsTotal={adjustmentsTotal}
           addAdjustment={addPayrollAdjustment}
           removeAdjustment={removePayrollAdjustment}
+          deleteBonus={deleteSelfBonus}
         />
       </div>
     );
@@ -487,6 +519,7 @@ export default async function PayrollPage({
         setOpeningBalance={setOpeningBalance}
         excusedAbsences={excusedAbsences}
         restoreAbsence={restoreAbsence}
+        deleteBonus={deleteSelfBonus}
       />
     </div>
   );
@@ -520,6 +553,7 @@ function ParttimeView({
   adjustmentsTotal,
   addAdjustment,
   removeAdjustment,
+  deleteBonus,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
@@ -533,6 +567,7 @@ function ParttimeView({
   adjustmentsTotal: number;
   addAdjustment: AdjustmentAction;
   removeAdjustment: AdjustmentAction;
+  deleteBonus: AdjustmentAction;
 }) {
   const shiftsLabel = workShifts.length === 1
     ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
@@ -608,7 +643,7 @@ function ParttimeView({
       <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.overtimeRate > 0 ? result.overtimeRate : result.hourlyRate)}/giờ`} />
 
       {/* Bonus / Violation */}
-      <BonusSection bonuses={result.selfBonuses} />
+      <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteBonus={deleteBonus} />
       <ViolationSection violations={result.selfViolations} />
 
       {/* Tổng */}
@@ -675,6 +710,7 @@ function FulltimeView({
   setOpeningBalance,
   excusedAbsences,
   restoreAbsence,
+  deleteBonus,
 }: {
   result: PayrollResult;
   monthStr: string;
@@ -690,6 +726,7 @@ function FulltimeView({
   setOpeningBalance: AdjustmentAction;
   excusedAbsences: ExcusedAbsence[];
   restoreAbsence: AdjustmentAction;
+  deleteBonus: AdjustmentAction;
 }) {
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -762,7 +799,7 @@ function FulltimeView({
       {result.overtimes.length > 0 && (
         <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
       )}
-      {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} />}
+      {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteBonus={deleteBonus} />}
       {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} />}
       {!isFutureMonth && (result.missingDays.length > 0 || excusedAbsences.length > 0) && (
         <MissingDaysSection
@@ -871,7 +908,7 @@ function LateEarlySection({
                 <span className="text-xs text-neutral-400 shrink-0">Miễn phí (≤3)</span>
               )}
               {canEdit && (
-                <form action={clearLateEarlyViolation}>
+                <ConfirmForm action={clearLateEarlyViolation} message="Xoá vi phạm đi muộn/về sớm này?">
                   <input type="hidden" name="check_in_id" value={v.id} />
                   <input type="hidden" name="employee_id" value={employeeId} />
                   <input type="hidden" name="month" value={monthStr} />
@@ -882,7 +919,7 @@ function LateEarlySection({
                   >
                     <Trash2 size={14} />
                   </button>
-                </form>
+                </ConfirmForm>
               )}
             </li>
           ))}
@@ -919,7 +956,19 @@ function OvertimeSection({ overtimes, hourLabel }: { overtimes: PayrollResult["o
   );
 }
 
-function BonusSection({ bonuses }: { bonuses: PayrollResult["selfBonuses"] }) {
+function BonusSection({
+  bonuses,
+  employeeId,
+  monthStr,
+  editable,
+  deleteBonus,
+}: {
+  bonuses: PayrollResult["selfBonuses"];
+  employeeId: string;
+  monthStr: string;
+  editable: boolean;
+  deleteBonus: AdjustmentAction;
+}) {
   return (
     <Section icon={Sparkles} title="Thưởng tự khai (đã duyệt)" subtitle={`${bonuses.length} đơn`} empty="Không có đơn thưởng.">
       {bonuses.length > 0 && (
@@ -930,6 +979,20 @@ function BonusSection({ bonuses }: { bonuses: PayrollResult["selfBonuses"] }) {
               <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
               <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
               <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+              {editable && (
+                <ConfirmForm action={deleteBonus} message="Xoá đơn thưởng này? Thao tác không thể hoàn tác.">
+                  <input type="hidden" name="id" value={v.id} />
+                  <input type="hidden" name="employee_id" value={employeeId} />
+                  <input type="hidden" name="month" value={monthStr} />
+                  <button
+                    type="submit"
+                    title="Xoá đơn thưởng"
+                    className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </ConfirmForm>
+              )}
             </li>
           ))}
         </ul>
@@ -997,7 +1060,7 @@ function MissingDaysSection({
                 −{Math.round(d.amount).toLocaleString("en-US")}
               </span>
               {editable && (
-                <form action={excuseAbsence}>
+                <ConfirmForm action={excuseAbsence} message="Miễn trừ ngày vắng này? NV sẽ không bị trừ lương ngày này.">
                   <input type="hidden" name="employee_id" value={employeeId} />
                   <input type="hidden" name="absence_date" value={d.date} />
                   <button
@@ -1007,7 +1070,7 @@ function MissingDaysSection({
                   >
                     <Trash2 size={14} />
                   </button>
-                </form>
+                </ConfirmForm>
               )}
             </li>
           ))}
@@ -1308,7 +1371,7 @@ function AdjustmentsSection({
           <span className={`tabular-nums font-semibold text-sm ${a.amount >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
             {a.amount >= 0 ? "+" : "−"}{Math.abs(Math.round(a.amount)).toLocaleString("en-US")}
           </span>
-          <form action={removeAdjustment}>
+          <ConfirmForm action={removeAdjustment} message="Xoá khoản điều chỉnh này?">
             <input type="hidden" name="id" value={a.id} />
             <input type="hidden" name="employee_id" value={employeeId} />
             <button
@@ -1318,7 +1381,7 @@ function AdjustmentsSection({
             >
               <Trash2 size={12} />
             </button>
-          </form>
+          </ConfirmForm>
         </div>
       ))}
       <details className="mt-1 group">
