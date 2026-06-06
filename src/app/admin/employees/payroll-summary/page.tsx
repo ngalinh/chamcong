@@ -302,7 +302,6 @@ export default async function PayrollSummaryPage({
                       employeeId={emp.id}
                       month={monthStr}
                       initialCkCongTy={ckCongTy}
-                      totalSalary={salary}
                       action={saveTransfer}
                     />
                   </div>
