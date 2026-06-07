@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +19,12 @@ export function CkCongTyEditor({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
+
+  // Sync khi server revalidate trả về giá trị mới từ DB
+  // (cần thiết vì có 2 instance mobile/desktop cùng employee — instance ẩn có thể bị stale)
+  useEffect(() => {
+    setCkCongTy(initialCkCongTy);
+  }, [initialCkCongTy]);
 
   const dirty = ckCongTy !== initialCkCongTy;
 

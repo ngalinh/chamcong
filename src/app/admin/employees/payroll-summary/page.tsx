@@ -291,14 +291,18 @@ export default async function PayrollSummaryPage({
                     </div>
                     {typeBadge}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {/* Hàng 1: CK công ty | CK cá nhân */}
+                  <div className="grid grid-cols-2 gap-x-3">
                     <div>
-                      <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
-                        Tổng lương
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
+                        CK công ty
                       </div>
-                      <div className="font-semibold tabular-nums text-emerald-700 text-sm">
-                        {fmtVnd(salary)}
-                      </div>
+                      <CkCongTyEditor
+                        employeeId={emp.id}
+                        month={monthStr}
+                        initialCkCongTy={ckCongTy}
+                        action={saveTransfer}
+                      />
                     </div>
                     <div>
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
@@ -317,16 +321,14 @@ export default async function PayrollSummaryPage({
                       </div>
                     </div>
                   </div>
+                  {/* Hàng 2: Tổng lương (moved down) */}
                   <div>
-                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
-                      CK công ty
+                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                      Tổng lương
                     </div>
-                    <CkCongTyEditor
-                      employeeId={emp.id}
-                      month={monthStr}
-                      initialCkCongTy={ckCongTy}
-                      action={saveTransfer}
-                    />
+                    <div className="font-semibold tabular-nums text-emerald-700 text-sm">
+                      {fmtVnd(salary)}
+                    </div>
                   </div>
                 </div>
 
