@@ -245,10 +245,8 @@ export default async function PayrollSummaryPage({
 
       {/* Employee list */}
       <div className="rounded-2xl border border-white/60 glass overflow-hidden">
-        <div className="overflow-x-auto">
-        <div className="min-w-max">
-        {/* Header row */}
-        <div className="px-4 py-2.5 border-b border-neutral-200/60 bg-white/40 grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
+        {/* Table header — desktop only */}
+        <div className="hidden sm:grid px-4 py-2.5 border-b border-neutral-200/60 bg-white/40 grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
             Nhân viên
           </span>
@@ -267,10 +265,73 @@ export default async function PayrollSummaryPage({
           {rows.map(({ emp, total, ckCongTy }) => {
             const salary = Math.max(0, total);
             const ckCaNhan = Math.max(0, salary - ckCongTy);
+            const typeBadge = (
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                  emp.employment_type === "parttime"
+                    ? "bg-violet-50 text-violet-700"
+                    : "bg-sky-50 text-sky-700"
+                }`}
+              >
+                {emp.employment_type === "parttime" ? "PT" : "FT"}
+              </span>
+            );
             return (
-              <div key={emp.id} className="px-4 py-3 hover:bg-white/40 transition-colors">
-                {/* Top row: name + salary columns + link */}
-                <div className="grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-start">
+              <div key={emp.id} className="hover:bg-white/40 transition-colors">
+                {/* Mobile card */}
+                <div className="sm:hidden px-4 py-3 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-neutral-900 text-sm truncate">
+                        {emp.name}
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-0.5 truncate">
+                        {emp.email}
+                      </div>
+                    </div>
+                    {typeBadge}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div>
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                        Tổng lương
+                      </div>
+                      <div className="font-semibold tabular-nums text-emerald-700 text-sm">
+                        {fmtVnd(salary)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                        CK cá nhân
+                      </div>
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className="font-semibold tabular-nums text-neutral-600 text-sm">
+                          {fmtVnd(ckCaNhan)}
+                        </span>
+                        <Link
+                          href={`/admin/employees/${emp.id}/payroll?month=${monthStr}&from=summary`}
+                          className="text-xs text-sky-600 hover:text-sky-800 shrink-0"
+                        >
+                          Xem →
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
+                      CK công ty
+                    </div>
+                    <CkCongTyEditor
+                      employeeId={emp.id}
+                      month={monthStr}
+                      initialCkCongTy={ckCongTy}
+                      action={saveTransfer}
+                    />
+                  </div>
+                </div>
+
+                {/* Desktop table row */}
+                <div className="hidden sm:grid px-4 py-3 grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-start">
                   <div className="min-w-0">
                     <div className="font-medium text-neutral-900 truncate text-sm">
                       {emp.name}
@@ -279,26 +340,14 @@ export default async function PayrollSummaryPage({
                       <span className="text-xs text-neutral-500 truncate">
                         {emp.email}
                       </span>
-                      <span
-                        className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                          emp.employment_type === "parttime"
-                            ? "bg-violet-50 text-violet-700"
-                            : "bg-sky-50 text-sky-700"
-                        }`}
-                      >
-                        {emp.employment_type === "parttime" ? "PT" : "FT"}
-                      </span>
+                      {typeBadge}
                     </div>
                   </div>
-
-                  {/* Tổng lương */}
                   <div className="text-right pt-0.5">
                     <span className="font-semibold tabular-nums text-emerald-700 text-sm whitespace-nowrap">
                       {fmtVnd(salary)}
                     </span>
                   </div>
-
-                  {/* CK công ty — editable (client component) */}
                   <div className="text-right pt-0.5">
                     <CkCongTyEditor
                       employeeId={emp.id}
@@ -307,8 +356,6 @@ export default async function PayrollSummaryPage({
                       action={saveTransfer}
                     />
                   </div>
-
-                  {/* CK cá nhân — read-only từ server (initial render) */}
                   <div className="text-right pt-0.5">
                     <span className="font-semibold tabular-nums text-neutral-600 text-sm whitespace-nowrap">
                       {fmtVnd(ckCaNhan)}
@@ -327,20 +374,51 @@ export default async function PayrollSummaryPage({
         </div>
 
         {/* Footer totals */}
-        <div className="px-4 py-3 border-t border-neutral-200 bg-emerald-50/60 grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
-          <span className="font-semibold text-neutral-700 text-sm">Tổng cộng</span>
-          <span className="font-bold tabular-nums text-emerald-800 text-sm whitespace-nowrap text-right">
-            {fmtVnd(grandSum)}
-          </span>
-          <span className="font-bold tabular-nums text-neutral-700 text-sm whitespace-nowrap text-right">
-            {fmtVnd(grandCkCongTy)}
-          </span>
-          <span className="font-bold tabular-nums text-neutral-700 text-sm whitespace-nowrap text-right">
-            {fmtVnd(grandCkCaNhan)}
-          </span>
+        <div className="border-t border-neutral-200 bg-emerald-50/60">
+          {/* Mobile footer */}
+          <div className="sm:hidden px-4 py-3 space-y-2">
+            <div className="font-semibold text-neutral-700 text-sm">Tổng cộng</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                  Tổng lương
+                </div>
+                <div className="font-bold tabular-nums text-emerald-800 text-sm">
+                  {fmtVnd(grandSum)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                  CK cá nhân
+                </div>
+                <div className="font-bold tabular-nums text-neutral-700 text-sm">
+                  {fmtVnd(grandCkCaNhan)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                  CK công ty
+                </div>
+                <div className="font-bold tabular-nums text-neutral-700 text-sm">
+                  {fmtVnd(grandCkCongTy)}
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Desktop footer */}
+          <div className="hidden sm:grid px-4 py-3 grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
+            <span className="font-semibold text-neutral-700 text-sm">Tổng cộng</span>
+            <span className="font-bold tabular-nums text-emerald-800 text-sm whitespace-nowrap text-right">
+              {fmtVnd(grandSum)}
+            </span>
+            <span className="font-bold tabular-nums text-neutral-700 text-sm whitespace-nowrap text-right">
+              {fmtVnd(grandCkCongTy)}
+            </span>
+            <span className="font-bold tabular-nums text-neutral-700 text-sm whitespace-nowrap text-right">
+              {fmtVnd(grandCkCaNhan)}
+            </span>
+          </div>
         </div>
-        </div>{/* min-w-max */}
-        </div>{/* overflow-x-auto */}
       </div>
     </div>
   );
