@@ -47,7 +47,7 @@ export function CkCongTyEditor({
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
         onBlur={save}
         className={cn(
-          "h-7 w-28 rounded-md border text-right tabular-nums text-sm font-semibold outline-none transition px-2 pr-7",
+          "h-7 w-36 rounded-md border text-right tabular-nums text-sm font-semibold outline-none transition px-2 pr-7",
           "border-transparent bg-transparent text-neutral-700",
           "hover:bg-neutral-100/80 hover:border-neutral-200",
           "focus:bg-white focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100",

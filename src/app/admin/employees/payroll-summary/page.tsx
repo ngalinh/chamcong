@@ -248,7 +248,7 @@ export default async function PayrollSummaryPage({
         <div className="overflow-x-auto">
         <div className="min-w-max">
         {/* Header row */}
-        <div className="px-4 py-2.5 border-b border-neutral-200/60 bg-white/40 grid grid-cols-[minmax(10rem,1fr)_9rem_8rem_9rem] gap-3 items-center">
+        <div className="px-4 py-2.5 border-b border-neutral-200/60 bg-white/40 grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
             Nhân viên
           </span>
@@ -270,7 +270,7 @@ export default async function PayrollSummaryPage({
             return (
               <div key={emp.id} className="px-4 py-3 hover:bg-white/40 transition-colors">
                 {/* Top row: name + salary columns + link */}
-                <div className="grid grid-cols-[minmax(10rem,1fr)_9rem_8rem_9rem] gap-3 items-start">
+                <div className="grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-start">
                   <div className="min-w-0">
                     <div className="font-medium text-neutral-900 truncate text-sm">
                       {emp.name}
@@ -327,7 +327,7 @@ export default async function PayrollSummaryPage({
         </div>
 
         {/* Footer totals */}
-        <div className="px-4 py-3 border-t border-neutral-200 bg-emerald-50/60 grid grid-cols-[minmax(10rem,1fr)_9rem_8rem_9rem] gap-3 items-center">
+        <div className="px-4 py-3 border-t border-neutral-200 bg-emerald-50/60 grid grid-cols-[minmax(10rem,1fr)_9rem_10rem_9rem] gap-3 items-center">
           <span className="font-semibold text-neutral-700 text-sm">Tổng cộng</span>
           <span className="font-bold tabular-nums text-emerald-800 text-sm whitespace-nowrap text-right">
             {fmtVnd(grandSum)}
