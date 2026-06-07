@@ -49,15 +49,14 @@ export function CkCongTyEditor({
     }
   }
 
-  // Display mode — trông giống hệt các cột khác
+  // Display mode — span để font render y hệt các cột khác (button bị browser override font-size)
   if (!focused) {
     return (
-      <button
-        type="button"
+      <span
         onClick={() => setFocused(true)}
         title="Click để chỉnh sửa"
         className={cn(
-          "font-semibold tabular-nums text-sm whitespace-nowrap w-full text-right cursor-text",
+          "font-semibold tabular-nums text-sm whitespace-nowrap block w-full text-right cursor-text select-none",
           saveError ? "text-red-600" : "text-neutral-700 hover:text-neutral-500",
         )}
       >
@@ -65,7 +64,7 @@ export function CkCongTyEditor({
         {saving && <Loader2 size={11} className="inline ml-1 animate-spin text-neutral-400" />}
         {!saving && saved && <Check size={11} className="inline ml-1 text-emerald-500" />}
         {!saving && saveError && <span className="ml-1 text-[10px] font-bold">!</span>}
-      </button>
+      </span>
     );
   }
 
