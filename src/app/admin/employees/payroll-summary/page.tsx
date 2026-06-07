@@ -254,7 +254,7 @@ export default async function PayrollSummaryPage({
             Tổng lương
           </span>
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider text-right whitespace-nowrap">
-            CK cty
+            CK công ty
           </span>
           <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider text-right whitespace-nowrap">
             CK cá nhân
