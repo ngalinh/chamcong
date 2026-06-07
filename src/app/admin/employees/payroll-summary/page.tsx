@@ -291,44 +291,46 @@ export default async function PayrollSummaryPage({
                     </div>
                     {typeBadge}
                   </div>
-                  {/* Hàng 1: CK công ty | CK cá nhân */}
+                  {/* Hàng 1: CK công ty (phải) | CK cá nhân */}
                   <div className="grid grid-cols-2 gap-x-3">
                     <div>
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
                         CK công ty
                       </div>
-                      <CkCongTyEditor
-                        employeeId={emp.id}
-                        month={monthStr}
-                        initialCkCongTy={ckCongTy}
-                        action={saveTransfer}
-                      />
+                      <div className="flex justify-end">
+                        <CkCongTyEditor
+                          employeeId={emp.id}
+                          month={monthStr}
+                          initialCkCongTy={ckCongTy}
+                          action={saveTransfer}
+                        />
+                      </div>
                     </div>
                     <div>
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
                         CK cá nhân
                       </div>
-                      <div className="flex items-baseline justify-between gap-1">
-                        <span className="font-semibold tabular-nums text-neutral-600 text-sm">
-                          {fmtVnd(ckCaNhan)}
-                        </span>
-                        <Link
-                          href={`/admin/employees/${emp.id}/payroll?month=${monthStr}&from=summary`}
-                          className="text-xs text-sky-600 hover:text-sky-800 shrink-0"
-                        >
-                          Xem →
-                        </Link>
+                      <div className="font-semibold tabular-nums text-neutral-600 text-sm">
+                        {fmtVnd(ckCaNhan)}
                       </div>
                     </div>
                   </div>
-                  {/* Hàng 2: Tổng lương (moved down) */}
-                  <div>
-                    <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
-                      Tổng lương
+                  {/* Hàng 2: Tổng lương + Xem cùng hàng */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                        Tổng lương
+                      </div>
+                      <div className="font-semibold tabular-nums text-emerald-700 text-sm">
+                        {fmtVnd(salary)}
+                      </div>
                     </div>
-                    <div className="font-semibold tabular-nums text-emerald-700 text-sm">
-                      {fmtVnd(salary)}
-                    </div>
+                    <Link
+                      href={`/admin/employees/${emp.id}/payroll?month=${monthStr}&from=summary`}
+                      className="text-xs text-sky-600 hover:text-sky-800 shrink-0"
+                    >
+                      Xem →
+                    </Link>
                   </div>
                 </div>
 
@@ -380,13 +382,14 @@ export default async function PayrollSummaryPage({
           {/* Mobile footer */}
           <div className="sm:hidden px-4 py-3 space-y-2">
             <div className="font-semibold text-neutral-700 text-sm">Tổng cộng</div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            {/* Hàng 1: CK công ty | CK cá nhân */}
+            <div className="grid grid-cols-2 gap-x-3">
               <div>
                 <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
-                  Tổng lương
+                  CK công ty
                 </div>
-                <div className="font-bold tabular-nums text-emerald-800 text-sm">
-                  {fmtVnd(grandSum)}
+                <div className="font-bold tabular-nums text-neutral-700 text-sm">
+                  {fmtVnd(grandCkCongTy)}
                 </div>
               </div>
               <div>
@@ -397,13 +400,14 @@ export default async function PayrollSummaryPage({
                   {fmtVnd(grandCkCaNhan)}
                 </div>
               </div>
-              <div>
-                <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
-                  CK công ty
-                </div>
-                <div className="font-bold tabular-nums text-neutral-700 text-sm">
-                  {fmtVnd(grandCkCongTy)}
-                </div>
+            </div>
+            {/* Hàng 2: Tổng lương */}
+            <div>
+              <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
+                Tổng lương
+              </div>
+              <div className="font-bold tabular-nums text-emerald-800 text-sm">
+                {fmtVnd(grandSum)}
               </div>
             </div>
           </div>
