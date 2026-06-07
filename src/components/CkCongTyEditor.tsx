@@ -56,7 +56,7 @@ export function CkCongTyEditor({
         onClick={() => setFocused(true)}
         title="Click để chỉnh sửa"
         className={cn(
-          "font-semibold tabular-nums text-sm whitespace-nowrap block w-full text-right cursor-text select-none",
+          "font-semibold tabular-nums text-sm whitespace-nowrap text-right cursor-text select-none",
           saveError ? "text-red-600" : "text-neutral-700 hover:text-neutral-500",
         )}
       >
