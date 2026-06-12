@@ -786,7 +786,7 @@ function MissingDaysSection({
                 {formatVN(d.date + "T00:00:00+07:00", "EEEE, dd/MM")}
               </span>
               <span className="text-xs text-neutral-500 flex-1">
-                {d.dayValue === 1 ? "Cả ngày" : "Sáng T7"}
+                {d.dayValue === 1 ? "Cả ngày" : d.dayValue === 0.5 ? "Nửa ngày" : "Sáng T7"}
               </span>
               <span className="text-rose-700 font-semibold tabular-nums shrink-0">
                 −{Math.round(d.amount).toLocaleString("en-US")}
