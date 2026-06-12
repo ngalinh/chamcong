@@ -342,15 +342,28 @@ export function computePayroll(args: {
   // Vắng không phép — chỉ tính từ 2026-05 trở đi
   const checkInDateSet = new Set<string>();
   for (const ci of checkIns) checkInDateSet.add(ci.dateVN);
+
+  // Partial leave coverage: leave_paid 0.5 ngày không vào excusedDays (NV vẫn
+  // phải đi nửa kia), nhưng phần đã được duyệt phải trừ ra khỏi missing.
+  const partialLeaveByDate = new Map<string, number>(); // date → tổng ngày đã có leave
+  for (const lv of sorted) {
+    if (lv.duration_unit === "day" && lv.duration < 1) {
+      partialLeaveByDate.set(lv.leave_date, (partialLeaveByDate.get(lv.leave_date) ?? 0) + lv.duration);
+    }
+  }
+
   const missingDays: MissingDay[] = [];
   const applyMissingDeduction = !exemptAbsence && (!month || month >= "2026-05");
   for (const wd of applyMissingDeduction ? workingDaysInMonth : []) {
     if (checkInDateSet.has(wd.date)) continue;
     if (excusedDays.has(wd.date)) continue;
+    const partialExcused = partialLeaveByDate.get(wd.date) ?? 0;
+    const effectiveDayValue = Math.max(0, wd.value - partialExcused);
+    if (effectiveDayValue <= 0) continue;
     missingDays.push({
       date: wd.date,
-      dayValue: wd.value,
-      amount: wd.value * dayRate,
+      dayValue: effectiveDayValue,
+      amount: effectiveDayValue * dayRate,
     });
   }
   const totalMissingDeduction = missingDays.reduce((s, d) => s + d.amount, 0);
