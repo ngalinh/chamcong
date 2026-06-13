@@ -68,6 +68,10 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const hhmm = formatInTimeZone(now, APP_TZ, "HH:mm");
   const dateVN = formatInTimeZone(now, APP_TZ, "yyyy-MM-dd");
+  const dayOfWeekVN = formatInTimeZone(now, APP_TZ, "i"); // 1=T2 … 7=CN (ISO)
+  if (dayOfWeekVN === "6" || dayOfWeekVN === "7") {
+    return NextResponse.json({ ok: true, nowVN: hhmm, dateVN, skipped: "weekend", sent: 0 });
+  }
   const nowMin = timeToMinutes(hhmm);
   const bucketStart = Math.floor(nowMin / windowMin) * windowMin;
   const bucketEnd = bucketStart + windowMin;
