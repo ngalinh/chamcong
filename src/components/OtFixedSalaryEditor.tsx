@@ -23,23 +23,20 @@ export default function OtFixedSalaryEditor({
   employeeId,
   initialValue,
   initialOtPending,
-  initialSalaryPendingMonth,
+  initialOtSalaryPendingMonth,
   action,
 }: {
   employeeId: string;
   initialValue: number | null;
   initialOtPending?: number | null;
-  initialSalaryPendingMonth?: string | null;
+  initialOtSalaryPendingMonth?: string | null;
   action: (fd: FormData) => Promise<void> | void;
 }) {
   const curMonth = currentMonthVN();
-  // Nếu pending đã đến tháng áp dụng, hiển thị pending như là current
+  // Nếu ot_fixed_salary_pending_month đã đến, dùng pending như giá trị hiện tại
   const resolvedValue =
-    initialOtPending !== null &&
-    initialOtPending !== undefined &&
-    initialSalaryPendingMonth &&
-    initialSalaryPendingMonth <= curMonth
-      ? initialOtPending
+    initialOtSalaryPendingMonth && initialOtSalaryPendingMonth <= curMonth
+      ? (initialOtPending ?? initialValue ?? 0)
       : (initialValue ?? 0);
 
   const [value, setValue] = useState(resolvedValue);
@@ -50,10 +47,8 @@ export default function OtFixedSalaryEditor({
   const dirty = value !== resolvedValue;
 
   const hasFuturePending =
-    initialOtPending !== null &&
-    initialOtPending !== undefined &&
-    initialSalaryPendingMonth &&
-    initialSalaryPendingMonth > curMonth;
+    !!initialOtSalaryPendingMonth &&
+    initialOtSalaryPendingMonth > curMonth;
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -139,7 +134,7 @@ export default function OtFixedSalaryEditor({
         </div>
         {hasFuturePending && (
           <p className="text-[10px] text-amber-600 font-medium pl-9 leading-tight">
-            → {formatNum(initialOtPending!)} VND từ {fmtMonth(initialSalaryPendingMonth!)}
+            → {formatNum(initialOtPending!)} VND từ {fmtMonth(initialOtSalaryPendingMonth!)}
           </p>
         )}
       </form>

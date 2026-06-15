@@ -40,13 +40,10 @@ export default function EmployeePayrollEditor({
   action: (fd: FormData) => Promise<void> | void;
 }) {
   const curMonth = currentMonthVN();
-  // Nếu pending đã đến tháng áp dụng, hiển thị giá trị pending như là current
+  // Nếu pending_month đã đến (hoặc là tháng này), dùng salary_pending làm giá trị hiện tại
   const resolvedSalary =
-    initialSalaryPending !== null &&
-    initialSalaryPending !== undefined &&
-    initialSalaryPendingMonth &&
-    initialSalaryPendingMonth <= curMonth
-      ? initialSalaryPending
+    initialSalaryPendingMonth && initialSalaryPendingMonth <= curMonth
+      ? (initialSalaryPending ?? initialSalary)
       : initialSalary;
 
   const [salary, setSalary] = useState(resolvedSalary);
@@ -64,9 +61,7 @@ export default function EmployeePayrollEditor({
 
   const hasFuturePending =
     !isParttime &&
-    initialSalaryPending !== null &&
-    initialSalaryPending !== undefined &&
-    initialSalaryPendingMonth &&
+    !!initialSalaryPendingMonth &&
     initialSalaryPendingMonth > curMonth;
 
   function buildFd(): FormData {

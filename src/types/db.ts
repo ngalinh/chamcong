@@ -41,7 +41,8 @@ export type Employee = {
   ot_fixed_salary: number | null;  // lương OT cố định/tháng
   salary_pending: number | null;               // lương cứng chờ áp dụng
   ot_fixed_salary_pending: number | null;      // lương OT chờ áp dụng
-  salary_pending_month: string | null;         // YYYY-MM — tháng bắt đầu áp dụng pending
+  salary_pending_month: string | null;         // YYYY-MM — tháng bắt đầu áp dụng salary_pending
+  ot_fixed_salary_pending_month: string | null; // YYYY-MM — tháng bắt đầu áp dụng ot_fixed_salary_pending
   exempt_absence: boolean;         // true = không tính vắng không phép
   created_at: string;
 };

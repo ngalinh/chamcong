@@ -293,11 +293,8 @@ export async function computePayrollForMonth(
   const workdays = countWorkdaysInMonth(ym.year, ym.month);
   const workingDaysInMonth = listWorkingDaysInMonth(ym.year, ym.month);
   const effectiveSalary =
-    employee.salary_pending !== null &&
-    employee.salary_pending !== undefined &&
-    employee.salary_pending_month &&
-    employee.salary_pending_month <= monthStr
-      ? Number(employee.salary_pending)
+    employee.salary_pending_month && employee.salary_pending_month <= monthStr
+      ? Number(employee.salary_pending ?? 0)
       : Number(employee.salary);
   const result = computePayroll({
     workdays,
