@@ -87,22 +87,27 @@ async function updateEmployeePayroll(formData: FormData) {
   if (!Number.isFinite(overtimeRate) || overtimeRate < 0) throw new Error("Lương OT không hợp lệ");
 
   const effectiveFrom = String(formData.get("effective_from") ?? "current");
+  const nowVN = new Date(Date.now() + 7 * 3600_000);
+  const mo = nowVN.getUTCMonth() + 1;
+  const yr = nowVN.getUTCFullYear();
+  const curMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+  const nextMonth = mo === 12 ? `${yr + 1}-01` : `${yr}-${String(mo + 1).padStart(2, "0")}`;
   const admin = createAdminClient();
 
-  if (employmentType === "fulltime" && effectiveFrom === "next") {
-    const nowVN = new Date(Date.now() + 7 * 3600_000);
-    const m = nowVN.getUTCMonth() + 1;
-    const y = nowVN.getUTCFullYear();
-    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+  if (employmentType === "fulltime") {
+    // Lương cứng: cả "tháng này" lẫn "tháng sau" đều lưu vào pending
+    // để tháng trước pending_month vẫn dùng employees.salary (giá trị cũ).
+    const pendingMonth = effectiveFrom === "next" ? nextMonth : curMonth;
     const { error } = await admin
       .from("employees")
-      .update({ salary_pending: salary, salary_pending_month: nextMonth })
+      .update({ employment_type: employmentType, salary_pending: salary, salary_pending_month: pendingMonth })
       .eq("id", id);
     if (error) throw new Error(error.message);
   } else {
+    // Parttime: giờ công apply ngay, clear pending
     const { error } = await admin
       .from("employees")
-      .update({ employment_type: employmentType, salary, hourly_rate: hourlyRate, overtime_rate: overtimeRate, salary_pending: null })
+      .update({ employment_type: employmentType, hourly_rate: hourlyRate, overtime_rate: overtimeRate, salary_pending: null, salary_pending_month: null })
       .eq("id", id);
     if (error) throw new Error(error.message);
   }
@@ -126,26 +131,21 @@ async function updateOtFixedSalary(formData: FormData) {
   const raw = Number(formData.get("ot_fixed_salary") ?? 0);
   const val = Number.isFinite(raw) && raw >= 0 ? raw : 0;
   const effectiveFrom = String(formData.get("effective_from") ?? "current");
+  const nowVN = new Date(Date.now() + 7 * 3600_000);
+  const mo = nowVN.getUTCMonth() + 1;
+  const yr = nowVN.getUTCFullYear();
+  const curMonth = `${yr}-${String(mo).padStart(2, "0")}`;
+  const nextMonth = mo === 12 ? `${yr + 1}-01` : `${yr}-${String(mo + 1).padStart(2, "0")}`;
+  const pendingMonth = effectiveFrom === "next" ? nextMonth : curMonth;
 
   const admin = createAdminClient();
-
-  if (effectiveFrom === "next") {
-    const nowVN = new Date(Date.now() + 7 * 3600_000);
-    const m = nowVN.getUTCMonth() + 1;
-    const y = nowVN.getUTCFullYear();
-    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-    const { error } = await admin
-      .from("employees")
-      .update({ ot_fixed_salary_pending: val || null, salary_pending_month: nextMonth })
-      .eq("id", id);
-    if (error) throw new Error(error.message);
-  } else {
-    const { error } = await admin
-      .from("employees")
-      .update({ ot_fixed_salary: val || null, ot_fixed_salary_pending: null })
-      .eq("id", id);
-    if (error) throw new Error(error.message);
-  }
+  // Lưu vào pending — tháng trước pending_month vẫn dùng ot_fixed_salary cũ.
+  // val=0 lưu nguyên (không ép null) để phân biệt "pending xoá OT" vs "không có pending".
+  const { error } = await admin
+    .from("employees")
+    .update({ ot_fixed_salary_pending: val, ot_fixed_salary_pending_month: pendingMonth })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
 
   revalidatePath("/admin/employees");
 }
