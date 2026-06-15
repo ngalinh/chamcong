@@ -395,7 +395,13 @@ export default async function PayrollPage({
     : await computePayrollForMonth(admin, emp, monthStr);
   const fromSnapshot = !!snapshotRow?.data;
 
-  const otFixedSalary = Number(emp.ot_fixed_salary ?? 0);
+  const otFixedSalary =
+    emp.ot_fixed_salary_pending !== null &&
+    emp.ot_fixed_salary_pending !== undefined &&
+    emp.salary_pending_month &&
+    emp.salary_pending_month <= monthStr
+      ? Number(emp.ot_fixed_salary_pending)
+      : Number(emp.ot_fixed_salary ?? 0);
   // Profit chỉ tính khi không phải snapshot (snapshot là tháng cũ đã cleanup)
   const profitData = fromSnapshot
     ? { items: [] as EmployeeProfit[], total: 0 }

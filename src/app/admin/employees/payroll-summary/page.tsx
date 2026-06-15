@@ -107,7 +107,13 @@ export default async function PayrollSummaryPage({
             (snapshotRow.data as any)
           : await computePayrollForMonth(admin, emp, monthStr);
 
-        const otFixed = Number(emp.ot_fixed_salary ?? 0);
+        const otFixed =
+          emp.ot_fixed_salary_pending !== null &&
+          emp.ot_fixed_salary_pending !== undefined &&
+          emp.salary_pending_month &&
+          emp.salary_pending_month <= monthStr
+            ? Number(emp.ot_fixed_salary_pending)
+            : Number(emp.ot_fixed_salary ?? 0);
 
         const { data: adjRaw } = await admin
           .from("payroll_adjustments")
