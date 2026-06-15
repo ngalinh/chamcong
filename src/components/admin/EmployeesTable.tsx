@@ -283,12 +283,16 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                     initialSalary={Number(e.salary ?? 0)}
                     initialHourlyRate={Number(e.hourly_rate ?? 0)}
                     initialOvertimeRate={Number(e.overtime_rate ?? 0)}
+                    initialSalaryPending={e.salary_pending ?? null}
+                    initialSalaryPendingMonth={e.salary_pending_month ?? null}
                     action={actions.updateEmployeePayroll}
                   />
                   {e.employment_type !== "parttime" && (
                     <OtFixedSalaryEditor
                       employeeId={e.id}
                       initialValue={e.ot_fixed_salary ?? null}
+                      initialOtPending={e.ot_fixed_salary_pending ?? null}
+                      initialSalaryPendingMonth={e.salary_pending_month ?? null}
                       action={actions.updateOtFixedSalary}
                     />
                   )}
@@ -494,12 +498,16 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                         initialSalary={Number(e.salary ?? 0)}
                         initialHourlyRate={Number(e.hourly_rate ?? 0)}
                         initialOvertimeRate={Number(e.overtime_rate ?? 0)}
+                        initialSalaryPending={e.salary_pending ?? null}
+                        initialSalaryPendingMonth={e.salary_pending_month ?? null}
                         action={actions.updateEmployeePayroll}
                       />
                       {e.employment_type !== "parttime" && (
                         <OtFixedSalaryEditor
                           employeeId={e.id}
                           initialValue={e.ot_fixed_salary ?? null}
+                          initialOtPending={e.ot_fixed_salary_pending ?? null}
+                          initialSalaryPendingMonth={e.salary_pending_month ?? null}
                           action={actions.updateOtFixedSalary}
                         />
                       )}

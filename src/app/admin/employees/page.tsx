@@ -86,12 +86,26 @@ async function updateEmployeePayroll(formData: FormData) {
   if (!Number.isFinite(hourlyRate) || hourlyRate < 0) throw new Error("Lương theo giờ không hợp lệ");
   if (!Number.isFinite(overtimeRate) || overtimeRate < 0) throw new Error("Lương OT không hợp lệ");
 
+  const effectiveFrom = String(formData.get("effective_from") ?? "current");
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("employees")
-    .update({ employment_type: employmentType, salary, hourly_rate: hourlyRate, overtime_rate: overtimeRate })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
+
+  if (employmentType === "fulltime" && effectiveFrom === "next") {
+    const nowVN = new Date(Date.now() + 7 * 3600_000);
+    const m = nowVN.getUTCMonth() + 1;
+    const y = nowVN.getUTCFullYear();
+    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+    const { error } = await admin
+      .from("employees")
+      .update({ salary_pending: salary, salary_pending_month: nextMonth })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await admin
+      .from("employees")
+      .update({ employment_type: employmentType, salary, hourly_rate: hourlyRate, overtime_rate: overtimeRate, salary_pending: null })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
 
   revalidatePath("/admin/employees");
 }
@@ -111,13 +125,27 @@ async function updateOtFixedSalary(formData: FormData) {
   const id = String(formData.get("id"));
   const raw = Number(formData.get("ot_fixed_salary") ?? 0);
   const val = Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  const effectiveFrom = String(formData.get("effective_from") ?? "current");
 
   const admin = createAdminClient();
-  const { error } = await admin
-    .from("employees")
-    .update({ ot_fixed_salary: val || null })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
+
+  if (effectiveFrom === "next") {
+    const nowVN = new Date(Date.now() + 7 * 3600_000);
+    const m = nowVN.getUTCMonth() + 1;
+    const y = nowVN.getUTCFullYear();
+    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+    const { error } = await admin
+      .from("employees")
+      .update({ ot_fixed_salary_pending: val || null, salary_pending_month: nextMonth })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await admin
+      .from("employees")
+      .update({ ot_fixed_salary: val || null, ot_fixed_salary_pending: null })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
 
   revalidatePath("/admin/employees");
 }
