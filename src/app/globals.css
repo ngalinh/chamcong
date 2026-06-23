@@ -49,7 +49,7 @@ body {
     radial-gradient(1100px 560px at 10% -10%, oklch(0.92 0.08 280 / 0.55), transparent 60%),
     radial-gradient(900px 520px at 100% 10%, oklch(0.94 0.06 20 / 0.45), transparent 55%),
     radial-gradient(800px 600px at 50% 110%, oklch(0.93 0.07 190 / 0.35), transparent 60%);
-  background-attachment: fixed;
+  /* background-attachment: fixed gây repaint liên tục trên iOS PWA → bỏ */
 }
 
 input, select, textarea, button { font: inherit; }
@@ -82,11 +82,15 @@ input, select, textarea, button { font: inherit; }
 .animate-fade-in { animation: fade-in 200ms ease-out; }
 
 /* Slow gentle "breathing" for big CTAs */
+/* Chỉ animate transform để GPU composite-only, không trigger paint */
 @keyframes breathe {
-  0%, 100% { transform: scale(1); box-shadow: 0 25px 50px -12px rgb(99 102 241 / 0.4); }
-  50%      { transform: scale(1.015); box-shadow: 0 30px 60px -10px rgb(99 102 241 / 0.55); }
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.018); }
 }
-.animate-breathe { animation: breathe 3.6s ease-in-out infinite; }
+.animate-breathe {
+  animation: breathe 3.6s ease-in-out infinite;
+  will-change: transform;
+}
 
 /* Slow ring ping (less aggressive than animate-ping) */
 @keyframes ping-slow {
