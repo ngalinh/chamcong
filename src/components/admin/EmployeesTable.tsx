@@ -507,7 +507,7 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
                           employeeId={e.id}
                           initialValue={e.ot_fixed_salary ?? null}
                           initialOtPending={e.ot_fixed_salary_pending ?? null}
-                          initialSalaryPendingMonth={e.salary_pending_month ?? null}
+                          initialOtSalaryPendingMonth={e.ot_fixed_salary_pending_month ?? null}
                           action={actions.updateOtFixedSalary}
                         />
                       )}
