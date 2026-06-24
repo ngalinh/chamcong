@@ -167,16 +167,15 @@ async function updateCheckIn(formData: FormData) {
   // ISO timestamp với giờ VN (UTC+7)
   const checkedInAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr + ":00" : timeStr}+07:00`).toISOString();
 
-  // Hourly leave override (nếu có)
-  const { data: hourlyLeave } = await admin
+  // Hourly leave override (nếu có, có thể nhiều đơn trong cùng ngày)
+  const { data: hourlyLeavesRaw } = await admin
     .from("leave_requests")
     .select("start_time, end_time, category")
     .eq("employee_id", ci.employee_id)
     .eq("leave_date", dateStr)
     .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
     .not("start_time", "is", null)
-    .eq("status", "approved")
-    .maybeSingle();
+    .eq("status", "approved");
 
   // @ts-expect-error nested join
   const empJoin = ci.employees as { email: string | null; work_start_time: string | null; work_end_time: string | null; work_shifts: { start: string; end: string }[] | null } | null;
@@ -188,7 +187,7 @@ async function updateCheckIn(formData: FormData) {
   const { late_minutes, early_minutes } = computeLateEarly({
     emp: empJoin ?? {},
     office: officeJoin,
-    hourlyLeave: hourlyLeave ?? null,
+    hourlyLeaves: hourlyLeavesRaw ?? [],
     kind: kind as "in" | "out",
     timeMinutes: (h || 0) * 60 + (m || 0),
   });
@@ -255,15 +254,14 @@ async function createManualCheckIn(formData: FormData) {
 
   const checkedInAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr + ":00" : timeStr}+07:00`).toISOString();
 
-  const { data: hourlyLeave } = await admin
+  const { data: hourlyLeavesRaw } = await admin
     .from("leave_requests")
     .select("start_time, end_time, category")
     .eq("employee_id", employeeId)
     .eq("leave_date", dateStr)
     .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
     .not("start_time", "is", null)
-    .eq("status", "approved")
-    .maybeSingle();
+    .eq("status", "approved");
 
   const [h, m] = timeStr.split(":").map(Number);
   const { late_minutes, early_minutes } = computeLateEarly({
@@ -274,7 +272,7 @@ async function createManualCheckIn(formData: FormData) {
       work_shifts: (emp.work_shifts ?? null) as { start: string; end: string }[] | null,
     },
     office: { work_start_time: office.work_start_time, work_end_time: office.work_end_time },
-    hourlyLeave: hourlyLeave ?? null,
+    hourlyLeaves: hourlyLeavesRaw ?? [],
     kind: kind as "in" | "out",
     timeMinutes: (h || 0) * 60 + (m || 0),
   });
@@ -427,11 +425,16 @@ async function decideLeave(formData: FormData) {
       work_end_time: empJoin?.work_end_time ?? null,
       work_shifts: empJoin?.work_shifts ?? null,
     };
-    const hourlyLeave = {
-      start_time: leave.start_time!,
-      end_time: leave.end_time!,
-      category: leave.category,
-    };
+    // Lấy tất cả đơn nghỉ có giờ đã approved trong ngày (bao gồm đơn vừa duyệt)
+    const { data: approvedHourlyLeaves } = await admin
+      .from("leave_requests")
+      .select("start_time, end_time, category")
+      .eq("employee_id", leave.employee_id)
+      .eq("leave_date", leave.leave_date)
+      .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+      .not("start_time", "is", null)
+      .eq("status", "approved");
+    const hourlyLeaves = approvedHourlyLeaves ?? [];
 
     await Promise.all((dayCheckIns ?? []).map(async (ci) => {
       // @ts-expect-error — supabase join
@@ -441,7 +444,7 @@ async function decideLeave(formData: FormData) {
       const { late_minutes, early_minutes } = computeLateEarly({
         emp: empForHours,
         office,
-        hourlyLeave,
+        hourlyLeaves,
         kind: ci.kind as "in" | "out",
         timeMinutes: ciMin,
       });

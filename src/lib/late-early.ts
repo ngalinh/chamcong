@@ -52,7 +52,7 @@ export function computeLateEarly(opts: {
     work_shifts?: WorkShift[] | null;
   };
   office: { work_start_time: string; work_end_time: string };
-  hourlyLeave?: { start_time: string; end_time: string; category?: string | null } | null;
+  hourlyLeaves?: Array<{ start_time: string; end_time: string; category?: string | null }> | null;
   kind: "in" | "out";
   timeMinutes: number;
 }): { late_minutes: number | null; early_minutes: number | null } {
@@ -72,22 +72,20 @@ export function computeLateEarly(opts: {
   let effectiveStart = closest.shift.start;
   let effectiveEnd = closest.shift.end;
 
-  if (opts.hourlyLeave) {
-    const lStart = timeToMinutes(opts.hourlyLeave.start_time);
-    const lEnd = timeToMinutes(opts.hourlyLeave.end_time);
+  // Áp dụng từng đơn nghỉ theo giờ — mỗi đơn có thể dịch effectiveStart hoặc effectiveEnd.
+  // online_wfh / leave_paid nửa ngày dùng pattern WFH_SHIFTS (sáng 09:00-12:30,
+  // chiều 13:30-17:30) → có nghỉ trưa ngầm. leave_hourly không có nghỉ trưa → giữ logic cũ.
+  for (const hl of opts.hourlyLeaves ?? []) {
+    const lStart = timeToMinutes(hl.start_time);
+    const lEnd = timeToMinutes(hl.end_time);
     const wStart = timeToMinutes(effectiveStart);
     const wEnd = timeToMinutes(effectiveEnd);
-    // online_wfh / leave_paid nửa ngày dùng pattern WFH_SHIFTS (sáng 09:00-12:30,
-    // chiều 13:30-17:30) → có nghỉ trưa ngầm. Khi shift effective end/start vì đơn
-    // chiều, dùng 12:30 (kết thúc ca sáng) thay vì 13:30 (start đơn). Ngược lại
-    // cho đơn sáng. leave_hourly không có nghỉ trưa → giữ logic cũ.
-    const hasLunchBreak = !!opts.hourlyLeave.category
-      && HALF_DAY_BREAK_CATEGORIES.has(opts.hourlyLeave.category);
+    const hasLunchBreak = !!hl.category && HALF_DAY_BREAK_CATEGORIES.has(hl.category);
     if (lStart <= wStart && lEnd > wStart) {
-      effectiveStart = hasLunchBreak ? HALF_DAY_AFTERNOON_START : opts.hourlyLeave.end_time;
+      effectiveStart = hasLunchBreak ? HALF_DAY_AFTERNOON_START : hl.end_time;
     }
     if (lEnd >= wEnd && lStart < wEnd) {
-      effectiveEnd = hasLunchBreak ? HALF_DAY_MORNING_END : opts.hourlyLeave.start_time;
+      effectiveEnd = hasLunchBreak ? HALF_DAY_MORNING_END : hl.start_time;
     }
   }
 

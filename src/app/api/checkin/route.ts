@@ -116,15 +116,14 @@ export async function POST(request: NextRequest) {
   // cả 3 đều shift giờ làm hiệu lực. Vd: office 9h-18h, NV nghỉ 9-10h hoặc WFH ca sáng
   // 9-12:30 hoặc leave_paid sáng 9-12:30 → effective_start dịch theo, NV chỉ phải có
   // mặt ca còn lại.
-  const { data: hourlyLeave } = await admin
+  const { data: hourlyLeavesRaw } = await admin
     .from("leave_requests")
     .select("start_time, end_time, category")
     .eq("employee_id", emp.id)
     .eq("leave_date", dayStr)
     .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
     .not("start_time", "is", null)
-    .eq("status", "approved")
-    .maybeSingle();
+    .eq("status", "approved");
 
   // Tính late/early via shared helper (hỗ trợ multi-shift, cross-midnight, hourly leave)
   const { late_minutes, early_minutes } = computeLateEarly({
@@ -135,7 +134,7 @@ export async function POST(request: NextRequest) {
       work_shifts: (emp.work_shifts ?? null) as Array<{ start: string; end: string }> | null,
     },
     office: { work_start_time: office.work_start_time, work_end_time: office.work_end_time },
-    hourlyLeave: hourlyLeave ?? null,
+    hourlyLeaves: hourlyLeavesRaw ?? [],
     kind,
     timeMinutes: timeToMinutes(currentTimeVN()),
   });
