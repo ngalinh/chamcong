@@ -121,7 +121,9 @@ export function NotificationToggle({ shifts = [], initialReminderIndices = [] }:
     })();
   }, [refresh, subscribe]);
 
-  if (state === "loading") return null;
+  if (state === "loading") return (
+    <div className="rounded-2xl glass border border-white/60 p-4 h-[68px]" aria-hidden />
+  );
   if (state === "unsupported") return null;
 
   if (state === "denied") {
