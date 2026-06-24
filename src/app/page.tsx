@@ -292,8 +292,8 @@ export default async function Home() {
           <Link href="/checkin" className="group block">
             <div className="relative aspect-square w-full rounded-[36px] overflow-hidden shadow-2xl shadow-indigo-500/35 transition group-active:scale-[0.98] animate-breathe">
               <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, #6366f1, #4f46e5, #7c3aed)" }} />
-              <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-white/15 blur-2xl animate-float" />
-              <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl animate-float" style={{ animationDelay: "-9s" }} />
+              <div className="absolute -top-24 -right-10 h-64 w-64 rounded-full bg-white/15 blur-2xl" />
+              <div className="absolute -bottom-16 -left-10 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl" />
               <div className="absolute inset-8 rounded-full border border-white/20" />
               <div className="absolute inset-16 rounded-full border border-white/10" />
 
