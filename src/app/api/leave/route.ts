@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToAdmins } from "@/lib/push";
 import { LEAVE_CATEGORIES } from "@/types/db";
+import { timeToMinutes } from "@/lib/time";
 
 export const runtime = "nodejs";
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
   // trùng ca, hoặc 1 trong 2 là full_day).
   const { data: existing } = await admin
     .from("leave_requests")
-    .select("leave_date, status, start_time")
+    .select("leave_date, status, start_time, end_time")
     .eq("employee_id", emp.id)
     .eq("category", data.category)
     .in("leave_date", data.leave_dates)
@@ -82,6 +83,17 @@ export async function POST(request: NextRequest) {
       if (newShift === null || existingShift === null) return true;
       return newShift === existingShift;
     });
+  } else if (data.category === "leave_hourly" && conflicts.length > 0) {
+    // Cho phép nhiều đơn nghỉ giờ trong cùng 1 ngày — chỉ chặn khi trùng khung giờ
+    const newStart = timeToMinutes(data.start_time!.slice(0, 5));
+    const newEnd = timeToMinutes(data.end_time!.slice(0, 5));
+    conflicts = conflicts.filter((r) => {
+      if (!r.start_time || !r.end_time) return true;
+      const existStart = timeToMinutes((r.start_time as string).slice(0, 5));
+      const existEnd = timeToMinutes((r.end_time as string).slice(0, 5));
+      // Trùng nếu newStart < existEnd AND existStart < newEnd
+      return newStart < existEnd && existStart < newEnd;
+    });
   }
 
   if (conflicts.length > 0) {
@@ -93,9 +105,14 @@ export async function POST(request: NextRequest) {
       })
       .join(", ");
     const hasApproved = conflicts.some((e) => e.status === "approved");
+    const isHourlyConflict = data.category === "leave_hourly";
     const message = hasApproved
-      ? `Bạn đã có đơn xin nghỉ ngày ${formatted} được duyệt rồi`
-      : `Bạn đã gửi đơn xin nghỉ ngày ${formatted} và đang chờ sếp duyệt`;
+      ? isHourlyConflict
+        ? `Bạn đã có đơn xin nghỉ giờ trùng khung giờ này ngày ${formatted} được duyệt rồi`
+        : `Bạn đã có đơn xin nghỉ ngày ${formatted} được duyệt rồi`
+      : isHourlyConflict
+        ? `Bạn đã gửi đơn xin nghỉ giờ trùng khung giờ này ngày ${formatted} và đang chờ sếp duyệt`
+        : `Bạn đã gửi đơn xin nghỉ ngày ${formatted} và đang chờ sếp duyệt`;
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
