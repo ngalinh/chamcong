@@ -83,11 +83,19 @@ export default function EmployeeWorkHoursEditor({
     fd.set("id", employeeId);
     fd.set("work_shifts", JSON.stringify(shifts));
 
-    // Convert reminderEnabled[] → indices. If all enabled → [] (all).
+    // Convert reminderEnabled[] → indices.
+    //  - Tất cả bật → [] (mặc định = all)
+    //  - Không ca nào bật → [-1] (sentinel "tắt hết"); KHÔNG dùng [] vì cron hiểu [] = tất cả
+    //  - Một số bật → [các index]
     const enabledIndices = reminderEnabled
       .map((v, i) => (v ? i : -1))
       .filter((i) => i >= 0);
-    const toSave = enabledIndices.length === shifts.length ? [] : enabledIndices;
+    const toSave =
+      shifts.length > 0 && enabledIndices.length === 0
+        ? [-1]
+        : enabledIndices.length === shifts.length
+          ? []
+          : enabledIndices;
     fd.set("reminder_shift_indices", JSON.stringify(toSave));
 
     try {

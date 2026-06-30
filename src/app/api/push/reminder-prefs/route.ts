@@ -25,8 +25,9 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const indices = body?.indices;
-  if (!Array.isArray(indices) || indices.some((i) => typeof i !== "number" || i < 0)) {
-    return NextResponse.json({ error: "indices phải là mảng số nguyên không âm" }, { status: 400 });
+  // -1 = sentinel "tắt hết"; index ca thực >= 0
+  if (!Array.isArray(indices) || indices.some((i) => !Number.isInteger(i) || i < -1)) {
+    return NextResponse.json({ error: "indices phải là mảng số nguyên (>= -1)" }, { status: 400 });
   }
 
   const admin = createAdminClient();

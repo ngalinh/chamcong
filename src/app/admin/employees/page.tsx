@@ -239,13 +239,13 @@ async function updateEmployeeWorkHours(formData: FormData) {
     }))
     .sort((a, b) => a.start.localeCompare(b.start));
 
-  // reminder_shift_indices: [] = tất cả ca; [0,1,...] = ca được chọn
+  // reminder_shift_indices: [] = tất cả ca; [0,1,...] = ca được chọn; [-1] = tắt hết
   let reminderIndices: number[] = [];
   const remRaw = formData.get("reminder_shift_indices");
   if (remRaw) {
     try {
       const parsed = JSON.parse(String(remRaw));
-      if (Array.isArray(parsed) && parsed.every((i) => Number.isInteger(i) && i >= 0)) {
+      if (Array.isArray(parsed) && parsed.every((i) => Number.isInteger(i) && i >= -1)) {
         reminderIndices = parsed;
       }
     } catch { /* ignore malformed, default to [] */ }

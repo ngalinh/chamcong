@@ -29,7 +29,8 @@ export function NotificationToggle({ shifts = [], initialReminderIndices = [] }:
 
   const toggleShift = async (i: number) => {
     const allEnabled = shifts.map((_, idx) => idx);
-    const current = reminderIndices.length === 0 ? allEnabled : reminderIndices;
+    // Lọc bỏ sentinel -1 ("tắt hết") khi tính trạng thái hiện tại
+    const current = reminderIndices.length === 0 ? allEnabled : reminderIndices.filter((x) => x >= 0);
 
     let next: number[];
     if (current.includes(i)) {
@@ -37,8 +38,8 @@ export function NotificationToggle({ shifts = [], initialReminderIndices = [] }:
     } else {
       next = [...current, i].sort((a, b) => a - b);
     }
-    // Nếu tất cả đều được chọn → lưu [] (nghĩa là all)
-    const toSave = next.length === allEnabled.length ? [] : next;
+    // Tất cả bật → [] (= all); không ca nào bật → [-1] (= tắt hết, tránh [] bị hiểu là all)
+    const toSave = next.length === allEnabled.length ? [] : next.length === 0 ? [-1] : next;
 
     setReminderIndices(toSave);
     setSavingPrefs(true);
