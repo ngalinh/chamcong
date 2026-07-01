@@ -48,16 +48,26 @@ export async function computeProfitForEmployee(
 ): Promise<{ items: EmployeeProfit[]; total: number }> {
   const admin = createAdminClient();
 
-  // 1. Tìm channels mà employee này là SALE hoặc CSKH
+  // 1. Tìm các channel mà employee này TỪNG là SALE hoặc CSKH (bất kỳ effective_from nào)
+  const { data: myRows } = await admin
+    .from("profit_channels")
+    .select("channel_name")
+    .or(`sale_employee_id.eq.${employeeId},cskh_employee_id.eq.${employeeId}`);
+
+  if (!myRows?.length) return { items: [], total: 0 };
+
+  // 1b. Lấy TẤT CẢ rows của các channel đó (mọi nhân viên) để xác định row hiệu lực đúng.
+  // Nếu chỉ lấy rows của riêng employee này, một reassignment sang NV khác (row effective_from
+  // mới hơn) sẽ không "thấy" được → vẫn tính nhầm profit cho NV cũ.
+  const channelNames = [...new Set(myRows.map((c) => c.channel_name))];
   const { data: channels } = await admin
     .from("profit_channels")
     .select("*")
-    .or(`sale_employee_id.eq.${employeeId},cskh_employee_id.eq.${employeeId}`);
+    .in("channel_name", channelNames);
 
   if (!channels?.length) return { items: [], total: 0 };
 
   // Deduplicate channels: per channel_name, pick row with latest effective_from <= month
-  const channelNames = [...new Set(channels.map((c) => c.channel_name))];
   const effectiveChannels = dedupeByEffectiveFrom(channels, (c) => c.channel_name, month);
   if (!effectiveChannels.length) return { items: [], total: 0 };
 
