@@ -86,8 +86,8 @@ export function OrdersPreview({
         </a>
       </div>
 
-      {/* Bộ lọc */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Bộ lọc — text-xs ở container để nút "Xoá lọc" (globals.css ép button font:inherit) cũng 12px */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <FilterSelect label="Kênh NV" value={channel} onChange={setChannel} options={channelOpts} />
         <FilterSelect label="Brand" value={brand} onChange={setBrand} options={brandOpts} />
         <FilterSelect label="Nhóm KH" value={group} onChange={setGroup} options={groupOpts} />
