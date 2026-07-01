@@ -37,6 +37,7 @@ export async function OrdersTab({
   // Nếu đang preview tháng nào, lấy summary data
   let summaryRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; total: number; profit_pct: number | null; profit: number | null }[] = [];
   let totalAmount = 0;
+  let totalProfit = 0;
   let totalOrders = 0;
   let previewFile: OrderFile | null = null;
 
@@ -94,6 +95,7 @@ export async function OrdersTab({
           const bi = customerGroupOrder.indexOf(b.customer_group ?? "");
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
+      totalProfit = summaryRows.reduce((sum, r) => sum + (r.profit ?? 0), 0);
     }
   }
 
@@ -182,7 +184,7 @@ export async function OrdersTab({
                 Preview tháng {preview ? `${Number(preview.split("-")[1])}-${preview.split("-")[0]}` : ""} — {previewFile.original_filename}
               </div>
               <div className="text-xs text-indigo-600 mt-0.5">
-                {fmt(totalOrders)} đơn · Tổng Thành tiền: {fmt(totalAmount)}đ
+                {fmt(totalOrders)} đơn · Tổng doanh thu: {fmt(totalAmount)}đ · Tổng profit: <span className="text-emerald-700 font-medium">{fmt(totalProfit)}đ</span>
               </div>
             </div>
             <a
@@ -227,7 +229,8 @@ export async function OrdersTab({
                   <tr className="border-t border-indigo-200">
                     <td colSpan={3} className="py-1.5 px-2 font-semibold text-indigo-800">Tổng</td>
                     <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-indigo-800">{fmt(totalAmount)}</td>
-                    <td colSpan={2} />
+                    <td />
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-emerald-700">{fmt(totalProfit)}</td>
                   </tr>
                 </tfoot>
               </table>
