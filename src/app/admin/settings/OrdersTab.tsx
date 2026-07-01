@@ -8,6 +8,7 @@ import { vi } from "date-fns/locale";
 import type { OrderFile, ProfitRule } from "@/types/db";
 import { PROFIT_CHANNELS, CUSTOMER_GROUPS } from "@/types/db";
 import { resolveChannelName } from "@/lib/channelAlias";
+import { OrdersPreview } from "./OrdersPreview";
 
 type DropshipEntry = { amount: number };
 import { uploadOrderFile, deleteOrderFile, upsertDropshipRevenue } from "./actions";
@@ -35,10 +36,7 @@ export async function OrdersTab({
     .order("month", { ascending: false });
 
   // Nếu đang preview tháng nào, lấy summary data
-  let summaryRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; total: number; profit_pct: number | null; profit: number | null }[] = [];
-  let totalAmount = 0;
-  let totalProfit = 0;
-  let totalOrders = 0;
+  let summaryRows: { sale_channel: string | null; brand: string | null; customer_group: string | null; total: number; profit_pct: number | null; profit: number | null; count: number }[] = [];
   let previewFile: OrderFile | null = null;
 
   const customerGroupOrder = ["Khách lẻ", "CTV", "Sỉ nhỏ", "Sỉ vừa", "Sỉ to"];
@@ -60,8 +58,6 @@ export async function OrdersTab({
         if (batch.length < BATCH) break;
       }
 
-      totalOrders = allRows.length;
-
       // Fetch profit rules
       const { data: profitRules } = await admin.from("profit_rules").select("*");
       const ruleMap = new Map<string, number>(
@@ -72,19 +68,21 @@ export async function OrdersTab({
       );
 
       // Group by sale_channel + brand + customer_group
-      const map = new Map<string, number>();
+      const map = new Map<string, { total: number; count: number }>();
       for (const r of allRows) {
         const key = `${r.sale_channel ?? ""}||${r.brand ?? ""}||${r.customer_group ?? ""}`;
-        map.set(key, (map.get(key) ?? 0) + Number(r.amount ?? 0));
-        totalAmount += Number(r.amount ?? 0);
+        const cur = map.get(key) ?? { total: 0, count: 0 };
+        cur.total += Number(r.amount ?? 0);
+        cur.count += 1;
+        map.set(key, cur);
       }
       summaryRows = Array.from(map.entries())
-        .map(([k, total]) => {
+        .map(([k, { total, count }]) => {
           const [sale_channel, brand, customer_group] = k.split("||");
           const ruleKey = `${resolveChannelName(sale_channel) ?? sale_channel}||${brand}||${customer_group}`;
           const profit_pct = ruleMap.get(ruleKey) ?? null;
           const profit = profit_pct !== null ? Math.round(total * profit_pct) : null;
-          return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit };
+          return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit, count };
         })
         .sort((a, b) => {
           const ch = (a.sale_channel ?? "").localeCompare(b.sale_channel ?? "", "vi");
@@ -95,7 +93,6 @@ export async function OrdersTab({
           const bi = customerGroupOrder.indexOf(b.customer_group ?? "");
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
-      totalProfit = summaryRows.reduce((sum, r) => sum + (r.profit ?? 0), 0);
     }
   }
 
@@ -177,66 +174,11 @@ export async function OrdersTab({
 
       {/* Preview block */}
       {preview && previewFile && (
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <div className="font-medium text-sm text-indigo-900">
-                Preview tháng {preview ? `${Number(preview.split("-")[1])}-${preview.split("-")[0]}` : ""} — {previewFile.original_filename}
-              </div>
-              <div className="text-xs text-indigo-600 mt-0.5">
-                {fmt(totalOrders)} đơn · Tổng doanh thu: {fmt(totalAmount)}đ · Tổng profit: <span className="text-emerald-700 font-medium">{fmt(totalProfit)}đ</span>
-              </div>
-            </div>
-            <a
-              href="/admin/settings?tab=orders"
-              className="text-xs text-indigo-600 hover:text-indigo-800 underline"
-            >
-              Đóng
-            </a>
-          </div>
-          {summaryRows.length === 0 ? (
-            <p className="text-xs text-indigo-500">Không có dữ liệu</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-indigo-200">
-                    <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Kênh NV</th>
-                    <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Brand</th>
-                    <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Nhóm KH</th>
-                    <th className="text-right py-1.5 px-2 font-medium text-indigo-700">Doanh thu (đ)</th>
-                    <th className="text-right py-1.5 px-2 font-medium text-indigo-700">% Profit</th>
-                    <th className="text-right py-1.5 px-2 font-medium text-indigo-700">Profit (đ)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summaryRows.map((r, i) => (
-                    <tr key={i} className="border-b border-indigo-100 last:border-0">
-                      <td className="py-1.5 px-2 text-neutral-700">{r.sale_channel ?? "(trống)"}</td>
-                      <td className="py-1.5 px-2 text-neutral-700">{r.brand ?? "(trống)"}</td>
-                      <td className="py-1.5 px-2 text-neutral-700">{r.customer_group ?? "(trống)"}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums font-medium">{fmt(r.total)}</td>
-                      <td className="py-1.5 px-2 text-right tabular-nums text-neutral-500">
-                        {r.profit_pct !== null ? `${(r.profit_pct * 100).toFixed(1)}%` : "—"}
-                      </td>
-                      <td className="py-1.5 px-2 text-right tabular-nums font-medium text-emerald-700">
-                        {r.profit !== null ? fmt(r.profit) : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-indigo-200">
-                    <td colSpan={3} className="py-1.5 px-2 font-semibold text-indigo-800">Tổng</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-indigo-800">{fmt(totalAmount)}</td>
-                    <td />
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-emerald-700">{fmt(totalProfit)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </div>
+        <OrdersPreview
+          rows={summaryRows}
+          monthLabel={`${Number(preview.split("-")[1])}-${preview.split("-")[0]}`}
+          filename={previewFile.original_filename}
+        />
       )}
 
       {/* Doanh thu Dropship */}
