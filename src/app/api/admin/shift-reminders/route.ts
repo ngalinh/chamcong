@@ -5,6 +5,7 @@ import { isAdminEmail } from "@/lib/utils";
 import { sendPushToEmployee } from "@/lib/push";
 import { effectiveWorkShifts } from "@/lib/workHours";
 import { APP_TZ, timeToMinutes } from "@/lib/time";
+import { worksSaturdayMorning, SAT_MORNING_END } from "@/lib/onlineCheckin";
 import { formatInTimeZone } from "date-fns-tz";
 import type { WorkShift } from "@/types/db";
 
@@ -36,6 +37,8 @@ type EmployeeRow = {
 
 type OfficeRow = {
   id: string;
+  name: string | null;
+  is_remote: boolean | null;
   work_start_time: string;
   work_end_time: string;
 };
@@ -69,9 +72,10 @@ export async function POST(request: NextRequest) {
   const hhmm = formatInTimeZone(now, APP_TZ, "HH:mm");
   const dateVN = formatInTimeZone(now, APP_TZ, "yyyy-MM-dd");
   const dayOfWeekVN = formatInTimeZone(now, APP_TZ, "i"); // 1=T2 … 7=CN (ISO)
-  if (dayOfWeekVN === "6" || dayOfWeekVN === "7") {
-    return NextResponse.json({ ok: true, nowVN: hhmm, dateVN, skipped: "weekend", sent: 0 });
+  if (dayOfWeekVN === "7") {
+    return NextResponse.json({ ok: true, nowVN: hhmm, dateVN, skipped: "sunday", sent: 0 });
   }
+  const isSaturday = dayOfWeekVN === "6";
   const nowMin = timeToMinutes(hhmm);
   const bucketStart = Math.floor(nowMin / windowMin) * windowMin;
   const bucketEnd = bucketStart + windowMin;
@@ -95,7 +99,7 @@ export async function POST(request: NextRequest) {
   if (officeIds.length > 0) {
     const { data: offices } = await admin
       .from("offices")
-      .select("id, work_start_time, work_end_time")
+      .select("id, name, is_remote, work_start_time, work_end_time")
       .in("id", officeIds)
       .returns<OfficeRow[]>();
     for (const o of offices ?? []) officeMap.set(o.id, o);
@@ -104,11 +108,28 @@ export async function POST(request: NextRequest) {
   const fired: Array<{ employee: string; kind: "start" | "end"; shift_index: number; shift_time: string }> = [];
   let totalSent = 0;
 
+  const NOON_MIN = 12 * 60;
+
   for (const emp of employees) {
     const office = emp.home_office_id ? officeMap.get(emp.home_office_id) : undefined;
     const officeStart = office?.work_start_time ?? "09:00:00";
     const officeEnd = office?.work_end_time ?? "18:00:00";
-    const shifts = effectiveWorkShifts(emp, officeStart, officeEnd);
+
+    let shifts: WorkShift[];
+    if (isSaturday) {
+      // Chỉ NV SG có ca sáng mới làm online sáng T7 — bỏ qua NV khác.
+      if (!office || !worksSaturdayMorning(emp, office)) continue;
+      const allShifts = effectiveWorkShifts(emp, officeStart, officeEnd);
+      const morning = allShifts
+        .filter((s) => timeToMinutes(s.start) < NOON_MIN)
+        .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start))[0];
+      if (!morning) continue;
+      const endTime =
+        timeToMinutes(morning.end) < timeToMinutes(SAT_MORNING_END) ? morning.end : SAT_MORNING_END;
+      shifts = [{ start: morning.start, end: endTime }];
+    } else {
+      shifts = effectiveWorkShifts(emp, officeStart, officeEnd);
+    }
 
     for (let i = 0; i < shifts.length; i++) {
       const shift = shifts[i];
