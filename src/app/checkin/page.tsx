@@ -6,6 +6,9 @@ import RemoteCheckInFlow from "@/components/RemoteCheckInFlow";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
 import { resolveCheckinMode, vnDayOfWeek } from "@/lib/onlineCheckin";
 
+// Kết quả phụ thuộc đơn online trong ngày + thứ trong tuần → không được cache route.
+export const dynamic = "force-dynamic";
+
 export default async function CheckInPage() {
   const supabase = await createClient();
   const {
