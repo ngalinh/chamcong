@@ -45,7 +45,7 @@ export default async function CheckInPage() {
           .select("category, start_time, end_time")
           .eq("employee_id", employee.id)
           .eq("leave_date", dayStr)
-          .like("category", "online_%"),
+          .in("category", ["online_rain", "online_wfh", "online_paid"]),
         admin
           .from("check_ins")
           .select("kind, checked_in_at")

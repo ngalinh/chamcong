@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     .select("category, start_time, end_time")
     .eq("employee_id", emp.id)
     .eq("leave_date", dayStr)
-    .like("category", "online_%");
+    .in("category", ["online_rain", "online_wfh", "online_paid"]);
 
   const nowMin = timeToMinutes(currentTimeVN());
   const mode = resolveCheckinMode({
