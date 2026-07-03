@@ -10,8 +10,8 @@ const DAY_MIN = 24 * 60;
  * nên khi NV có đơn WFH/leave_paid ca chiều (13:30-17:30) thì ca sáng vẫn
  * kết thúc 12:30 (không phải 13:30 = lúc bắt đầu WFH).
  */
-const HALF_DAY_MORNING_END = "12:30:00";
-const HALF_DAY_AFTERNOON_START = "13:30:00";
+export const HALF_DAY_MORNING_END = "12:30:00";
+export const HALF_DAY_AFTERNOON_START = "13:30:00";
 const HALF_DAY_BREAK_CATEGORIES = new Set(["online_wfh", "leave_paid"]);
 
 /**

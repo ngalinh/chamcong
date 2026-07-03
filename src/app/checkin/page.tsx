@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import CheckInFlow from "@/components/CheckInFlow";
 import RemoteCheckInFlow from "@/components/RemoteCheckInFlow";
+import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
+import { resolveCheckinMode, vnDayOfWeek } from "@/lib/onlineCheckin";
 
 export default async function CheckInPage() {
   const supabase = await createClient();
@@ -13,7 +15,7 @@ export default async function CheckInPage() {
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, name, face_descriptor, home_office_id")
+    .select("id, name, face_descriptor, home_office_id, email, work_start_time, work_end_time, work_shifts")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -27,21 +29,64 @@ export default async function CheckInPage() {
 
   const admin = createAdminClient();
 
-  // Nếu nhân viên thuộc chi nhánh remote (Làm online) → flow đơn giản, không face/geo
+  // Chi nhánh gốc của NV — quyết định chấm online (remote / đơn online / sáng T7 SG).
   if (employee.home_office_id) {
     const { data: home } = await admin
       .from("offices")
-      .select("id, name, is_remote, is_active")
+      .select("id, name, is_remote, is_active, work_start_time, work_end_time")
       .eq("id", employee.home_office_id)
       .maybeSingle();
-    if (home?.is_remote && home.is_active) {
-      return (
-        <RemoteCheckInFlow
-          employeeName={employee.name}
-          officeId={home.id}
-          officeName={home.name}
-        />
-      );
+
+    if (home?.is_active) {
+      const dayStr = dateVN(new Date());
+      const [{ data: onlineLeaves }, { data: lastCi }] = await Promise.all([
+        admin
+          .from("leave_requests")
+          .select("category, start_time, end_time")
+          .eq("employee_id", employee.id)
+          .eq("leave_date", dayStr)
+          .like("category", "online_%"),
+        admin
+          .from("check_ins")
+          .select("kind, checked_in_at")
+          .eq("employee_id", employee.id)
+          .order("checked_in_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      const elapsedMin = lastCi
+        ? (Date.now() - new Date(lastCi.checked_in_at as string).getTime()) / 60000
+        : Infinity;
+      const kind: "in" | "out" =
+        lastCi?.kind === "in" && elapsedMin < 18 * 60 ? "out" : "in";
+
+      const mode = resolveCheckinMode({
+        emp: {
+          email: employee.email,
+          work_start_time: employee.work_start_time,
+          work_end_time: employee.work_end_time,
+          work_shifts: (employee.work_shifts ?? null) as Array<{ start: string; end: string }> | null,
+        },
+        officeName: home.name,
+        officeStart: home.work_start_time,
+        officeEnd: home.work_end_time,
+        isRemoteOffice: !!home.is_remote,
+        onlineLeaves: onlineLeaves ?? [],
+        isSaturday: vnDayOfWeek() === 6,
+        nowMin: timeToMinutes(currentTimeVN()),
+        kind,
+      });
+
+      if (mode.online) {
+        return (
+          <RemoteCheckInFlow
+            employeeName={employee.name}
+            officeId={home.id}
+            officeName={home.name}
+          />
+        );
+      }
     }
   }
 
