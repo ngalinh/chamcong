@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Pencil, X, Loader2, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TimeInput } from "@/components/ui/TimeInput";
@@ -19,6 +20,8 @@ export default function EditCheckInModal({
   action: (fd: FormData) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   // Pre-fill date + time của check-in theo giờ VN
   const vnDate = vnDateOf(initialAtIso);
   const vnTime = vnTimeOf(initialAtIso);
@@ -56,7 +59,7 @@ export default function EditCheckInModal({
         <Pencil size={14} />
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <form
@@ -128,7 +131,8 @@ export default function EditCheckInModal({
               </button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
