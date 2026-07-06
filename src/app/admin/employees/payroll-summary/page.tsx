@@ -300,14 +300,12 @@ export default async function PayrollSummaryPage({
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
                         CK công ty
                       </div>
-                      <div className="flex justify-end">
-                        <CkCongTyEditor
-                          employeeId={emp.id}
-                          month={monthStr}
-                          initialCkCongTy={ckCongTy}
-                          action={saveTransfer}
-                        />
-                      </div>
+                      <CkCongTyEditor
+                        employeeId={emp.id}
+                        month={monthStr}
+                        initialCkCongTy={ckCongTy}
+                        action={saveTransfer}
+                      />
                     </div>
                     <div>
                       <div className="text-[10px] text-neutral-400 uppercase tracking-wider mb-0.5">
