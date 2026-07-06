@@ -44,7 +44,7 @@ export default async function SettingsPage({
       </div>
 
       {/* Tab nav */}
-      <div className="flex items-center gap-1 border-b border-neutral-200/60">
+      <div className="flex items-center gap-1 border-b border-neutral-200/60 overflow-x-auto scrollbar-none">
         {TABS.map((t) => (
           <Link
             key={t.id}

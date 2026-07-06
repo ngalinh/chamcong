@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, ListChecks, Building2, Fingerprint } from "lucide-react";
+import { LayoutDashboard, Users, ListChecks, Settings, Fingerprint } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -10,7 +10,7 @@ const items = [
   { href: "/admin/employees", label: "Nhân viên", icon: Users,           match: (p: string) => p.startsWith("/admin/employees") },
   { href: "/checkin",         label: "Chấm công", icon: Fingerprint,     match: (p: string) => p.startsWith("/checkin"), highlight: true },
   { href: "/admin/history",   label: "Lịch sử",   icon: ListChecks,      match: (p: string) => p.startsWith("/admin/history") },
-  { href: "/admin/settings",  label: "Chi nhánh", icon: Building2,       match: (p: string) => p.startsWith("/admin/settings") },
+  { href: "/admin/settings",  label: "Cài Đặt",   icon: Settings,        match: (p: string) => p.startsWith("/admin/settings") },
 ];
 
 export function BottomNav() {
