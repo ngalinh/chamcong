@@ -34,9 +34,9 @@ const Schema = z.object({
   (d) => d.category !== "leave_hourly" || d.leave_dates.length === 1,
   { message: "Nghỉ theo giờ chỉ áp dụng cho 1 ngày" },
 ).refine(
-  // WFH ca sáng/chiều = online_wfh có start_time → ràng buộc 1 ngày + đủ 2 mốc
-  (d) => !(d.category === "online_wfh" && d.start_time) || (d.end_time && d.leave_dates.length === 1),
-  { message: "WFH ca sáng/chiều cần đủ thời gian và chỉ áp dụng cho 1 ngày" },
+  // WFH / trời mưa ca sáng/chiều = có start_time → ràng buộc 1 ngày + đủ 2 mốc
+  (d) => !(["online_wfh", "online_rain"].includes(d.category) && d.start_time) || (d.end_time && d.leave_dates.length === 1),
+  { message: "Làm online ca sáng/chiều cần đủ thời gian và chỉ áp dụng cho 1 ngày" },
 ).refine(
   // Nghỉ nửa ngày leave_paid = có start_time → 1 ngày + đủ 2 mốc + duration = 0.5
   (d) => !(d.category === "leave_paid" && d.start_time) || (d.end_time && d.leave_dates.length === 1 && d.duration === 0.5 && d.duration_unit === "day"),
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     .in("status", ["pending", "approved"]);
 
   let conflicts = existing ?? [];
-  if (data.category === "online_wfh" && conflicts.length > 0) {
+  if ((data.category === "online_wfh" || data.category === "online_rain") && conflicts.length > 0) {
     const newShift = data.start_time ? data.start_time.slice(0, 5) : null; // null = full_day
     conflicts = conflicts.filter((r) => {
       const existingShift = r.start_time ? (r.start_time as string).slice(0, 5) : null;
@@ -116,10 +116,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 409 });
   }
 
-  // Lưu start/end_time cho leave_hourly + online_wfh half-day + leave_paid half-day
-  // (cả 3 đều dùng để shift effective work hours khi check-in / recalc late-early)
+  // Lưu start/end_time cho leave_hourly + online_wfh/online_rain half-day + leave_paid half-day
+  // (dùng để shift effective work hours khi check-in / recalc late-early)
   const hasShiftTimes = data.category === "leave_hourly"
-    || ((data.category === "online_wfh" || data.category === "leave_paid") && !!data.start_time);
+    || ((data.category === "online_wfh" || data.category === "online_rain" || data.category === "leave_paid") && !!data.start_time);
   const rows = data.leave_dates.map((d) => ({
     employee_id: emp.id,
     leave_date: d,

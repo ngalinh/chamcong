@@ -37,6 +37,7 @@ export default function LeaveRequestForm({
   const [dates, setDates] = useState<string[]>([today]);
   const [category, setCategory] = useState<LeaveCategory>("online_wfh");
   const [wfhMode, setWfhMode] = useState<WfhMode>("full_day");
+  const [rainMode, setRainMode] = useState<WfhMode>("full_day");
   const [leavePaidMode, setLeavePaidMode] = useState<LeavePaidMode>("full_day");
   const [duration, setDuration] = useState<string>("1");
   const [unit, setUnit] = useState<DurationUnit>("day");
@@ -49,7 +50,9 @@ export default function LeaveRequestForm({
 
   const isHourly = category === "leave_hourly";
   const isWfh = category === "online_wfh";
+  const isRain = category === "online_rain";
   const isWfhHalf = isWfh && wfhMode !== "full_day";
+  const isRainHalf = isRain && rainMode !== "full_day";
   const dayOnly = category === "leave_paid"; // Nghỉ theo ngày — duration = số ngày
   const isLeavePaidHalf = dayOnly && leavePaidMode !== "full_day";
 
@@ -67,16 +70,21 @@ export default function LeaveRequestForm({
       setStartTime(shift.start);
       setEndTime(shift.end);
       setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
+    } else if (isRainHalf) {
+      const shift = WFH_SHIFTS[rainMode as "morning" | "afternoon"];
+      setStartTime(shift.start);
+      setEndTime(shift.end);
+      setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
     } else if (isLeavePaidHalf) {
       const shift = WFH_SHIFTS[leavePaidMode as "morning" | "afternoon"];
       setStartTime(shift.start);
       setEndTime(shift.end);
       setUnit("day");
       setDates((prev) => (prev.length > 1 ? [prev[0]] : prev));
-    } else if (dayOnly || (isWfh && wfhMode === "full_day")) {
+    } else if (dayOnly || (isWfh && wfhMode === "full_day") || (isRain && rainMode === "full_day")) {
       setUnit("day");
     }
-  }, [isHourly, isWfh, isWfhHalf, isLeavePaidHalf, wfhMode, leavePaidMode, dayOnly, computedHours]);
+  }, [isHourly, isWfh, isRain, isWfhHalf, isRainHalf, isLeavePaidHalf, wfhMode, rainMode, leavePaidMode, dayOnly, computedHours]);
 
   function addDate() { setDates((prev) => [...prev, ""]); }
   function removeDate(idx: number) { setDates((prev) => prev.filter((_, i) => i !== idx)); }
@@ -103,7 +111,7 @@ export default function LeaveRequestForm({
     }
 
     // Quyết định payload theo từng trường hợp
-    const useHourly = isHourly || isWfhHalf;
+    const useHourly = isHourly || isWfhHalf || isRainHalf;
     let submitDuration: number;
     let submitUnit: DurationUnit;
     if (useHourly) {
@@ -112,7 +120,7 @@ export default function LeaveRequestForm({
     } else if (isLeavePaidHalf) {
       submitDuration = 0.5;
       submitUnit = "day";
-    } else if (dayOnly || (isWfh && wfhMode === "full_day")) {
+    } else if (dayOnly || (isWfh && wfhMode === "full_day") || (isRain && rainMode === "full_day")) {
       submitDuration = cleanDates.length;
       submitUnit = "day";
     } else {
@@ -152,7 +160,7 @@ export default function LeaveRequestForm({
     }
   }
 
-  const allowMultiDate = !isHourly && !isWfhHalf && !isLeavePaidHalf;
+  const allowMultiDate = !isHourly && !isWfhHalf && !isRainHalf && !isLeavePaidHalf;
 
   return (
     <form onSubmit={submit} className="rounded-2xl glass border border-white/60 p-5 space-y-4">
@@ -203,7 +211,8 @@ export default function LeaveRequestForm({
           value={category}
           onChange={(e) => {
             setCategory(e.target.value as LeaveCategory);
-            setWfhMode("full_day"); // reset WFH mode khi đổi category
+            setWfhMode("full_day");
+            setRainMode("full_day");
             setLeavePaidMode("full_day");
           }}
           className="h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/5"
@@ -213,6 +222,33 @@ export default function LeaveRequestForm({
           ))}
         </select>
       </Row>
+
+      {/* online_rain: 3 buttons + display tự động */}
+      {isRain && (
+        <Row icon={Clock} label="Hình thức làm online">
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">
+              <ModeButton active={rainMode === "full_day"}  onClick={() => setRainMode("full_day")}  icon={Calendar} label="Ngày" />
+              <ModeButton active={rainMode === "morning"}   onClick={() => setRainMode("morning")}   icon={Sun}      label="Ca sáng" />
+              <ModeButton active={rainMode === "afternoon"} onClick={() => setRainMode("afternoon")} icon={Moon}     label="Ca chiều" />
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+              Thời gian làm online:{" "}
+              <b className="tabular-nums">
+                {rainMode === "full_day"
+                  ? `${validDateCount || 1} ngày`
+                  : `${WFH_SHIFTS[rainMode].start} - ${WFH_SHIFTS[rainMode].end}`}
+              </b>
+              <span className="text-neutral-400 ml-1">(tự động)</span>
+            </div>
+            {rainMode !== "full_day" && (
+              <p className="text-xs text-neutral-500">
+                Bạn vẫn cần chấm công <b>tại văn phòng</b> ca {rainMode === "morning" ? "chiều (13:30 - 17:30)" : "sáng (09:00 - 12:30)"}.
+              </p>
+            )}
+          </div>
+        </Row>
+      )}
 
       {/* WFH: 3 buttons + display tự động */}
       {isWfh && (
@@ -285,8 +321,8 @@ export default function LeaveRequestForm({
         </Row>
       )}
 
-      {/* Các category còn lại (online_rain): giữ input số + selector ngày/giờ như cũ */}
-      {!isWfh && !isHourly && !dayOnly && (
+      {/* Các category còn lại: giữ input số + selector ngày/giờ như cũ */}
+      {!isWfh && !isRain && !isHourly && !dayOnly && (
         <Row icon={Clock} label={dates.length > 1 ? "Thời gian (mỗi ngày)" : "Thời gian"}>
           <div className="flex gap-2">
             <input
