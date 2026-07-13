@@ -330,23 +330,23 @@ async function decideLeave(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) throw new Error("Unauthorized");
-  const { data: me } = await supabase
-    .from("employees")
-    .select("is_admin, name, email")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
 
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision")); // 'approved' | 'rejected'
   if (decision !== "approved" && decision !== "rejected") throw new Error("Decision không hợp lệ");
 
   const admin = createAdminClient();
-  const { data: leave } = await admin
-    .from("leave_requests")
-    .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, start_time, end_time, employees(name, email, home_office_id, work_start_time, work_end_time, work_shifts, offices:home_office_id(approver_email))")
-    .eq("id", id)
-    .maybeSingle();
+
+  // Parallel: auth check + leave fetch (cả 2 chỉ cần user.id và id — độc lập nhau)
+  const [{ data: me }, { data: leave }] = await Promise.all([
+    supabase.from("employees").select("is_admin, name, email").eq("user_id", user.id).maybeSingle(),
+    admin.from("leave_requests")
+      .select("id, employee_id, status, leave_date, category, duration, duration_unit, reason, start_time, end_time, employees(name, email, home_office_id, work_start_time, work_end_time, work_shifts, offices:home_office_id(approver_email))")
+      .eq("id", id)
+      .maybeSingle(),
+  ]);
+
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
   if (!leave || leave.status !== "pending") return;
 
   // Branch routing — chỉ admin được gán cho chi nhánh đó mới duyệt được
@@ -356,30 +356,57 @@ async function decideLeave(formData: FormData) {
     throw new Error("Đơn này thuộc chi nhánh khác — bạn không có quyền duyệt");
   }
 
-  await admin
-    .from("leave_requests")
-    .update({
+  const needsBalanceLog = leave.category === "leave_paid" || leave.category === "online_wfh";
+  const needsRecalc =
+    decision === "approved" &&
+    (leave.category === "leave_hourly" || leave.category === "online_wfh" || leave.category === "leave_paid") &&
+    !!leave.start_time && !!leave.end_time;
+
+  const dayStart = needsRecalc ? new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString() : "";
+  const dayEnd   = needsRecalc ? new Date(`${leave.leave_date}T23:59:59.999+07:00`).toISOString() : "";
+
+  // Parallel: update leave + prefetch side-effect data (balance, day check-ins)
+  const [, balanceRes, dayCheckInsRes] = await Promise.all([
+    admin.from("leave_requests").update({
       status: decision,
       approved_at: new Date().toISOString(),
       approved_by: me?.name ?? user.email,
-    })
-    .eq("id", id);
+    }).eq("id", id),
+    needsBalanceLog
+      ? admin.from("employees").select("leave_balance").eq("id", leave.employee_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    needsRecalc
+      ? admin.from("check_ins")
+          .select("id, kind, checked_in_at, offices(work_start_time, work_end_time)")
+          .eq("employee_id", leave.employee_id)
+          .gte("checked_in_at", dayStart)
+          .lte("checked_in_at", dayEnd)
+      : Promise.resolve({ data: null }),
+  ]);
+
+  // Fetch approved hourly leaves sau khi update đã commit (để include đơn vừa duyệt)
+  const { data: approvedHourlyLeaves } = needsRecalc
+    ? await admin.from("leave_requests")
+        .select("start_time, end_time, category")
+        .eq("employee_id", leave.employee_id)
+        .eq("leave_date", leave.leave_date)
+        .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+        .not("start_time", "is", null)
+        .eq("status", "approved")
+    : { data: null };
+
+  // Parallel: ghi log balance + recalc check-ins
+  const finalOps: Promise<unknown>[] = [];
 
   // Ghi log lịch sử ngày phép (thông tin; balance thực tế trừ lúc chốt lương)
-  if (leave.category === "leave_paid" || leave.category === "online_wfh") {
-    const { data: emp } = await admin
-      .from("employees")
-      .select("leave_balance")
-      .eq("id", leave.employee_id)
-      .maybeSingle();
-    const currentBalance = Number(emp?.leave_balance ?? 0);
+  if (needsBalanceLog) {
+    const currentBalance = Number(balanceRes.data?.leave_balance ?? 0);
     const expectedDeduct =
       leave.category === "leave_paid"
         ? leave.start_time ? -0.5 : -1
         : leave.duration_unit === "day" ? -0.5 : 0;
-    const catLabel =
-      leave.category === "leave_paid" ? "nghỉ phép có lương" : "WFH";
-    await admin.from("leave_balance_log").insert({
+    const catLabel = leave.category === "leave_paid" ? "nghỉ phép có lương" : "WFH";
+    finalOps.push(Promise.resolve(admin.from("leave_balance_log").insert({
       employee_id: leave.employee_id,
       delta: decision === "approved" ? expectedDeduct : 0,
       balance_after: currentBalance,
@@ -389,29 +416,13 @@ async function decideLeave(formData: FormData) {
           ? `Duyệt đơn ${catLabel} ngày ${leave.leave_date}${expectedDeduct ? ` (dự kiến trừ ${Math.abs(expectedDeduct)} ngày khi chốt lương)` : ""}`
           : `Từ chối đơn ${catLabel} ngày ${leave.leave_date}`,
       leave_request_id: leave.id,
-    });
+    })));
   }
 
-  // Recalc late/early cho các check-in trong ngày khi duyệt đơn nghỉ theo giờ
-  // (lúc check-in, đơn còn pending nên đã tính theo giờ làm gốc — giờ duyệt rồi
-  // thì cập nhật lại để bỏ/giảm label vi phạm).
-  // Áp dụng cho leave_hourly + online_wfh ca sáng/chiều + leave_paid nửa ngày (start_time có).
-  if (
-    decision === "approved" &&
-    (leave.category === "leave_hourly" || leave.category === "online_wfh" || leave.category === "leave_paid") &&
-    leave.start_time &&
-    leave.end_time
-  ) {
+  // Recalc late/early cho check-in trong ngày khi duyệt đơn nghỉ theo giờ
+  if (needsRecalc && dayCheckInsRes.data) {
     const { timeToMinutes, formatVN } = await import("@/lib/time");
     const { computeLateEarly } = await import("@/lib/late-early");
-    const dayStart = new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString();
-    const dayEnd = new Date(`${leave.leave_date}T23:59:59.999+07:00`).toISOString();
-    const { data: dayCheckIns } = await admin
-      .from("check_ins")
-      .select("id, kind, checked_in_at, offices(work_start_time, work_end_time)")
-      .eq("employee_id", leave.employee_id)
-      .gte("checked_in_at", dayStart)
-      .lte("checked_in_at", dayEnd);
 
     const empJoin = leave.employees as unknown as {
       email: string | null;
@@ -425,35 +436,27 @@ async function decideLeave(formData: FormData) {
       work_end_time: empJoin?.work_end_time ?? null,
       work_shifts: empJoin?.work_shifts ?? null,
     };
-    // Lấy tất cả đơn nghỉ có giờ đã approved trong ngày (bao gồm đơn vừa duyệt)
-    const { data: approvedHourlyLeaves } = await admin
-      .from("leave_requests")
-      .select("start_time, end_time, category")
-      .eq("employee_id", leave.employee_id)
-      .eq("leave_date", leave.leave_date)
-      .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
-      .not("start_time", "is", null)
-      .eq("status", "approved");
     const hourlyLeaves = approvedHourlyLeaves ?? [];
 
-    await Promise.all((dayCheckIns ?? []).map(async (ci) => {
-      // @ts-expect-error — supabase join
-      const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
-      if (!office) return;
-      const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
-      const { late_minutes, early_minutes } = computeLateEarly({
-        emp: empForHours,
-        office,
-        hourlyLeaves,
-        kind: ci.kind as "in" | "out",
-        timeMinutes: ciMin,
-      });
-      await admin
-        .from("check_ins")
-        .update({ late_minutes, early_minutes })
-        .eq("id", ci.id);
-    }));
+    finalOps.push(
+      Promise.all((dayCheckInsRes.data ?? []).map(async (ci) => {
+        // @ts-expect-error — supabase join
+        const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
+        if (!office) return;
+        const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
+        const { late_minutes, early_minutes } = computeLateEarly({
+          emp: empForHours,
+          office,
+          hourlyLeaves,
+          kind: ci.kind as "in" | "out",
+          timeMinutes: ciMin,
+        });
+        await admin.from("check_ins").update({ late_minutes, early_minutes }).eq("id", ci.id);
+      }))
+    );
   }
+
+  await Promise.all(finalOps);
 
   // Push notification cho nhân viên (fire-and-forget)
   {
