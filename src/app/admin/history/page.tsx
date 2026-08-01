@@ -1373,8 +1373,8 @@ function ViolationCard({
           {r.items.length > 0 && (
             <ul className="mt-1.5 space-y-0.5">
               {r.items.map((it, i) => (
-                <li key={i} className="flex items-center gap-2 text-xs">
-                  <span className="flex-1 min-w-0 truncate text-neutral-700">{it.description}</span>
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <span className="flex-1 min-w-0 text-neutral-700">{it.description}</span>
                   <span className={cn("font-medium tabular-nums shrink-0", tone.amount)}>
                     {tone.sign}{it.amount.toLocaleString("en-US")} VND
                   </span>
