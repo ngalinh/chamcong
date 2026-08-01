@@ -1215,7 +1215,7 @@ function LeaveCard({
               <span className="text-neutral-500"> · {Number(r.start_time.slice(0, 2)) < 12 ? "Ca sáng" : "Ca chiều"}</span>
             )}
           </div>
-          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 ">{r.reason}</div>}
           <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
         </div>
         <form action={onDelete} className="self-start">
@@ -1290,7 +1290,7 @@ function OvertimeCard({
             <span className="font-medium">{formatVN(r.ot_date + "T00:00:00+07:00", "d/M")}</span>
             <span className="text-neutral-500"> · {r.start_time.slice(0, 5)}–{r.end_time.slice(0, 5)} · {r.hours} giờ</span>
           </div>
-          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 ">{r.reason}</div>}
           <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
         </div>
         <form action={onDelete} className="self-start">
@@ -1382,7 +1382,7 @@ function ViolationCard({
               ))}
             </ul>
           )}
-          {r.reason && <div className="text-xs text-neutral-600 mt-1 line-clamp-2">{r.reason}</div>}
+          {r.reason && <div className="text-xs text-neutral-600 mt-1 ">{r.reason}</div>}
           <div className="text-[10px] text-neutral-400 mt-1">Nộp {formatDistanceToNow(new Date(r.at), { addSuffix: true, locale: vi })}</div>
         </div>
         <form action={onDelete} className="self-start">
