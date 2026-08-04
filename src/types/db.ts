@@ -77,7 +77,7 @@ export type OrderFile = {
   created_at: string;
 };
 
-export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO", "ShipUS"] as const;
+export const PROFIT_CHANNELS = ["Linh Dương", "Linh Thảo", "Kênh CO", "ShipUS", "Basso"] as const;
 export type ProfitChannelName = typeof PROFIT_CHANNELS[number];
 
 export const PROFIT_BRANDS = ["Asale", "Basso", "ShipUS", "Checkout", "Stock", "Dropship"] as const;
