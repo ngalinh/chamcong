@@ -128,7 +128,7 @@ export async function ProfitTab({
             <table className="w-full text-sm">
               <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
                 <tr>
-                  <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh NV</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh Sale</th>
                   <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản SALE</th>
                   <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản CSKH</th>
                   <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% SALE</th>
@@ -192,7 +192,7 @@ export async function ProfitTab({
               <table className="w-full text-sm">
                 <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
                   <tr>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh NV</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh Sale</th>
                     <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Brand</th>
                     <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Nhóm KH</th>
                     <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% Profit</th>
@@ -265,7 +265,7 @@ export async function ProfitTab({
         )}
 
         <p className="text-xs text-neutral-500 leading-relaxed">
-          💡 <b>% SALE</b> và <b>% CSKH</b> cài chung theo kênh NV ở bảng trên.
+          💡 <b>% SALE</b> và <b>% CSKH</b> cài chung theo Kênh Sale ở bảng trên.
           % Profit là phần trăm doanh thu được tính là profit, rồi nhân thêm % SALE/CSKH của kênh.
         </p>
       </section>
@@ -344,7 +344,7 @@ function RuleGroupForm({
       <input type="hidden" name="edit_key" value={editKey} />
 
       <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
-        <SelectField label="Kênh NV" name="_ch" defaultValue={group.channel_name} disabled>
+        <SelectField label="Kênh Sale" name="_ch" defaultValue={group.channel_name} disabled>
           {PROFIT_CHANNELS.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -400,7 +400,7 @@ function RuleForm({
   return (
     <form action={action} className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
-        <SelectField label="Kênh NV" name="channel_name">
+        <SelectField label="Kênh Sale" name="channel_name">
           {PROFIT_CHANNELS.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}

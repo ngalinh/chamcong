@@ -46,7 +46,7 @@ export async function upsertProfitChannel(formData: FormData) {
   const sale_pct = Number(formData.get("sale_pct") ?? 0) / 100;
   const cskh_pct = Number(formData.get("cskh_pct") ?? 0) / 100;
   const apply_from = String(formData.get("apply_from") ?? "").trim(); // YYYY-MM or ''
-  if (!channel_name) err("profit", "Thiếu kênh NV");
+  if (!channel_name) err("profit", "Thiếu kênh Sale");
 
   const payload = {
     sale_employee_id: saleRaw || null,
@@ -69,7 +69,7 @@ export async function upsertProfitChannel(formData: FormData) {
   }
 
   if (error) err("profit", error.message);
-  ok("profit", id ? "Đã cập nhật kênh NV" : "Đã thêm kênh NV");
+  ok("profit", id ? "Đã cập nhật kênh Sale" : "Đã thêm kênh Sale");
 }
 
 export async function deleteProfitChannel(formData: FormData) {
@@ -77,7 +77,7 @@ export async function deleteProfitChannel(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const { error } = await createAdminClient().from("profit_channels").delete().eq("id", id);
   if (error) err("profit", error.message);
-  ok("profit", "Đã xoá kênh NV");
+  ok("profit", "Đã xoá kênh Sale");
 }
 
 // ─── profit_rules ──────────────────────────────────────────────────────────
@@ -250,7 +250,7 @@ export async function uploadOrderFile(formData: FormData) {
   const colCustomer    = findCol(["khách hàng", "khach hang"]);
   const colBrand       = findCol(["brand"]);
   const colCustGroup   = findCol(["phân nhóm", "phan nhom", "nhóm kh"]);
-  const colSaleChannel = findCol(["nhân viên", "nhan vien", "nv duyệt", "nv duyet", "kênh nv", "kenh nv"]);
+  const colSaleChannel = findCol(["kênh sale", "kenh sale", "kênh bán", "kenh ban"]);
   const colAmount      = findCol(["thành tiền", "thanh tien", "doanh thu"]);
 
   if (!colAmount) err("orders", "Không tìm thấy cột 'Thành tiền' trong file Excel");

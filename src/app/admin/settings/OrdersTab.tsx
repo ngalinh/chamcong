@@ -168,7 +168,7 @@ export async function OrdersTab({
           </Button>
         </form>
         <p className="text-xs text-neutral-500">
-          Cột bắt buộc: <b>Thành tiền</b>, <b>NV duyệt đơn</b>. Cột khác: Thời gian hoàn thành, Mã ĐH, Khách hàng, Brand, Phân nhóm KH.
+          Cột bắt buộc: <b>Thành tiền</b>, <b>Kênh sale</b>. Cột khác: Thời gian hoàn thành, Mã ĐH, Khách hàng, Brand, Phân nhóm KH.
         </p>
       </div>
 

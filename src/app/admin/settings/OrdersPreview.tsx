@@ -88,7 +88,7 @@ export function OrdersPreview({
 
       {/* Bộ lọc — text-xs ở container để nút "Xoá lọc" (globals.css ép button font:inherit) cũng 12px */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <FilterSelect label="Kênh NV" value={channel} onChange={setChannel} options={channelOpts} />
+        <FilterSelect label="Kênh Sale" value={channel} onChange={setChannel} options={channelOpts} />
         <FilterSelect label="Brand" value={brand} onChange={setBrand} options={brandOpts} />
         <FilterSelect label="Nhóm KH" value={group} onChange={setGroup} options={groupOpts} />
         {hasFilter && (
@@ -113,7 +113,7 @@ export function OrdersPreview({
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="border-b border-indigo-200">
-                <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Kênh NV</th>
+                <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Kênh Sale</th>
                 <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Brand</th>
                 <th className="text-left py-1.5 px-2 font-medium text-indigo-700">Nhóm KH</th>
                 <th className="text-right py-1.5 px-2 font-medium text-indigo-700">Doanh thu (đ)</th>
