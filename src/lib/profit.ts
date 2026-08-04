@@ -71,11 +71,11 @@ export async function computeProfitForEmployee(
   const effectiveChannels = dedupeByEffectiveFrom(channels, (c) => c.channel_name, month);
   if (!effectiveChannels.length) return { items: [], total: 0 };
 
-  // 2. Lấy tất cả rules (mọi effective_from), lọc và dedupe client-side
-  const { data: rules } = await admin
-    .from("profit_rules")
-    .select("*")
-    .in("channel_name", channelNames);
+  // 2. Lấy TẤT CẢ profit_rules, không giới hạn theo kênh — % Profit chỉ phụ thuộc
+  // Brand + Nhóm KH, không phân biệt kênh (giống hệt logic ở trang preview đơn hàng
+  // OrdersTab.tsx: rule đúng kênh ưu tiên trước, không có thì rule chung, cuối cùng
+  // fallback rule của bất kỳ kênh nào khác đang có cho đúng Brand+Nhóm KH đó).
+  const { data: rules } = await admin.from("profit_rules").select("*");
 
   if (!rules?.length) return { items: [], total: 0 };
 
@@ -130,14 +130,34 @@ export async function computeProfitForEmployee(
     const isCskh = ch.cskh_employee_id === employeeId;
     if (!isSale && !isCskh) continue;
 
-    const channelRules = effectiveRules.filter((r) => r.channel_name === ch.channel_name);
+    // 3 bậc ưu tiên rule, giống hệt OrdersTab.tsx: rule đúng kênh → rule chung (channel_name="")
+    // → rule của bất kỳ kênh nào khác đang có cho đúng Brand+Nhóm KH (borrow).
+    const specificRules = new Map(
+      effectiveRules
+        .filter((r) => r.channel_name === ch.channel_name)
+        .map((r) => [`${r.brand}||${r.customer_group}`, r]),
+    );
+    const globalRules = new Map(
+      effectiveRules
+        .filter((r) => r.channel_name === "")
+        .map((r) => [`${r.brand}||${r.customer_group}`, r]),
+    );
+    const anyChannelRules = new Map<string, (typeof effectiveRules)[number]>();
+    for (const r of effectiveRules) {
+      const key = `${r.brand}||${r.customer_group}`;
+      if (!anyChannelRules.has(key)) anyChannelRules.set(key, r);
+    }
+
     const details: EmployeeProfit["details"] = [];
     let channelTotal = 0;
 
-    for (const rule of channelRules) {
-      const key = `${ch.channel_name}||${rule.brand}||${rule.customer_group}`;
-      const revenue = revenueMap.get(key) ?? 0;
-      if (!revenue) continue;
+    for (const [key, revenue] of revenueMap) {
+      const [revCh, brand, customer_group] = key.split("||");
+      if (revCh !== ch.channel_name || !revenue) continue;
+
+      const bcKey = `${brand}||${customer_group}`;
+      const rule = specificRules.get(bcKey) ?? globalRules.get(bcKey) ?? anyChannelRules.get(bcKey);
+      if (!rule) continue;
 
       const profit = revenue * rule.profit_pct;
       const role = isSale ? "sale" : "cskh";
@@ -146,8 +166,8 @@ export async function computeProfitForEmployee(
       const employee_profit = profit * share_pct;
 
       details.push({
-        brand: rule.brand,
-        customer_group: rule.customer_group,
+        brand,
+        customer_group,
         revenue,
         profit_pct: rule.profit_pct,
         profit,
