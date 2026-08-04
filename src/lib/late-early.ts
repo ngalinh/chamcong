@@ -78,14 +78,30 @@ export function computeLateEarly(opts: {
   for (const hl of opts.hourlyLeaves ?? []) {
     const lStart = timeToMinutes(hl.start_time);
     const lEnd = timeToMinutes(hl.end_time);
+    const hasLunchBreak = !!hl.category && HALF_DAY_BREAK_CATEGORIES.has(hl.category);
+
+    if (hasLunchBreak) {
+      // online_wfh / leave_paid nửa ngày luôn dùng mốc cố định WFH_SHIFTS
+      // (09:00-12:30 sáng / 13:30-17:30 chiều), KHÔNG phụ thuộc giờ làm thực
+      // tế của chi nhánh/NV. So theo mốc cố định thay vì so với
+      // effectiveStart/End — nếu so với wStart thực tế (vd office bắt đầu
+      // 08:30 < 09:00) thì điều kiện lStart<=wStart sẽ sai, khiến nửa ngày
+      // nghỉ sáng không dời được effectiveStart sang chiều.
+      if (lEnd <= timeToMinutes(HALF_DAY_MORNING_END)) {
+        effectiveStart = HALF_DAY_AFTERNOON_START;
+      } else if (lStart >= timeToMinutes(HALF_DAY_AFTERNOON_START)) {
+        effectiveEnd = HALF_DAY_MORNING_END;
+      }
+      continue;
+    }
+
     const wStart = timeToMinutes(effectiveStart);
     const wEnd = timeToMinutes(effectiveEnd);
-    const hasLunchBreak = !!hl.category && HALF_DAY_BREAK_CATEGORIES.has(hl.category);
     if (lStart <= wStart && lEnd > wStart) {
-      effectiveStart = hasLunchBreak ? HALF_DAY_AFTERNOON_START : hl.end_time;
+      effectiveStart = hl.end_time;
     }
     if (lEnd >= wEnd && lStart < wEnd) {
-      effectiveEnd = hasLunchBreak ? HALF_DAY_MORNING_END : hl.start_time;
+      effectiveEnd = hl.start_time;
     }
   }
 
