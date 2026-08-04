@@ -121,7 +121,11 @@ export default function LeaveRequestForm({
       submitDuration = 0.5;
       submitUnit = "day";
     } else if (dayOnly || (isWfh && wfhMode === "full_day") || (isRain && rainMode === "full_day")) {
-      submitDuration = cleanDates.length;
+      // Mỗi ngày trong đợt xin nghỉ tạo 1 row riêng (xem api/leave/route.ts) —
+      // duration phải là số ngày CỦA TỪNG ROW (luôn = 1), không phải tổng số
+      // ngày cả đợt. Gán tổng số ngày ở đây từng làm mỗi row bị tính duration
+      // = tổng, khiến 1 đợt xin nghỉ N ngày bị trừ N² ngày phép.
+      submitDuration = 1;
       submitUnit = "day";
     } else {
       submitDuration = Number(duration);
