@@ -72,10 +72,12 @@ export async function computeProfitForEmployee(
   if (!effectiveChannels.length) return { items: [], total: 0 };
 
   // 2. Lấy tất cả rules (mọi effective_from), lọc và dedupe client-side
+  // Bao gồm cả rule global (channel_name="") — form "+ Thêm rule profit" luôn tạo
+  // rule global, chỉ rule sửa qua "Sửa" group mới có channel_name cụ thể.
   const { data: rules } = await admin
     .from("profit_rules")
     .select("*")
-    .in("channel_name", channelNames);
+    .in("channel_name", [...channelNames, ""]);
 
   if (!rules?.length) return { items: [], total: 0 };
 
@@ -130,14 +132,28 @@ export async function computeProfitForEmployee(
     const isCskh = ch.cskh_employee_id === employeeId;
     if (!isSale && !isCskh) continue;
 
-    const channelRules = effectiveRules.filter((r) => r.channel_name === ch.channel_name);
+    // Rule riêng theo kênh ưu tiên trước, không có thì fallback rule global (channel_name="")
+    // — giống hệt logic ở trang preview đơn hàng (OrdersTab.tsx).
+    const specificRules = new Map(
+      effectiveRules
+        .filter((r) => r.channel_name === ch.channel_name)
+        .map((r) => [`${r.brand}||${r.customer_group}`, r]),
+    );
+    const globalRules = new Map(
+      effectiveRules
+        .filter((r) => r.channel_name === "")
+        .map((r) => [`${r.brand}||${r.customer_group}`, r]),
+    );
+
     const details: EmployeeProfit["details"] = [];
     let channelTotal = 0;
 
-    for (const rule of channelRules) {
-      const key = `${ch.channel_name}||${rule.brand}||${rule.customer_group}`;
-      const revenue = revenueMap.get(key) ?? 0;
-      if (!revenue) continue;
+    for (const [key, revenue] of revenueMap) {
+      const [revCh, brand, customer_group] = key.split("||");
+      if (revCh !== ch.channel_name || !revenue) continue;
+
+      const rule = specificRules.get(`${brand}||${customer_group}`) ?? globalRules.get(`${brand}||${customer_group}`);
+      if (!rule) continue;
 
       const profit = revenue * rule.profit_pct;
       const role = isSale ? "sale" : "cskh";
@@ -146,8 +162,8 @@ export async function computeProfitForEmployee(
       const employee_profit = profit * share_pct;
 
       details.push({
-        brand: rule.brand,
-        customer_group: rule.customer_group,
+        brand,
+        customer_group,
         revenue,
         profit_pct: rule.profit_pct,
         profit,
