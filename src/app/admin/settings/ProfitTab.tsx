@@ -89,7 +89,8 @@ export async function ProfitTab({
     return Array.from(map.values());
   }
 
-  const channelList = latestEffective(allChannels, (c) => c.channel_name);
+  const channelList = latestEffective(allChannels, (c) => c.channel_name)
+    .sort((a, b) => a.channel_name.localeCompare(b.channel_name, "vi"));
   const ruleList = latestEffective(allRules, (r) => `${r.channel_name}||${r.brand}||${r.customer_group}`);
 
   const ruleGroups = groupRules(ruleList).sort((a, b) => {
