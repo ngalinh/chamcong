@@ -399,10 +399,9 @@ export default async function PayrollPage({
     emp.ot_fixed_salary_pending_month && emp.ot_fixed_salary_pending_month <= monthStr
       ? Number(emp.ot_fixed_salary_pending ?? 0)
       : Number(emp.ot_fixed_salary ?? 0);
-  // Profit chỉ tính khi không phải snapshot (snapshot là tháng cũ đã cleanup)
-  const profitData = fromSnapshot
-    ? { items: [] as EmployeeProfit[], total: 0 }
-    : await computeProfitForEmployee(emp.id, monthStr);
+  // Profit luôn tính live: cleanup-history không xoá profit_channels/profit_rules/order_data,
+  // chỉ xoá data chấm công — nên snapshot (dữ liệu chấm công cũ) không ảnh hưởng tới profit.
+  const profitData = await computeProfitForEmployee(emp.id, monthStr);
 
   const { data: adjustmentsRaw } = await admin
     .from("payroll_adjustments")

@@ -99,7 +99,6 @@ export default async function PayrollSummaryPage({
         .eq("year_month", monthStr)
         .maybeSingle();
 
-      const fromSnapshot = !!snapshotRow?.data;
       let total = 0;
       try {
         const payload = snapshotRow?.data
@@ -122,9 +121,9 @@ export default async function PayrollSummaryPage({
           0,
         );
 
-        const profitTotal = fromSnapshot
-          ? 0
-          : (await computeProfitForEmployee(emp.id, monthStr)).total;
+        // Profit luôn tính live: cleanup-history không xoá profit_channels/profit_rules/order_data,
+        // chỉ xoá data chấm công — nên snapshot (dữ liệu chấm công cũ) không ảnh hưởng tới profit.
+        const profitTotal = (await computeProfitForEmployee(emp.id, monthStr)).total;
 
         if (payload.kind === "fulltime") {
           const r = payload.result;
