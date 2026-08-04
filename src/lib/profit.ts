@@ -93,25 +93,35 @@ export async function computeProfitForEmployee(
     .map(([raw]) => raw);
   const saleChannelFilter = [...channelNames, ...rawAliases];
 
-  const [{ data: orders }, { data: dropshipRows }] = await Promise.all([
-    admin
+  // PostgREST mặc định giới hạn 1000 dòng/query — kênh nào >1000 đơn/tháng sẽ bị cắt bớt
+  // nếu query 1 lần. Phân trang giống OrdersTab.tsx để lấy đủ toàn bộ.
+  type OrderRow = { sale_channel: string | null; brand: string | null; customer_group: string | null; amount: number };
+  const orders: OrderRow[] = [];
+  const BATCH = 1000;
+  for (let from = 0; ; from += BATCH) {
+    const { data: batch } = await admin
       .from("order_data")
       .select("sale_channel, brand, customer_group, amount")
       .eq("month", month)
-      .in("sale_channel", saleChannelFilter),
-    admin
-      .from("dropship_revenue")
-      .select("channel_name, customer_group, amount")
-      .eq("month", month)
-      .in("channel_name", channelNames),
-  ]);
+      .in("sale_channel", saleChannelFilter)
+      .range(from, from + BATCH - 1);
+    if (!batch || batch.length === 0) break;
+    orders.push(...batch);
+    if (batch.length < BATCH) break;
+  }
 
-  if (!orders?.length && !dropshipRows?.length) return { items: [], total: 0 };
+  const { data: dropshipRows } = await admin
+    .from("dropship_revenue")
+    .select("channel_name, customer_group, amount")
+    .eq("month", month)
+    .in("channel_name", channelNames);
+
+  if (!orders.length && !dropshipRows?.length) return { items: [], total: 0 };
 
   // 4. Aggregate revenue theo channel + brand + customer_group
   // resolveChannelName để map tên NV trong DB (vd "Thư") → tên kênh profit (vd "ShipUS")
   const revenueMap = new Map<string, number>();
-  for (const o of (orders ?? [])) {
+  for (const o of orders) {
     const ch = resolveChannelName(o.sale_channel) ?? o.sale_channel;
     const key = `${ch}||${o.brand ?? ""}||${o.customer_group ?? ""}`;
     revenueMap.set(key, (revenueMap.get(key) ?? 0) + Number(o.amount ?? 0));
