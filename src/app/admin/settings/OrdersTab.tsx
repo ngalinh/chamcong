@@ -66,6 +66,17 @@ export async function OrdersTab({
           r.profit_pct,
         ])
       );
+      // Fallback: brand+cg only — "" rules take priority, then channel-specific rules
+      const ruleMapBrandCg = new Map<string, number>();
+      for (const r of (profitRules ?? []) as ProfitRule[]) {
+        if (r.channel_name === "") ruleMapBrandCg.set(`${r.brand}||${r.customer_group}`, r.profit_pct);
+      }
+      for (const r of (profitRules ?? []) as ProfitRule[]) {
+        if (r.channel_name !== "") {
+          const k = `${r.brand}||${r.customer_group}`;
+          if (!ruleMapBrandCg.has(k)) ruleMapBrandCg.set(k, r.profit_pct);
+        }
+      }
 
       // Group by sale_channel + brand + customer_group
       const map = new Map<string, { total: number; count: number }>();
@@ -82,7 +93,7 @@ export async function OrdersTab({
           const resolvedChannel = resolveChannelName(sale_channel) ?? sale_channel;
           const ruleKey = `${resolvedChannel}||${brand}||${customer_group}`;
           const ruleKeyGlobal = `||${brand}||${customer_group}`;
-          const profit_pct = ruleMap.get(ruleKey) ?? ruleMap.get(ruleKeyGlobal) ?? null;
+          const profit_pct = ruleMap.get(ruleKey) ?? ruleMap.get(ruleKeyGlobal) ?? ruleMapBrandCg.get(`${brand}||${customer_group}`) ?? null;
           const profit = profit_pct !== null ? Math.round(total * profit_pct) : null;
           return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit, count };
         })
