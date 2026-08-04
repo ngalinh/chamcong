@@ -584,7 +584,7 @@ function LateEarlySection({
     <Section
       icon={Clock}
       title="Đi muộn / Về sớm"
-      subtitle={`${result.lateEarlyViolations.length} lần · ${penalizedCount} lần phạt${heavyCount > 0 ? ` (${heavyCount} muộn nặng)` : ""}`}
+      subtitle={`${result.lateEarlyViolations.length} lần · ${penalizedCount} lần phạt${heavyCount > 0 ? ` (${heavyCount} nặng)` : ""}`}
       empty="Không có vi phạm đi muộn / về sớm."
     >
       {result.lateEarlyViolations.length > 0 && (
@@ -608,7 +608,7 @@ function LateEarlySection({
                 )}
               >
                 {v.isHeavyLate
-                  ? "Muộn nặng"
+                  ? (v.kind === "late" ? "Muộn nặng" : "Về sớm nặng")
                   : v.kind === "late"
                     ? "Muộn"
                     : "Về sớm"}

@@ -11,6 +11,7 @@ import { parseYearMonth, yearMonthVN } from "@/lib/workdays";
 import { formatVN } from "@/lib/time";
 import { computePayrollForMonth, type PayrollSnapshotPayload } from "@/lib/payroll-snapshot";
 import { LeaveHourlyDeductionEditor } from "@/components/LeaveHourlyDeductionEditor";
+import { SelfReportItemAmountEditor } from "@/components/SelfReportItemAmountEditor";
 import OpeningBalanceEditor from "@/components/OpeningBalanceEditor";
 import { ConfirmForm } from "@/components/ConfirmForm";
 import { cn } from "@/lib/utils";
@@ -311,7 +312,8 @@ async function removePayrollAdjustment(formData: FormData) {
   revalidatePath(`/admin/employees/${employeeId}/payroll`);
 }
 
-async function deleteSelfBonus(formData: FormData) {
+// Xoá 1 đơn tự khai (thưởng hoặc vi phạm — cùng bảng violation_reports, phân biệt qua cột kind)
+async function deleteSelfReport(formData: FormData) {
   "use server";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -331,6 +333,55 @@ async function deleteSelfBonus(formData: FormData) {
   const admin = createAdminClient();
   const { error } = await admin.from("violation_reports").delete().eq("id", id);
   if (error) throw new Error(error.message);
+
+  if (/^\d{4}-\d{2}$/.test(monthStr)) {
+    await admin.from("payroll_snapshots").delete()
+      .eq("employee_id", employeeId)
+      .eq("year_month", monthStr);
+  }
+
+  revalidatePath(`/admin/employees/${employeeId}/payroll`);
+}
+
+// Sửa số tiền của 1 mục (violation_items) trong đơn tự khai — tự tính lại total_amount của đơn cha
+async function updateSelfReportItemAmount(formData: FormData) {
+  "use server";
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+  const { data: me } = await supabase
+    .from("employees")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!me?.is_admin && !isAdminEmail(user.email)) throw new Error("Forbidden");
+
+  const itemId = String(formData.get("item_id") ?? "");
+  const reportId = String(formData.get("report_id") ?? "");
+  const employeeId = String(formData.get("employee_id") ?? "");
+  const monthStr = String(formData.get("month") ?? "");
+  const amountRaw = Number(String(formData.get("amount") ?? "").replace(/[,\s]/g, ""));
+  if (!itemId || !reportId || !employeeId) throw new Error("Dữ liệu không hợp lệ");
+  if (!Number.isFinite(amountRaw) || amountRaw < 0) throw new Error("Số tiền không hợp lệ");
+
+  const admin = createAdminClient();
+  const { error: itemErr } = await admin
+    .from("violation_items")
+    .update({ amount: Math.round(amountRaw) })
+    .eq("id", itemId);
+  if (itemErr) throw new Error(itemErr.message);
+
+  // total_amount của đơn cha = tổng amount các mục con
+  const { data: items } = await admin
+    .from("violation_items")
+    .select("amount")
+    .eq("report_id", reportId);
+  const newTotal = (items ?? []).reduce((s: number, it: { amount: number }) => s + Number(it.amount), 0);
+  const { error: reportErr } = await admin
+    .from("violation_reports")
+    .update({ total_amount: newTotal })
+    .eq("id", reportId);
+  if (reportErr) throw new Error(reportErr.message);
 
   if (/^\d{4}-\d{2}$/.test(monthStr)) {
     await admin.from("payroll_snapshots").delete()
@@ -411,6 +462,23 @@ export default async function PayrollPage({
     .order("created_at");
   const adjustments = (adjustmentsRaw ?? []) as { id: string; label: string; amount: number }[];
   const adjustmentsTotal = adjustments.reduce((s, a) => s + Number(a.amount), 0);
+
+  // Chi tiết từng mục thưởng/vi phạm tự khai — chỉ tháng đang live mới còn violation_items gốc
+  // (cleanup-history xoá violation_reports/violation_items sau khi đã snapshot bảng lương).
+  const selfReports = [...payload.result.selfBonuses, ...payload.result.selfViolations];
+  const selfReportItemsByReport = new Map<string, { id: string; description: string; amount: number }[]>();
+  if (!fromSnapshot && selfReports.length > 0) {
+    const { data: itemsRaw } = await admin
+      .from("violation_items")
+      .select("id, report_id, description, amount")
+      .in("report_id", selfReports.map((r) => r.id))
+      .order("position");
+    for (const it of itemsRaw ?? []) {
+      const list = selfReportItemsByReport.get(it.report_id) ?? [];
+      list.push({ id: it.id, description: it.description, amount: Number(it.amount) });
+      selfReportItemsByReport.set(it.report_id, list);
+    }
+  }
 
   // Excused absences tháng này (để hiện nút Khôi phục)
   const dayStart = `${monthStr}-01`;
@@ -496,7 +564,9 @@ export default async function PayrollPage({
           adjustmentsTotal={adjustmentsTotal}
           addAdjustment={addPayrollAdjustment}
           removeAdjustment={removePayrollAdjustment}
-          deleteBonus={deleteSelfBonus}
+          deleteReport={deleteSelfReport}
+          itemsByReport={selfReportItemsByReport}
+          updateItemAmount={updateSelfReportItemAmount}
         />
       </div>
     );
@@ -521,7 +591,9 @@ export default async function PayrollPage({
         setOpeningBalance={setOpeningBalance}
         excusedAbsences={excusedAbsences}
         restoreAbsence={restoreAbsence}
-        deleteBonus={deleteSelfBonus}
+        deleteReport={deleteSelfReport}
+        itemsByReport={selfReportItemsByReport}
+        updateItemAmount={updateSelfReportItemAmount}
       />
     </div>
   );
@@ -541,6 +613,7 @@ function SnapshotBanner() {
 // =============================================================================
 type PayrollAdjustment = { id: string; label: string; amount: number };
 type AdjustmentAction = (formData: FormData) => Promise<void>;
+type SelfReportItem = { id: string; description: string; amount: number };
 
 function ParttimeView({
   result,
@@ -555,7 +628,9 @@ function ParttimeView({
   adjustmentsTotal,
   addAdjustment,
   removeAdjustment,
-  deleteBonus,
+  deleteReport,
+  itemsByReport,
+  updateItemAmount,
 }: {
   result: ParttimePayrollResult;
   monthStr: string;
@@ -569,7 +644,9 @@ function ParttimeView({
   adjustmentsTotal: number;
   addAdjustment: AdjustmentAction;
   removeAdjustment: AdjustmentAction;
-  deleteBonus: AdjustmentAction;
+  deleteReport: AdjustmentAction;
+  itemsByReport: Map<string, SelfReportItem[]>;
+  updateItemAmount: AdjustmentAction;
 }) {
   const shiftsLabel = workShifts.length === 1
     ? `${workShifts[0].start.slice(0, 5)}–${workShifts[0].end.slice(0, 5)}`
@@ -645,8 +722,8 @@ function ParttimeView({
       <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.overtimeRate > 0 ? result.overtimeRate : result.hourlyRate)}/giờ`} />
 
       {/* Bonus / Violation */}
-      <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteBonus={deleteBonus} />
-      <ViolationSection violations={result.selfViolations} />
+      <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteReport={deleteReport} itemsByReport={itemsByReport} updateItemAmount={updateItemAmount} />
+      <ViolationSection violations={result.selfViolations} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteReport={deleteReport} itemsByReport={itemsByReport} updateItemAmount={updateItemAmount} />
 
       {/* Tổng */}
       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 space-y-2">
@@ -712,7 +789,9 @@ function FulltimeView({
   setOpeningBalance,
   excusedAbsences,
   restoreAbsence,
-  deleteBonus,
+  deleteReport,
+  itemsByReport,
+  updateItemAmount,
 }: {
   result: PayrollResult;
   monthStr: string;
@@ -728,7 +807,9 @@ function FulltimeView({
   setOpeningBalance: AdjustmentAction;
   excusedAbsences: ExcusedAbsence[];
   restoreAbsence: AdjustmentAction;
-  deleteBonus: AdjustmentAction;
+  deleteReport: AdjustmentAction;
+  itemsByReport: Map<string, SelfReportItem[]>;
+  updateItemAmount: AdjustmentAction;
 }) {
   const leavesByCat: Record<string, typeof result.leaves> = {};
   for (const lv of result.leaves) {
@@ -801,8 +882,8 @@ function FulltimeView({
       {result.overtimes.length > 0 && (
         <OvertimeSection overtimes={result.overtimes} hourLabel={`${fmtVnd(result.hourRate)}/giờ`} />
       )}
-      {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteBonus={deleteBonus} />}
-      {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} />}
+      {result.selfBonuses.length > 0 && <BonusSection bonuses={result.selfBonuses} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteReport={deleteReport} itemsByReport={itemsByReport} updateItemAmount={updateItemAmount} />}
+      {result.selfViolations.length > 0 && <ViolationSection violations={result.selfViolations} employeeId={employeeId} monthStr={monthStr} editable={editable} deleteReport={deleteReport} itemsByReport={itemsByReport} updateItemAmount={updateItemAmount} />}
       {!isFutureMonth && (result.missingDays.length > 0 || excusedAbsences.length > 0) && (
         <MissingDaysSection
           missingDays={result.missingDays}
@@ -886,7 +967,7 @@ function LateEarlySection({
     <Section
       icon={Clock}
       title="Đi muộn / Về sớm"
-      subtitle={`${result.lateEarlyViolations.length} lần · ${penalizedCount} lần phạt${heavyCount > 0 ? ` (${heavyCount} muộn nặng)` : ""}`}
+      subtitle={`${result.lateEarlyViolations.length} lần · ${penalizedCount} lần phạt${heavyCount > 0 ? ` (${heavyCount} nặng)` : ""}`}
       empty="Không có vi phạm đi muộn / về sớm."
     >
       {result.lateEarlyViolations.length > 0 && (
@@ -900,7 +981,9 @@ function LateEarlySection({
                   ? "bg-rose-50 text-rose-700"
                   : v.kind === "late" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700",
               )}>
-                {v.isHeavyLate ? "Muộn nặng" : v.kind === "late" ? "Muộn" : "Về sớm"}
+                {v.isHeavyLate
+                  ? (v.kind === "late" ? "Muộn nặng" : "Về sớm nặng")
+                  : v.kind === "late" ? "Muộn" : "Về sớm"}
               </span>
               <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.at, "dd/MM HH:mm")}</span>
               <span className="text-xs text-neutral-500 truncate flex-1">{v.office ?? "—"} · {v.minutes}p</span>
@@ -963,59 +1046,147 @@ function BonusSection({
   employeeId,
   monthStr,
   editable,
-  deleteBonus,
+  deleteReport,
+  itemsByReport,
+  updateItemAmount,
 }: {
   bonuses: PayrollResult["selfBonuses"];
   employeeId: string;
   monthStr: string;
   editable: boolean;
-  deleteBonus: AdjustmentAction;
+  deleteReport: AdjustmentAction;
+  itemsByReport: Map<string, SelfReportItem[]>;
+  updateItemAmount: AdjustmentAction;
 }) {
   return (
     <Section icon={Sparkles} title="Thưởng tự khai (đã duyệt)" subtitle={`${bonuses.length} đơn`} empty="Không có đơn thưởng.">
       {bonuses.length > 0 && (
         <ul className="divide-y divide-neutral-200/60">
-          {bonuses.map((v) => (
-            <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-              <Sparkles size={14} className="text-emerald-600 shrink-0" />
-              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
-              <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
-              <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
-              {editable && (
-                <ConfirmForm action={deleteBonus} message="Xoá đơn thưởng này? Thao tác không thể hoàn tác.">
-                  <input type="hidden" name="id" value={v.id} />
-                  <input type="hidden" name="employee_id" value={employeeId} />
-                  <input type="hidden" name="month" value={monthStr} />
-                  <button
-                    type="submit"
-                    title="Xoá đơn thưởng"
-                    className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </ConfirmForm>
-              )}
-            </li>
-          ))}
+          {bonuses.map((v) => {
+            const items = itemsByReport.get(v.id) ?? [];
+            return (
+              <li key={v.id} className="px-3 py-2.5 text-sm">
+                <div className="flex items-center gap-3">
+                  <Sparkles size={14} className="text-emerald-600 shrink-0" />
+                  <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
+                  <span className="text-xs text-neutral-500 flex-1">{v.itemCount} mục</span>
+                  <span className="text-emerald-700 font-semibold tabular-nums shrink-0">+{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+                  {editable && (
+                    <ConfirmForm action={deleteReport} message="Xoá đơn thưởng này? Thao tác không thể hoàn tác.">
+                      <input type="hidden" name="id" value={v.id} />
+                      <input type="hidden" name="employee_id" value={employeeId} />
+                      <input type="hidden" name="month" value={monthStr} />
+                      <button
+                        type="submit"
+                        title="Xoá đơn thưởng"
+                        className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </ConfirmForm>
+                  )}
+                </div>
+                {items.length > 0 && (
+                  <ul className="mt-1.5 ml-6 space-y-1.5">
+                    {items.map((it) => (
+                      <li key={it.id} className="flex items-center gap-2">
+                        <span className="flex-1 text-xs text-neutral-600 truncate">{it.description}</span>
+                        {editable ? (
+                          <SelfReportItemAmountEditor
+                            action={updateItemAmount}
+                            itemId={it.id}
+                            reportId={v.id}
+                            employeeId={employeeId}
+                            monthStr={monthStr}
+                            currentAmount={it.amount}
+                            sign="+"
+                          />
+                        ) : (
+                          <span className="text-emerald-700 font-medium tabular-nums text-xs shrink-0">+{Math.round(it.amount).toLocaleString("en-US")}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </Section>
   );
 }
 
-function ViolationSection({ violations }: { violations: PayrollResult["selfViolations"] }) {
+function ViolationSection({
+  violations,
+  employeeId,
+  monthStr,
+  editable,
+  deleteReport,
+  itemsByReport,
+  updateItemAmount,
+}: {
+  violations: PayrollResult["selfViolations"];
+  employeeId: string;
+  monthStr: string;
+  editable: boolean;
+  deleteReport: AdjustmentAction;
+  itemsByReport: Map<string, SelfReportItem[]>;
+  updateItemAmount: AdjustmentAction;
+}) {
   return (
     <Section icon={ShieldAlert} title="Vi phạm tự khai (đã duyệt)" subtitle={`${violations.length} đơn`} empty="Không có đơn vi phạm.">
       {violations.length > 0 && (
         <ul className="divide-y divide-neutral-200/60">
-          {violations.map((v) => (
-            <li key={v.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-              <ShieldAlert size={14} className="text-rose-600 shrink-0" />
-              <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
-              <span className="text-xs text-neutral-500 flex-1">{v.itemCount} lỗi</span>
-              <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
-            </li>
-          ))}
+          {violations.map((v) => {
+            const items = itemsByReport.get(v.id) ?? [];
+            return (
+              <li key={v.id} className="px-3 py-2.5 text-sm">
+                <div className="flex items-center gap-3">
+                  <ShieldAlert size={14} className="text-rose-600 shrink-0" />
+                  <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(v.reportDate + "T00:00:00+07:00", "dd/MM")}</span>
+                  <span className="text-xs text-neutral-500 flex-1">{v.itemCount} lỗi</span>
+                  <span className="text-rose-700 font-semibold tabular-nums shrink-0">−{Math.round(v.totalAmount).toLocaleString("en-US")}</span>
+                  {editable && (
+                    <ConfirmForm action={deleteReport} message="Xoá đơn vi phạm này? Thao tác không thể hoàn tác.">
+                      <input type="hidden" name="id" value={v.id} />
+                      <input type="hidden" name="employee_id" value={employeeId} />
+                      <input type="hidden" name="month" value={monthStr} />
+                      <button
+                        type="submit"
+                        title="Xoá đơn vi phạm"
+                        className="h-7 w-7 rounded-md text-neutral-400 hover:bg-rose-50 hover:text-rose-600 inline-flex items-center justify-center shrink-0"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </ConfirmForm>
+                  )}
+                </div>
+                {items.length > 0 && (
+                  <ul className="mt-1.5 ml-6 space-y-1.5">
+                    {items.map((it) => (
+                      <li key={it.id} className="flex items-center gap-2">
+                        <span className="flex-1 text-xs text-neutral-600 truncate">{it.description}</span>
+                        {editable ? (
+                          <SelfReportItemAmountEditor
+                            action={updateItemAmount}
+                            itemId={it.id}
+                            reportId={v.id}
+                            employeeId={employeeId}
+                            monthStr={monthStr}
+                            currentAmount={it.amount}
+                            sign="-"
+                          />
+                        ) : (
+                          <span className="text-rose-700 font-medium tabular-nums text-xs shrink-0">−{Math.round(it.amount).toLocaleString("en-US")}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </Section>

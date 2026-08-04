@@ -19,9 +19,9 @@ function heavyLatePenalty(lateMinutes: number, hourRate: number): number {
 /**
  * Build danh sách late/early violations + tính tổng phạt + map id → penalty.
  *
- * Rules:
- *   - Late ≤ 30p hoặc Early > 5p: light, vào pool 3 lần free, lần 4+ phạt 50k
- *   - Late > 30p: heavy, KHÔNG free, mỗi lần phạt = 50k + ceil((late−30)/15) × (hourRate/4)
+ * Rules (về sớm áp dụng y hệt đi muộn):
+ *   - Late ≤ 30p hoặc Early ≤ 30p (và > 5p): light, vào pool 3 lần free, lần 4+ phạt 50k
+ *   - Late > 30p hoặc Early > 30p: heavy, KHÔNG free, mỗi lần phạt = 50k + ceil((phút−30)/15) × (hourRate/4)
  */
 function buildLateEarlyViolations(
   checkIns: { id: string; kind: "in" | "out"; checked_in_at: string; dateVN: string; late_minutes: number | null; early_minutes: number | null; office: string | null }[],
@@ -44,6 +44,17 @@ function buildLateEarlyViolations(
         countedForPenalty: true,
         isHeavyLate: true,
         penaltyAmount: heavyLatePenalty(lateMin, hourRate),
+      });
+    } else if (earlyMin > HEAVY_LATE_THRESHOLD) {
+      all.push({
+        id: ci.id,
+        at: ci.checked_in_at,
+        kind: "early",
+        minutes: earlyMin,
+        office: ci.office,
+        countedForPenalty: true,
+        isHeavyLate: true,
+        penaltyAmount: heavyLatePenalty(earlyMin, hourRate),
       });
     } else if (lateMin > 5) {
       all.push({
