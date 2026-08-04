@@ -79,8 +79,10 @@ export async function OrdersTab({
       summaryRows = Array.from(map.entries())
         .map(([k, { total, count }]) => {
           const [sale_channel, brand, customer_group] = k.split("||");
-          const ruleKey = `${resolveChannelName(sale_channel) ?? sale_channel}||${brand}||${customer_group}`;
-          const profit_pct = ruleMap.get(ruleKey) ?? null;
+          const resolvedChannel = resolveChannelName(sale_channel) ?? sale_channel;
+          const ruleKey = `${resolvedChannel}||${brand}||${customer_group}`;
+          const ruleKeyGlobal = `||${brand}||${customer_group}`;
+          const profit_pct = ruleMap.get(ruleKey) ?? ruleMap.get(ruleKeyGlobal) ?? null;
           const profit = profit_pct !== null ? Math.round(total * profit_pct) : null;
           return { sale_channel: sale_channel || null, brand: brand || null, customer_group: customer_group || null, total, profit_pct, profit, count };
         })

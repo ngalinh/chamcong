@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle, CheckCircle2, Pencil, Trash2, TrendingUp } from "lucide-react";
 import type { ProfitChannel, ProfitRule, Employee } from "@/types/db";
-import { PROFIT_CHANNELS, PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
+import { PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
 import BrandMultiSelect from "./BrandMultiSelect";
 import { ApplyFromSubmit } from "@/components/ApplyFromSubmit";
 import {
@@ -92,7 +92,13 @@ export async function ProfitTab({
   const channelList = latestEffective(allChannels, (c) => c.channel_name);
   const ruleList = latestEffective(allRules, (r) => `${r.channel_name}||${r.brand}||${r.customer_group}`);
 
-  const ruleGroups = groupRules(ruleList);
+  const ruleGroups = groupRules(ruleList).sort((a, b) => {
+    const cgOrd = CUSTOMER_GROUPS as readonly string[];
+    const aCgMin = Math.min(...a.customer_groups.map((cg) => { const i = cgOrd.indexOf(cg); return i === -1 ? 99 : i; }));
+    const bCgMin = Math.min(...b.customer_groups.map((cg) => { const i = cgOrd.indexOf(cg); return i === -1 ? 99 : i; }));
+    if (aCgMin !== bCgMin) return aCgMin - bCgMin;
+    return a.brands.join().localeCompare(b.brands.join(), "vi");
+  });
 
   const editingChannel = editChannel ? channelList.find((c) => c.id === editChannel) : undefined;
   const editGroupKey = editRule ? decodeURIComponent(editRule) : null;
@@ -192,9 +198,8 @@ export async function ProfitTab({
               <table className="w-full text-sm">
                 <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
                   <tr>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Kênh Sale</th>
-                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Brand</th>
                     <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Nhóm KH</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Brand</th>
                     <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% Profit</th>
                     <th className="py-2.5 px-3" />
                   </tr>
@@ -206,7 +211,7 @@ export async function ProfitTab({
                     if (isEditing) {
                       return (
                         <tr key={gKey} className="bg-indigo-50/40">
-                          <td colSpan={5} className="px-3 py-3">
+                          <td colSpan={4} className="px-3 py-3">
                             <RuleGroupForm group={g} action={upsertProfitRuleGroup} currentMonth={currentMonth} nextMonth={nextMonth} />
                           </td>
                         </tr>
@@ -214,8 +219,6 @@ export async function ProfitTab({
                     }
                     return (
                       <tr key={gKey}>
-                        <td className="py-2.5 px-3 font-medium">{g.channel_name}</td>
-                        <td className="py-2.5 px-3">{g.brands.join(", ")}</td>
                         <td className="py-2.5 px-3">
                           <div className="flex flex-wrap gap-1">
                             {g.customer_groups.map((cg) => (
@@ -225,6 +228,7 @@ export async function ProfitTab({
                             ))}
                           </div>
                         </td>
+                        <td className="py-2.5 px-3">{g.brands.join(", ")}</td>
                         <td className="py-2.5 px-3 text-right tabular-nums text-indigo-700 font-medium">
                           {pctLabel(g.profit_pct)}
                         </td>
@@ -265,8 +269,8 @@ export async function ProfitTab({
         )}
 
         <p className="text-xs text-neutral-500 leading-relaxed">
-          💡 <b>% SALE</b> và <b>% CSKH</b> cài chung theo Kênh Sale ở bảng trên.
-          % Profit là phần trăm doanh thu được tính là profit, rồi nhân thêm % SALE/CSKH của kênh.
+          💡 <b>% Profit</b> = phần trăm doanh thu tính là profit, theo Nhóm KH và Brand.
+          <b>% SALE</b>/<b>% CSKH</b> của từng kênh cài riêng ở bảng "Tài khoản nhân viên theo kênh" phía trên.
         </p>
       </section>
 
@@ -343,12 +347,7 @@ function RuleGroupForm({
     <form action={action} className="space-y-3">
       <input type="hidden" name="edit_key" value={editKey} />
 
-      <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
-        <SelectField label="Kênh Sale" name="_ch" defaultValue={group.channel_name} disabled>
-          {PROFIT_CHANNELS.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </SelectField>
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
         <label className="block text-sm">
           <div className="text-xs font-medium text-neutral-600 mb-1">Brand</div>
           <BrandMultiSelect defaultValues={group.brands} />
@@ -399,12 +398,8 @@ function RuleForm({
 }) {
   return (
     <form action={action} className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 items-end">
-        <SelectField label="Kênh Sale" name="channel_name">
-          {PROFIT_CHANNELS.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </SelectField>
+      <input type="hidden" name="channel_name" value="" />
+      <div className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
         <label className="block text-sm">
           <div className="text-xs font-medium text-neutral-600 mb-1">Brand</div>
           <BrandMultiSelect />

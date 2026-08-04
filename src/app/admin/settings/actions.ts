@@ -85,16 +85,15 @@ export async function deleteProfitChannel(formData: FormData) {
 export async function upsertProfitRule(formData: FormData) {
   await requireAdmin();
   const admin = createAdminClient();
-  const channel_name = String(formData.get("channel_name") ?? "").trim();
   const brands = formData.getAll("brand").map((v) => String(v).trim()).filter(Boolean);
   const profit_pct = Number(formData.get("profit_pct") ?? 0);
   const customer_groups = formData.getAll("customer_group").map((v) => String(v).trim()).filter(Boolean);
 
-  if (!channel_name || !brands.length || !customer_groups.length) err("profit", "Thiếu thông tin");
+  if (!brands.length || !customer_groups.length) err("profit", "Thiếu thông tin");
   if (!Number.isFinite(profit_pct) || profit_pct <= 0) err("profit", "% profit không hợp lệ");
 
   const rows = brands.flatMap((brand) =>
-    customer_groups.map((cg) => ({ channel_name, brand, customer_group: cg, profit_pct, effective_from: "" }))
+    customer_groups.map((cg) => ({ channel_name: "", brand, customer_group: cg, profit_pct, effective_from: "" }))
   );
   const { error } = await admin.from("profit_rules").upsert(rows, { onConflict: "channel_name,brand,customer_group,effective_from" });
   if (error) err("profit", error.message);
