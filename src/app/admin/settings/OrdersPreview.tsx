@@ -13,7 +13,7 @@ type Row = {
 };
 
 function fmt(n: number) {
-  return n.toLocaleString("vi-VN");
+  return n.toLocaleString("en-US");
 }
 
 const CUSTOMER_GROUP_ORDER = ["Khách lẻ", "CTV", "Sỉ nhỏ", "Sỉ vừa", "Sỉ to"];
