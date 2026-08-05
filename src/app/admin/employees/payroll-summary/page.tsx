@@ -81,8 +81,9 @@ export default async function PayrollSummaryPage({
   const activeEmployees = ((employees ?? []) as Employee[]).filter((e) => {
     if (e.is_active !== false) return true;
     // Đã xoá — chỉ hiện cho các tháng NV còn active (trước hoặc đúng tháng bị xoá).
-    // deleted_at null = xoá từ trước khi có cột này (không rõ mốc) → hiện luôn cho an toàn dữ liệu lịch sử.
-    if (!e.deleted_at) return true;
+    // deleted_at null = xoá từ trước khi có cột này, chưa backfill được mốc chính
+    // xác → ẨN (an toàn hơn hiện lương vô thời hạn cho NV đã nghỉ từ lâu).
+    if (!e.deleted_at) return false;
     return formatVN(e.deleted_at, "yyyy-MM") >= monthStr;
   });
 
