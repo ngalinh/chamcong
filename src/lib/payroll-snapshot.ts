@@ -88,7 +88,7 @@ export async function computePayrollForMonth(
       ? Promise.resolve({ data: [] as Array<Record<string, unknown>> })
       : admin
           .from("leave_requests")
-          .select("id, leave_date, category, status, duration, duration_unit, reason, wage_deduction_override, start_time")
+          .select("id, leave_date, category, status, duration, duration_unit, reason, wage_deduction_override, start_time, end_time")
           .eq("employee_id", employee.id)
           .eq("status", "approved")
           .gte("leave_date", dayStart)
@@ -311,6 +311,8 @@ export async function computePayrollForMonth(
       status: (l as { status: LeaveStatus }).status,
       duration: Number((l as { duration: number }).duration),
       duration_unit: (l as { duration_unit: "day" | "hour" }).duration_unit,
+      start_time: (l as { start_time?: string | null }).start_time ?? null,
+      end_time: (l as { end_time?: string | null }).end_time ?? null,
       reason: (l as { reason: string | null }).reason,
       wage_deduction_override: (l as { wage_deduction_override?: number | null }).wage_deduction_override ?? null,
     })),

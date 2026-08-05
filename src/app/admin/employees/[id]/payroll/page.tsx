@@ -1362,6 +1362,8 @@ function LeaveList({
     date: string;
     category: LeaveCategory;
     durationLabel: string;
+    startTime: string | null;
+    endTime: string | null;
     phepUsed: number;
     wageDays: number;
     wageHours: number;
@@ -1379,6 +1381,11 @@ function LeaveList({
           <span className="font-mono tabular-nums text-xs text-neutral-700 shrink-0">{formatVN(it.date + "T00:00:00+07:00", "dd/MM")}</span>
           <span className="text-xs text-neutral-500 shrink-0">{LEAVE_CATEGORIES[it.category]}</span>
           <span className="text-xs font-medium text-neutral-700 shrink-0">{it.durationLabel}</span>
+          {it.startTime && it.endTime && (
+            <span className="font-mono tabular-nums text-xs text-neutral-400 shrink-0">
+              {it.startTime.slice(0, 5)}–{it.endTime.slice(0, 5)}
+            </span>
+          )}
           <div className="flex-1" />
           <LeaveLabel label={it.label} phepUsed={it.phepUsed} wageDays={it.wageDays} wageHours={it.wageHours} freeDays={it.freeDays} />
           {editable && employeeId && it.category === "leave_hourly" ? (
