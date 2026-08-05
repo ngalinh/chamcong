@@ -96,6 +96,8 @@ export type PayrollLeaveItem = {
   durationDays: number;     // luôn quy đổi ra ngày
   durationHours: number;    // hoặc giờ (chỉ dùng cho leave_hourly)
   durationLabel: string;    // hiển thị vd "1 ngày" / "2 giờ"
+  startTime: string | null; // "HH:MM:SS" — có khi leave_hourly hoặc WFH/trời mưa/nghỉ nửa ngày
+  endTime: string | null;
   reason: string | null;
   // Phân tách
   phepUsed: number;         // ngày phép trừ
@@ -177,6 +179,8 @@ type LeaveInput = {
   status: LeaveStatus;
   duration: number;
   duration_unit: "day" | "hour";
+  start_time?: string | null;
+  end_time?: string | null;
   reason: string | null;
   wage_deduction_override?: number | null;
 };
@@ -308,6 +312,8 @@ export function computePayroll(args: {
       durationDays: days,
       durationHours: hours,
       durationLabel,
+      startTime: lv.start_time ?? null,
+      endTime: lv.end_time ?? null,
       reason: lv.reason,
       phepUsed,
       wageDays,
