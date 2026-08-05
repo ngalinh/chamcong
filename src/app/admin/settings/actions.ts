@@ -23,14 +23,21 @@ async function requireAdmin() {
   return user;
 }
 
-function ok(tab: string, msg: string): never {
+function extraQuery(extra?: Record<string, string>): string {
+  if (!extra) return "";
+  return Object.entries(extra)
+    .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
+    .join("");
+}
+
+function ok(tab: string, msg: string, extra?: Record<string, string>): never {
   revalidatePath("/admin/settings");
-  redirect(`/admin/settings?tab=${tab}&ok=${encodeURIComponent(msg)}`);
+  redirect(`/admin/settings?tab=${tab}&ok=${encodeURIComponent(msg)}${extraQuery(extra)}`);
   throw new Error("unreachable"); // redirect() always throws
 }
 
-function err(tab: string, msg: string): never {
-  redirect(`/admin/settings?tab=${tab}&error=${encodeURIComponent(msg)}`);
+function err(tab: string, msg: string, extra?: Record<string, string>): never {
+  redirect(`/admin/settings?tab=${tab}&error=${encodeURIComponent(msg)}${extraQuery(extra)}`);
   throw new Error("unreachable"); // redirect() always throws
 }
 
@@ -349,7 +356,7 @@ export async function upsertDropshipRevenue(formData: FormData) {
     const { error: upErr } = await admin
       .from("dropship_revenue")
       .upsert(toUpsert, { onConflict: "month,channel_name,customer_group" });
-    if (upErr) err("orders", upErr.message);
+    if (upErr) err("orders", upErr.message, { ds_month: month });
   }
 
   for (const { channel_name, customer_group } of toDelete) {
@@ -360,5 +367,5 @@ export async function upsertDropshipRevenue(formData: FormData) {
       .eq("customer_group", customer_group);
   }
 
-  ok("orders", `Đã lưu doanh thu Dropship tháng ${month}`);
+  ok("orders", `Đã lưu doanh thu Dropship tháng ${month}`, { ds_month: month });
 }
