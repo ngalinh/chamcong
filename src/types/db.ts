@@ -44,6 +44,7 @@ export type Employee = {
   salary_pending_month: string | null;         // YYYY-MM — tháng bắt đầu áp dụng salary_pending
   ot_fixed_salary_pending_month: string | null; // YYYY-MM — tháng bắt đầu áp dụng ot_fixed_salary_pending
   exempt_absence: boolean;         // true = không tính vắng không phép
+  deleted_at: string | null;       // mốc bị xoá (soft-delete) — null = chưa xoá / xoá trước khi có cột này
   created_at: string;
 };
 

@@ -71,15 +71,20 @@ export default async function PayrollSummaryPage({
   const ym = parseYearMonth(monthStr)!;
 
   const admin = createAdminClient();
+  // Lấy tất cả NV (kể cả đã xoá) — quỹ lương tháng cũ phải hiện đúng lịch sử,
+  // không được ẩn NV đã xoá khỏi các tháng họ còn đang làm việc.
   const { data: employees } = await admin
     .from("employees")
     .select("*")
-    .or("user_id.not.is.null,is_active.eq.true")
     .order("created_at", { ascending: false });
 
-  const activeEmployees = ((employees ?? []) as Employee[]).filter(
-    (e) => e.is_active !== false,
-  );
+  const activeEmployees = ((employees ?? []) as Employee[]).filter((e) => {
+    if (e.is_active !== false) return true;
+    // Đã xoá — chỉ hiện cho các tháng NV còn active (trước hoặc đúng tháng bị xoá).
+    // deleted_at null = xoá từ trước khi có cột này (không rõ mốc) → hiện luôn cho an toàn dữ liệu lịch sử.
+    if (!e.deleted_at) return true;
+    return formatVN(e.deleted_at, "yyyy-MM") >= monthStr;
+  });
 
   // Fetch existing CK công ty values for this month
   const { data: transfersRaw } = await admin
@@ -278,6 +283,11 @@ export default async function PayrollSummaryPage({
                 {emp.employment_type === "parttime" ? "PT" : "FT"}
               </span>
             );
+            const deletedBadge = emp.is_active === false && (
+              <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 bg-rose-50 text-rose-700">
+                Đã xoá
+              </span>
+            );
             return (
               <div key={emp.id} className="hover:bg-white/40 transition-colors">
                 {/* Mobile card */}
@@ -291,7 +301,10 @@ export default async function PayrollSummaryPage({
                         {emp.email}
                       </div>
                     </div>
-                    {typeBadge}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {typeBadge}
+                      {deletedBadge}
+                    </div>
                   </div>
                   {/* Hàng 1: CK công ty (phải) | CK cá nhân */}
                   <div className="grid grid-cols-2 gap-x-3">
@@ -345,6 +358,7 @@ export default async function PayrollSummaryPage({
                         {emp.email}
                       </span>
                       {typeBadge}
+                      {deletedBadge}
                     </div>
                   </div>
                   <div className="text-right pt-0.5">

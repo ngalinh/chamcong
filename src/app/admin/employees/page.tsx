@@ -28,7 +28,7 @@ async function deleteEmployee(formData: FormData) {
   const admin = createAdminClient();
   const { error } = await admin
     .from("employees")
-    .update({ is_active: false, user_id: null, face_descriptor: null })
+    .update({ is_active: false, user_id: null, face_descriptor: null, deleted_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw new Error(error.message);
 
