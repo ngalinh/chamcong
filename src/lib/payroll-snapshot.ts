@@ -121,10 +121,12 @@ export async function computePayrollForMonth(
     const cat = (lv as { category?: string }).category;
     const startTime = (lv as { start_time?: string | null }).start_time ?? null;
     if (cat === "leave_paid" || cat === "online_wfh" || cat === "online_rain") {
-      // leave_paid nửa ngày (có start_time) → ca còn lại NV phải đi làm, không
-      // excuse cả ngày khỏi tính trễ/về sớm. (online_wfh half giữ nguyên hành vi
-      // cũ — vẫn excuse, vì NV WFH coi như "đang làm" nửa kia.)
-      if (cat === "leave_paid" && startTime) continue;
+      // Nửa ngày (có start_time) → ca còn lại NV vẫn phải chấm công đúng giờ,
+      // không excuse cả ngày khỏi tính trễ/về sớm. Mỗi check-in đã được tính
+      // late/early đúng theo cửa sổ ca của nó rồi (xem late-early.ts +
+      // onlineCheckin.ts) — excuse cả ngày ở đây sẽ xoá luôn vi phạm hợp lệ
+      // của ca còn lại (hoặc của chính ca online nếu check-in trễ).
+      if (startTime) continue;
       excusedDays.add((lv as { leave_date: string }).leave_date);
     }
   }
