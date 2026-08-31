@@ -41,16 +41,17 @@ async function run(request: NextRequest): Promise<NextResponse> {
     },
   );
 
-  // Dùng getUser() nhưng Supabase SSR cache phiên trong cookies — chỉ network call
-  // khi token gần hết hạn. Page sẽ tự getUser() lại để verify bảo mật.
+  // Dùng getSession() thay getUser() để tránh network call đến Supabase mỗi request.
+  // getSession() verify JWT signature cục bộ (~0ms), không round-trip (~264ms+).
+  // Trade-off: nếu admin revoke session trên dashboard, user vẫn vào được tối đa 1h
+  // (đến khi JWT hết hạn). Chấp nhận được cho app nội bộ 12 NV.
   const tAuth0 = Date.now();
   let user = null;
   try {
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    const { data } = await supabase.auth.getSession();
+    user = data.session?.user ?? null;
   } catch {
-    // Supabase auth throw (network error, malformed cookie…) → treat as unauthenticated
-    // thay vì để crash 500 khiến Safari báo "server error"
+    // Supabase auth throw (malformed cookie…) → treat as unauthenticated
   }
   const authMs = Date.now() - tAuth0;
   response.headers.set("X-Mw-Auth-Ms", String(authMs));
