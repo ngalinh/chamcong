@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // face-api uses util.TextEncoder which Turbopack shims away in SSR bundles → run natively
+  serverExternalPackages: ["@vladmandic/face-api"],
   reactStrictMode: true,
   // Tạo standalone bundle để Docker image gọn (~150 MB thay vì ~1 GB)
   output: "standalone",
