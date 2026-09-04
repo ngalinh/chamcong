@@ -63,6 +63,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 });
   const data = parsed.data;
 
+  // Một lần gửi nhiều ngày được tách thành một row cho mỗi leave_date ở dưới.
+  // Vì vậy duration của nghỉ cả ngày phải là 1 trên TỪNG row, không phải tổng
+  // số ngày do client gửi lên. Chuẩn hoá lại ở server để cả client/PWA cũ
+  // (từng gửi duration = leave_dates.length) cũng không thể tạo dữ liệu N².
+  const isFullDayRequest = data.duration_unit === "day"
+    && !data.start_time
+    && ["leave_paid", "online_wfh", "online_rain"].includes(data.category);
+  const durationPerRow = isFullDayRequest ? 1 : data.duration;
+
   // Chặn trùng lặp: cùng NV + cùng category + cùng ngày + status pending hoặc approved
   // Riêng online_wfh: cho phép ca sáng + ca chiều trong cùng 1 ngày (chỉ chặn khi
   // trùng ca, hoặc 1 trong 2 là full_day).
@@ -124,7 +133,7 @@ export async function POST(request: NextRequest) {
     employee_id: emp.id,
     leave_date: d,
     category: data.category,
-    duration: data.duration,
+    duration: durationPerRow,
     duration_unit: data.duration_unit,
     start_time: hasShiftTimes ? data.start_time ?? null : null,
     end_time:   hasShiftTimes ? data.end_time   ?? null : null,
@@ -148,7 +157,7 @@ export async function POST(request: NextRequest) {
     : `${data.leave_dates.length} ngày: ${data.leave_dates.join(", ")}`;
   sendPushToAdmins({
     title: "📋 Đơn xin nghỉ mới",
-    body: `${emp.name}: ${LEAVE_CATEGORIES[data.category]} — ${datesLabel} (${data.duration} ${data.duration_unit === "day" ? "ngày" : "giờ"}${data.leave_dates.length > 1 ? "/ngày" : ""})`,
+    body: `${emp.name}: ${LEAVE_CATEGORIES[data.category]} — ${datesLabel} (${durationPerRow} ${data.duration_unit === "day" ? "ngày" : "giờ"}${data.leave_dates.length > 1 ? "/ngày" : ""})`,
     url: "/admin/history?type=leave",
     tag: `leave-new-${emp.id}`,
   }).catch((e) => console.error("[push] admin notify failed", e));
