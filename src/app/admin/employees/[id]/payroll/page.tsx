@@ -237,6 +237,9 @@ async function setOpeningBalance(formData: FormData) {
 
   if (existingLog) {
     await admin.from("leave_balance_log").update({
+      // delta khác 1 đánh dấu đây là số dư mở sổ do admin nhập, không phải
+      // một lần cộng phép tháng tự động. Payroll dùng nó làm anchor bất biến.
+      delta: balance,
       balance_after: balance,
     }).eq("id", existingLog.id);
   } else {
