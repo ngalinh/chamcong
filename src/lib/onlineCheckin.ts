@@ -186,10 +186,15 @@ export function resolveCheckinMode(params: {
     return { online: params.isRemoteOffice, window: null };
   }
 
-  // Đoạn chứa nowMin, hoặc gần nhất theo boundary (start nếu in, end nếu out).
-  const contained = segments.find(
-    (s) => params.nowMin >= timeToMinutes(s.start) && params.nowMin <= timeToMinutes(s.end),
-  );
+  // Check-in thuộc đoạn đang chứa thời điểm hiện tại. Riêng check-out phải ghép
+  // với giờ KẾT THÚC gần nhất: NV check-out ca online sáng lúc 13:34 để di chuyển
+  // lên văn phòng vẫn đang đóng ca sáng (12:30), không phải về sớm khỏi ca văn
+  // phòng chiều 13:30–17:30 chỉ vì 13:34 nằm trong đoạn chiều.
+  const contained = params.kind === "in"
+    ? segments.find(
+        (s) => params.nowMin >= timeToMinutes(s.start) && params.nowMin <= timeToMinutes(s.end),
+      )
+    : undefined;
   const seg =
     contained ??
     segments.reduce<{ s: DaySegment; d: number } | null>((best, s) => {
