@@ -204,7 +204,9 @@ export async function computePayrollForMonth(
   //   A) lastAccrual > monthStr (xem tháng cũ): tra log accrual của tháng đó.
   //      Không dùng phép trừ đơn giản vì NV có thể đã nghỉ phép giữa 2 tháng.
   //   B) _preventAccrual + lastAccrual < monthStr: cộng bù tháng bị skip.
-  //   C) Còn lại: dùng leave_balance trực tiếp hoặc chạy accrual.
+  //   C) lastAccrual = monthStr: dựng lại từ balanceEnd tháng trước. Giá trị
+  //      leave_balance có thể đã được chốt bởi một phiên bản công thức cũ.
+  //   D) Còn lại: dùng leave_balance trực tiếp hoặc chạy accrual.
   const lastAccrual = employee.last_accrual_month ?? "";
   let balanceStart: number;
 
@@ -240,7 +242,10 @@ export async function computePayrollForMonth(
     balanceStart = Number(employee.leave_balance);
   }
 
-  if (!isParttime && !_preventAccrual && lastAccrual < monthStr) {
+  const rebuildCurrentAccrual = !isParttime && lastAccrual === monthStr;
+  const accrueNewMonth = !isParttime && !_preventAccrual && lastAccrual < monthStr;
+
+  if (rebuildCurrentAccrual || accrueNewMonth) {
     const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
     const monthHasStarted = new Date().toISOString() >= monthStartIso;
     const employeeExisted = employee.created_at < monthStartIso;
@@ -271,13 +276,13 @@ export async function computePayrollForMonth(
 
     if (prevBalanceEnd !== null) {
       balanceStart = prevBalanceEnd + (monthHasStarted && employeeExisted ? 1 : 0);
-    } else {
+    } else if (accrueNewMonth) {
       // Fallback: không lấy được M-1
       balanceStart = Number(employee.leave_balance) + (monthHasStarted && employeeExisted ? 1 : 0);
     }
 
-    // Cập nhật DB khi thực sự cộng phép (tháng đã bắt đầu, NV tồn tại trước tháng)
-    if (monthHasStarted && employeeExisted) {
+    // Chỉ tạo log mới khi tháng chưa được cộng phép.
+    if (accrueNewMonth && monthHasStarted && employeeExisted) {
       await admin.from("employees").update({
         leave_balance: balanceStart,
         last_accrual_month: monthStr,
@@ -289,6 +294,21 @@ export async function computePayrollForMonth(
         event_type: "accrual",
         note: `Cộng phép tháng ${monthStr} (tự động)`,
       });
+    } else if (
+      rebuildCurrentAccrual &&
+      prevBalanceEnd !== null &&
+      balanceStart !== Number(employee.leave_balance)
+    ) {
+      // Sửa anchor/log đã được tính bởi công thức cũ. Nhờ vậy tháng hiện tại
+      // và các tháng sau cùng nối tiếp từ một số dư cuối kỳ chính xác.
+      await Promise.all([
+        admin.from("employees").update({ leave_balance: balanceStart }).eq("id", employee.id),
+        admin.from("leave_balance_log")
+          .update({ balance_after: balanceStart })
+          .eq("employee_id", employee.id)
+          .eq("event_type", "accrual")
+          .ilike("note", `%${monthStr}%`),
+      ]);
     }
   }
 
