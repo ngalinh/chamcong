@@ -242,10 +242,15 @@ export async function computePayrollForMonth(
     balanceStart = Number(employee.leave_balance);
   }
 
-  const rebuildCurrentAccrual = !isParttime && lastAccrual === monthStr;
+  // Cả tháng đang giữ anchor lẫn tháng cũ chưa snapshot đều phải được dựng
+  // lại ở request ngoài cùng. Ví dụ đã accrual sang tháng 9 thì khi xem lại
+  // tháng 8, lastAccrual > monthStr và log tháng 8 vẫn có thể chứa số cũ.
+  // Lời gọi M-1 dùng _preventAccrual để dừng chuỗi tại log lịch sử kế trước.
+  const rebuildAccruedMonth = !isParttime && !_preventAccrual && lastAccrual >= monthStr;
   const accrueNewMonth = !isParttime && !_preventAccrual && lastAccrual < monthStr;
 
-  if (rebuildCurrentAccrual || accrueNewMonth) {
+  if (rebuildAccruedMonth || accrueNewMonth) {
+    const storedBalanceStart = balanceStart;
     const monthStartIso = new Date(`${monthStr}-01T00:00:00+07:00`).toISOString();
     const monthHasStarted = new Date().toISOString() >= monthStartIso;
     const employeeExisted = employee.created_at < monthStartIso;
@@ -294,21 +299,24 @@ export async function computePayrollForMonth(
         event_type: "accrual",
         note: `Cộng phép tháng ${monthStr} (tự động)`,
       });
-    } else if (
-      rebuildCurrentAccrual &&
-      prevBalanceEnd !== null &&
-      balanceStart !== Number(employee.leave_balance)
-    ) {
+    } else if (rebuildAccruedMonth && prevBalanceEnd !== null && balanceStart !== storedBalanceStart) {
       // Sửa anchor/log đã được tính bởi công thức cũ. Nhờ vậy tháng hiện tại
       // và các tháng sau cùng nối tiếp từ một số dư cuối kỳ chính xác.
-      await Promise.all([
-        admin.from("employees").update({ leave_balance: balanceStart }).eq("id", employee.id),
+      const corrections = [
         admin.from("leave_balance_log")
           .update({ balance_after: balanceStart })
           .eq("employee_id", employee.id)
           .eq("event_type", "accrual")
           .ilike("note", `%${monthStr}%`),
-      ]);
+      ];
+      // employees.leave_balance là anchor của lastAccrual; không được ghi số
+      // tháng cũ vào đây khi người dùng chỉ đang xem lại lịch sử.
+      if (lastAccrual === monthStr) {
+        corrections.push(
+          admin.from("employees").update({ leave_balance: balanceStart }).eq("id", employee.id),
+        );
+      }
+      await Promise.all(corrections);
     }
   }
 
