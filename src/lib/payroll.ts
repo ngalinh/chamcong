@@ -6,7 +6,7 @@ const LATE_PENALTY_AMOUNT = 50_000;   // VND/lần — light late hoặc 30p đ�
 const HEAVY_LATE_THRESHOLD = 30;      // late > 30p → heavy (KHÔNG miễn phạt)
 const HEAVY_BLOCK_MINUTES = 15;       // mỗi block 15p phụ trội bị tính lương
 const ONLINE_WFH_FREE_DAYS = 3;       // 3 ngày online_wfh đầu/tháng miễn phí
-const ONLINE_WFH_PHEP_RATIO = 0.5;    // 1 ngày online vượt = 0.5 phép
+const ONLINE_WFH_PHEP_RATIO = 1;      // 1 ngày online vượt = 1 phép (2 ca nửa ngày = 1 phép)
 const HOURS_PER_WORKDAY = 7.5;
 
 function heavyLatePenalty(lateMinutes: number, hourRate: number): number {
@@ -238,7 +238,12 @@ export function computePayroll(args: {
   const sorted = [...approvedLeaves].sort((a, b) => a.leave_date.localeCompare(b.leave_date));
 
   for (const lv of sorted) {
-    const days = lv.duration_unit === "day" ? lv.duration : lv.duration / HOURS_PER_WORKDAY;
+    // Ca WFH sáng/chiều là đúng nửa ngày công. Không quy đổi 4 giờ / 7.5 giờ
+    // (= 0.53 ngày), vì hai ca như vậy phải cộng thành tròn 1 ngày để tính hạn
+    // mức miễn phí và số phép cần trừ.
+    const days = lv.category === "online_wfh" && lv.start_time && lv.end_time
+      ? 0.5
+      : lv.duration_unit === "day" ? lv.duration : lv.duration / HOURS_PER_WORKDAY;
     const hours = lv.duration_unit === "hour" ? lv.duration : lv.duration * HOURS_PER_WORKDAY;
     const durationLabel = lv.duration_unit === "day"
       ? `${formatNum(lv.duration)} ngày`
@@ -256,7 +261,7 @@ export function computePayroll(args: {
       freeDays = days;
       label = "free";
     } else if (lv.category === "online_wfh") {
-      // 3 ngày đầu free, sau đó 0.5 phép/ngày, hết phép → 0.5 dayRate/ngày
+      // 3 ngày đầu free, sau đó 1 phép/ngày; hai ca nửa ngày cộng thành 1 phép.
       const freeCap = Math.max(0, ONLINE_WFH_FREE_DAYS - onlineWfhUsed);
       const usedFree = Math.min(days, freeCap);
       const billable = days - usedFree;
@@ -268,10 +273,8 @@ export function computePayroll(args: {
       const phepShort = phepNeeded - phepConsumed;
       balance -= phepConsumed;
       phepUsed = phepConsumed;
-      // 1 ngày online vượt phép = 0.5 dayRate trừ lương
-      // → phép thiếu phepShort tương ứng billable thiếu = phepShort / 0.5 ngày
-      // → trừ lương = (phepShort / 0.5) × 0.5 × dayRate = phepShort × dayRate
-      wageDays = phepShort * 2; // ngày billable bị trừ lương
+      // Phần thiếu phép được trừ lương theo đúng số ngày WFH tính phí.
+      wageDays = phepShort;
       wageDeduction = phepShort * dayRate;
 
       if (billable === 0) label = "free";

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "download-models": "bash scripts/download-models.sh",
     "generate-icons": "node scripts/generate-icons.mjs"
   },
@@ -34,6 +34,8 @@
     "@types/node": "^22.10.1",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.4",
     "pg": "^8.20.0",
     "postcss": "^8.4.49",
     "sharp": "^0.34.5",
