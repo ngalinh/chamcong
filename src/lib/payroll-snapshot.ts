@@ -201,7 +201,7 @@ export async function computePayrollForMonth(
 
   // Tính balanceStart cho fulltime:
   //   leave_balance trong DB = balanceStart của tháng last_accrual_month.
-  //   A) lastAccrual > monthStr (xem tháng cũ): tra log accrual của tháng đó.
+  //   A) lastAccrual >= monthStr (tháng đã accrual): tra log accrual tháng đó.
   //      Không dùng phép trừ đơn giản vì NV có thể đã nghỉ phép giữa 2 tháng.
   //   B) _preventAccrual + lastAccrual < monthStr: cộng bù tháng bị skip.
   //   C) lastAccrual = monthStr: dựng lại từ balanceEnd tháng trước. Giá trị
@@ -211,8 +211,9 @@ export async function computePayrollForMonth(
   let balanceStart: number;
   let restoredManualOpeningBalance = false;
 
-  if (!isParttime && lastAccrual > monthStr) {
-    // (A) Xem tháng cũ — tra accrual log của đúng tháng đó để lấy balanceStart chính xác.
+  if (!isParttime && lastAccrual >= monthStr) {
+    // (A) Xem tháng đã accrual — tra log của đúng tháng đó để lấy balanceStart
+    // chính xác, kể cả khi đang xem chính lastAccrual_month.
     // Không tính `leave_balance - n` vì phép nghỉ giữa 2 tháng làm lệch kết quả.
     const { data: logEntry } = await admin
       .from("leave_balance_log")
