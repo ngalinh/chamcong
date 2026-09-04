@@ -26,6 +26,26 @@ export const SAT_MORNING_END = "13:00:00";
 
 export type DaySegment = { start: string; end: string; online: boolean };
 
+/**
+ * Một lần check-in online trong ngày không mở lại phép tính đi muộn nếu nhân
+ * viên đã bắt đầu ngày làm việc tại văn phòng. Trường hợp phổ biến là làm ở
+ * công ty buổi sáng, check-out để di chuyển, rồi check-in lại ở nhà buổi chiều.
+ *
+ * Chỉ miễn `late` cho lần check-in online sau một lần check-in vật lý; nhân viên
+ * làm remote cả ngày và các ca văn phòng độc lập vẫn giữ nguyên cách tính.
+ */
+export function forgiveOnlineLateAfterOfficeCheckIn(params: {
+  kind: "in" | "out";
+  isOnline: boolean;
+  hadOfficeCheckInToday: boolean;
+  lateMinutes: number | null;
+}): number | null {
+  if (params.kind === "in" && params.isOnline && params.hadOfficeCheckInToday) {
+    return null;
+  }
+  return params.lateMinutes;
+}
+
 type EmpShifts = {
   email?: string | null;
   work_start_time?: string | null;
