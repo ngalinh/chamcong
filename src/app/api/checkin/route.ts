@@ -5,7 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
 import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
 import { computeLateEarly } from "@/lib/late-early";
-import { resolveCheckinMode, vnDayOfWeek } from "@/lib/onlineCheckin";
+import {
+  forgiveOnlineLateAfterOfficeCheckIn,
+  resolveCheckinMode,
+  vnDayOfWeek,
+} from "@/lib/onlineCheckin";
 
 const Schema = z.object({
   office_id: z.string().uuid(),
@@ -105,6 +109,26 @@ export async function POST(request: NextRequest) {
   // Có cửa sổ ca online riêng (đơn nửa ngày / cả ngày / sáng T7) — không phải NV office remote.
   const onlineWindow = mode.online && !office.is_remote ? mode.window : null;
 
+  // Nếu NV đã check-in vật lý ở văn phòng hôm nay, lần check-in online sau khi
+  // di chuyển về nhà chỉ tiếp tục ngày làm việc, không phải một lần đi làm mới.
+  // Dùng selfie_path để phân biệt check-in văn phòng với check-in online (cùng
+  // được ghi nhận vào home office).
+  const dayStartIso = new Date(`${dayStr}T00:00:00+07:00`).toISOString();
+  const dayEndIso = new Date(`${dayStr}T24:00:00+07:00`).toISOString();
+  const { data: priorOfficeCheckIn } =
+    kind === "in" && isRemoteCheckIn
+      ? await admin
+          .from("check_ins")
+          .select("id")
+          .eq("employee_id", emp.id)
+          .eq("kind", "in")
+          .gte("checked_in_at", dayStartIso)
+          .lt("checked_in_at", dayEndIso)
+          .not("selfie_path", "is", null)
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+
   // Validate dữ liệu cho check-in tại chi nhánh thật
   let serverDist: number | null = null;
   let objectPath: string | null = null;
@@ -180,6 +204,13 @@ export async function POST(request: NextRequest) {
       timeMinutes: nowMin,
     }));
   }
+
+  late_minutes = forgiveOnlineLateAfterOfficeCheckIn({
+    kind,
+    isOnline: isRemoteCheckIn,
+    hadOfficeCheckInToday: !!priorOfficeCheckIn,
+    lateMinutes: late_minutes,
+  });
 
   const { error: insErr } = await admin.from("check_ins").insert({
     employee_id: emp.id,
