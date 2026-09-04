@@ -209,13 +209,14 @@ export async function computePayrollForMonth(
   //   D) Còn lại: dùng leave_balance trực tiếp hoặc chạy accrual.
   const lastAccrual = employee.last_accrual_month ?? "";
   let balanceStart: number;
+  let restoredManualOpeningBalance = false;
 
   if (!isParttime && lastAccrual > monthStr) {
     // (A) Xem tháng cũ — tra accrual log của đúng tháng đó để lấy balanceStart chính xác.
     // Không tính `leave_balance - n` vì phép nghỉ giữa 2 tháng làm lệch kết quả.
     const { data: logEntry } = await admin
       .from("leave_balance_log")
-      .select("balance_after")
+      .select("balance_after, delta")
       .eq("employee_id", employee.id)
       .eq("event_type", "accrual")
       .ilike("note", `%${monthStr}%`)
@@ -223,7 +224,19 @@ export async function computePayrollForMonth(
       .limit(1)
       .maybeSingle();
     if (logEntry) {
-      balanceStart = Number(logEntry.balance_after);
+      // Log mở sổ do admin tạo lưu chính số phép nhập tay trong delta. Đây là
+      // anchor gốc và không được dựng ngược từ tháng trước không có dữ liệu.
+      // Dùng delta cũng tự khôi phục log từng bị bản vá cũ ghi sai balance_after.
+      const delta = Number(logEntry.delta);
+      restoredManualOpeningBalance = delta !== 1 && delta >= 0;
+      balanceStart = restoredManualOpeningBalance ? delta : Number(logEntry.balance_after);
+      if (restoredManualOpeningBalance && balanceStart !== Number(logEntry.balance_after)) {
+        await admin.from("leave_balance_log")
+          .update({ balance_after: balanceStart })
+          .eq("employee_id", employee.id)
+          .eq("event_type", "accrual")
+          .ilike("note", `%${monthStr}%`);
+      }
     } else {
       // Không có log cho tháng này (chưa bao giờ accrued riêng) — fallback leave_balance
       balanceStart = Number(employee.leave_balance);
@@ -270,13 +283,26 @@ export async function computePayrollForMonth(
       .eq("year_month", prevMonthStr)
       .maybeSingle();
 
-    if (prevSnap?.data) {
+    if (!restoredManualOpeningBalance && prevSnap?.data) {
       const p = prevSnap.data as PayrollSnapshotPayload;
       if (p.kind === "fulltime") prevBalanceEnd = p.result.balanceEnd;
-    } else {
-      // Không có snapshot → tính M-1 với leave_balance làm anchor (no further recursion)
-      const prevPayload = await computePayrollForMonth(admin, employee, prevMonthStr, true);
-      if (prevPayload.kind === "fulltime") prevBalanceEnd = prevPayload.result.balanceEnd;
+    } else if (!restoredManualOpeningBalance) {
+      // Chỉ được dựng M-1 khi M-1 có anchor đáng tin cậy. Nếu không có snapshot
+      // hoặc log accrual (thường là tháng đầu dùng hệ thống), giữ nguyên anchor
+      // của tháng đang xem thay vì lấy leave_balance hiện tại làm lịch sử.
+      const { data: prevLog } = await admin
+        .from("leave_balance_log")
+        .select("id")
+        .eq("employee_id", employee.id)
+        .eq("event_type", "accrual")
+        .ilike("note", `%${prevMonthStr}%`)
+        .limit(1)
+        .maybeSingle();
+      if (prevLog) {
+        // Không có snapshot → tính M-1 từ anchor lịch sử (no further recursion).
+        const prevPayload = await computePayrollForMonth(admin, employee, prevMonthStr, true);
+        if (prevPayload.kind === "fulltime") prevBalanceEnd = prevPayload.result.balanceEnd;
+      }
     }
 
     if (prevBalanceEnd !== null) {
