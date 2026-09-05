@@ -217,7 +217,7 @@ export async function computePayrollForMonth(
     // Không tính `leave_balance - n` vì phép nghỉ giữa 2 tháng làm lệch kết quả.
     const { data: logEntry } = await admin
       .from("leave_balance_log")
-      .select("balance_after, delta")
+      .select("balance_after, delta, note")
       .eq("employee_id", employee.id)
       .eq("event_type", "accrual")
       .ilike("note", `%${monthStr}%`)
@@ -229,7 +229,10 @@ export async function computePayrollForMonth(
       // anchor gốc và không được dựng ngược từ tháng trước không có dữ liệu.
       // Dùng delta cũng tự khôi phục log từng bị bản vá cũ ghi sai balance_after.
       const delta = Number(logEntry.delta);
-      restoredManualOpeningBalance = delta !== 1 && delta >= 0;
+      // Marker trong note phân biệt chính xác số admin nhập với lần cộng
+      // 1 ngày tự động. Giữ kiểm tra delta cho các log admin cũ chưa có marker.
+      restoredManualOpeningBalance =
+        (logEntry.note?.includes("(admin nhập)") === true || delta !== 1) && delta >= 0;
       balanceStart = restoredManualOpeningBalance ? delta : Number(logEntry.balance_after);
       if (restoredManualOpeningBalance && balanceStart !== Number(logEntry.balance_after)) {
         await admin.from("leave_balance_log")
