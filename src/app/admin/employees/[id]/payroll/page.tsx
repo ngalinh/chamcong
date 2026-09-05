@@ -1516,9 +1516,9 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
               <span className="text-xs font-semibold text-violet-800">{item.channel_name}</span>
               <span className={cn(
                 "text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wider",
-                item.role === "sale" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700",
+                item.role === "sale" ? "bg-emerald-50 text-emerald-700" : item.role === "cskh" ? "bg-sky-50 text-sky-700" : "bg-violet-100 text-violet-700",
               )}>
-                {item.role.toUpperCase()}
+                {item.role === "total" ? "TỔNG" : item.role.toUpperCase()}
               </span>
               <span className="ml-auto text-xs font-semibold text-violet-700 tabular-nums">
                 +{Math.round(item.total_employee_profit).toLocaleString("en-US")}

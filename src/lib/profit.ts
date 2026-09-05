@@ -23,7 +23,7 @@ function dedupeByEffectiveFrom<T extends Record<string, any>>(
 
 export type EmployeeProfit = {
   channel_name: string;
-  role: "sale" | "cskh";
+  role: "sale" | "cskh" | "total";
   details: {
     brand: string;
     customer_group: string;
@@ -42,7 +42,7 @@ const SHARE_PCT_OVERRIDES: Record<string, number> = {
   "2026-05|Linh Dương|cskh": 0.10, // Tuyền Nguyễn tháng 5/2026 chỉ 10% thay vì 30%
 };
 
-export async function computeProfitForEmployee(
+async function computeChannelProfitForEmployee(
   employeeId: string,
   month: string, // YYYY-MM
 ): Promise<{ items: EmployeeProfit[]; total: number }> {
@@ -199,4 +199,96 @@ export async function computeProfitForEmployee(
   }
 
   return { items, total: grandTotal };
+}
+
+async function computeTotalProfitForMonth(month: string): Promise<number> {
+  const admin = createAdminClient();
+  const { data: rules } = await admin.from("profit_rules").select("*");
+  if (!rules?.length) return 0;
+
+  const effectiveRules = dedupeByEffectiveFrom(
+    rules,
+    (rule) => `${rule.channel_name}||${rule.brand}||${rule.customer_group}`,
+    month,
+  );
+  const specificRules = new Map(
+    effectiveRules.map((rule) => [`${rule.channel_name}||${rule.brand}||${rule.customer_group}`, rule.profit_pct]),
+  );
+  const globalRules = new Map(
+    effectiveRules
+      .filter((rule) => rule.channel_name === "")
+      .map((rule) => [`${rule.brand}||${rule.customer_group}`, rule.profit_pct]),
+  );
+  const fallbackRules = new Map<string, number>();
+  for (const rule of effectiveRules) {
+    const key = `${rule.brand}||${rule.customer_group}`;
+    if (!fallbackRules.has(key)) fallbackRules.set(key, rule.profit_pct);
+  }
+
+  type RevenueRow = { sale_channel: string | null; brand: string | null; customer_group: string | null; amount: number };
+  const orders: RevenueRow[] = [];
+  const batchSize = 1000;
+  for (let from = 0; ; from += batchSize) {
+    const { data: batch } = await admin
+      .from("order_data")
+      .select("sale_channel, brand, customer_group, amount")
+      .eq("month", month)
+      .range(from, from + batchSize - 1);
+    if (!batch?.length) break;
+    orders.push(...batch);
+    if (batch.length < batchSize) break;
+  }
+
+  const { data: dropshipRows } = await admin
+    .from("dropship_revenue")
+    .select("channel_name, customer_group, amount")
+    .eq("month", month);
+
+  let totalProfit = 0;
+  for (const order of orders) {
+    const channel = resolveChannelName(order.sale_channel) ?? order.sale_channel ?? "";
+    const brandGroupKey = `${order.brand ?? ""}||${order.customer_group ?? ""}`;
+    const profitPct = specificRules.get(`${channel}||${brandGroupKey}`)
+      ?? globalRules.get(brandGroupKey)
+      ?? fallbackRules.get(brandGroupKey);
+    if (profitPct !== undefined) totalProfit += Number(order.amount ?? 0) * profitPct;
+  }
+  for (const row of dropshipRows ?? []) {
+    const brandGroupKey = `Dropship||${row.customer_group ?? ""}`;
+    const profitPct = specificRules.get(`${row.channel_name}||${brandGroupKey}`)
+      ?? globalRules.get(brandGroupKey)
+      ?? fallbackRules.get(brandGroupKey);
+    if (profitPct !== undefined) totalProfit += Number(row.amount ?? 0) * profitPct;
+  }
+  return totalProfit;
+}
+
+export async function computeProfitForEmployee(
+  employeeId: string,
+  month: string,
+): Promise<{ items: EmployeeProfit[]; total: number }> {
+  const admin = createAdminClient();
+  const [{ data: totalShareRows }, channelProfit] = await Promise.all([
+    admin.from("profit_total_shares").select("*").eq("employee_id", employeeId),
+    computeChannelProfitForEmployee(employeeId, month),
+  ]);
+  const effectiveShare = dedupeByEffectiveFrom(totalShareRows ?? [], () => employeeId, month)[0];
+  if (!effectiveShare || Number(effectiveShare.profit_pct) <= 0) return channelProfit;
+
+  const companyProfit = await computeTotalProfitForMonth(month);
+  const totalShare = companyProfit * Number(effectiveShare.profit_pct);
+  if (totalShare <= 0) return channelProfit;
+
+  return {
+    items: [
+      ...channelProfit.items,
+      {
+        channel_name: "Tổng profit toàn công ty",
+        role: "total",
+        details: [],
+        total_employee_profit: totalShare,
+      },
+    ],
+    total: channelProfit.total + totalShare,
+  };
 }

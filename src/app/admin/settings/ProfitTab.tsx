@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
 import { AlertTriangle, CheckCircle2, Pencil, Trash2, TrendingUp } from "lucide-react";
-import type { ProfitChannel, ProfitRule, Employee } from "@/types/db";
+import type { ProfitChannel, ProfitRule, ProfitTotalShare, Employee } from "@/types/db";
 import { PROFIT_BRANDS, CUSTOMER_GROUPS, PROFIT_PCTS } from "@/types/db";
 import BrandMultiSelect from "./BrandMultiSelect";
 import { ApplyFromSubmit } from "@/components/ApplyFromSubmit";
@@ -10,6 +10,8 @@ import {
   upsertProfitRule,
   upsertProfitRuleGroup,
   deleteProfitRuleGroup,
+  upsertProfitTotalShare,
+  deleteProfitTotalShare,
 } from "./actions";
 
 function pctLabel(p: number) {
@@ -53,22 +55,26 @@ export async function ProfitTab({
   error,
   editChannel,
   editRule,
+  editTotalShare,
 }: {
   ok?: string;
   error?: string;
   editChannel?: string;
   editRule?: string; // encoded group key: channel_name||profit_pct||brands_tilde||cgs_tilde
+  editTotalShare?: string;
 }) {
   const admin = createAdminClient();
 
-  const [{ data: channels }, { data: rules }, { data: employees }] = await Promise.all([
+  const [{ data: channels }, { data: rules }, { data: totalShares }, { data: employees }] = await Promise.all([
     admin.from("profit_channels").select("*").order("created_at"),
     admin.from("profit_rules").select("*").order("channel_name").order("brand").order("customer_group"),
+    admin.from("profit_total_shares").select("*").order("created_at"),
     admin.from("employees").select("id, name").eq("is_active", true).order("name"),
   ]);
 
   const allChannels = (channels ?? []) as ProfitChannel[];
   const allRules = (rules ?? []) as ProfitRule[];
+  const allTotalShares = (totalShares ?? []) as ProfitTotalShare[];
   const empList = (employees ?? []) as Pick<Employee, "id" | "name">[];
 
   // Tính tháng trước, tháng hiện tại và tháng sau
@@ -94,6 +100,7 @@ export async function ProfitTab({
   const channelList = latestEffective(allChannels, (c) => c.channel_name)
     .sort((a, b) => a.channel_name.localeCompare(b.channel_name, "vi"));
   const ruleList = latestEffective(allRules, (r) => `${r.channel_name}||${r.brand}||${r.customer_group}`);
+  const totalShareList = latestEffective(allTotalShares, (r) => r.employee_id);
 
   const ruleGroups = groupRules(ruleList).sort((a, b) => {
     const cgOrd = CUSTOMER_GROUPS as readonly string[];
@@ -189,6 +196,61 @@ export async function ProfitTab({
         </div>
       </section>
 
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
+          Tài khoản NV theo tổng profit
+        </h3>
+        <div className="rounded-2xl border border-white/60 glass overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-neutral-50/80 border-b border-neutral-200/60">
+              <tr>
+                <th className="text-left py-2.5 px-3 font-medium text-neutral-600 text-xs">Tài khoản NV</th>
+                <th className="text-right py-2.5 px-3 font-medium text-neutral-600 text-xs">% Profit</th>
+                <th className="py-2.5 px-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-200/40">
+              {totalShareList.map((share) => {
+                const employee = empList.find((e) => e.id === share.employee_id);
+                const isEditing = editTotalShare === share.employee_id;
+                return isEditing ? (
+                  <tr key={share.employee_id} className="bg-indigo-50/40">
+                    <td colSpan={3} className="px-3 py-3">
+                      <TotalShareForm share={share} employees={empList} previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={share.employee_id}>
+                    <td className="py-2.5 px-3 font-medium">{employee?.name ?? "Tài khoản đã xoá"}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-indigo-700 font-medium">{pctLabel(share.profit_pct)}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-1 justify-end">
+                        <a href={`/admin/settings?tab=profit&edit_total=${share.employee_id}`} className="h-7 px-2 rounded-md border border-neutral-200 bg-white text-xs hover:bg-neutral-50 inline-flex items-center gap-1">
+                          <Pencil size={11} /> Sửa
+                        </a>
+                        <form action={deleteProfitTotalShare}>
+                          <input type="hidden" name="employee_id" value={share.employee_id} />
+                          <button type="submit" aria-label={`Xoá ${employee?.name ?? "nhân viên"}`} className="h-7 px-2 rounded-md border border-neutral-200 bg-white inline-flex items-center justify-center gap-1 text-xs text-neutral-500 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200">
+                            <Trash2 size={11} /> Xoá
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!editTotalShare && (
+          <div className="p-3 border border-neutral-200/40 rounded-2xl bg-neutral-50/40">
+            <p className="text-xs font-medium text-neutral-500 mb-3">+ Thêm tài khoản NV</p>
+            <TotalShareForm employees={empList} previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
+          </div>
+        )}
+        <p className="text-xs text-neutral-500">💡 % Profit được tính trên tổng toàn bộ profit của tháng.</p>
+      </section>
+
       {/* ─── Công thức profit ─────────────────────────────────────────── */}
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-700 uppercase tracking-wide">
@@ -279,6 +341,35 @@ export async function ProfitTab({
 
       <ProfitSummarySection channels={channelList} employees={empList} />
     </div>
+  );
+}
+
+function TotalShareForm({
+  share,
+  employees,
+  previousMonth,
+  currentMonth,
+  nextMonth,
+}: {
+  share?: ProfitTotalShare;
+  employees: Pick<Employee, "id" | "name">[];
+  previousMonth: string;
+  currentMonth: string;
+  nextMonth: string;
+}) {
+  return (
+    <form action={upsertProfitTotalShare} className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+      <SelectField label="Tài khoản NV" name="employee_id" defaultValue={share?.employee_id} disabled={Boolean(share)}>
+        <option value="">(chưa chọn)</option>
+        {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+      </SelectField>
+      {share && <input type="hidden" name="employee_id" value={share.employee_id} />}
+      <NumberPctField label="% Profit" name="profit_pct" defaultValue={Math.round((share?.profit_pct ?? 0) * 100)} />
+      <div className="flex gap-1.5 col-span-2 sm:col-span-1">
+        <ApplyFromSubmit previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} label={share ? "Lưu" : "Thêm"} />
+        {share && <a href="/admin/settings?tab=profit" className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center">Huỷ</a>}
+      </div>
+    </form>
   );
 }
 

@@ -69,6 +69,14 @@ export type ProfitRule = {
   created_at: string;
 };
 
+export type ProfitTotalShare = {
+  id: string;
+  employee_id: string;
+  profit_pct: number;
+  effective_from: string; // YYYY-MM, '' = luôn áp dụng
+  created_at: string;
+};
+
 export type OrderFile = {
   id: string;
   month: string;
