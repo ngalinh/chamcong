@@ -1505,7 +1505,7 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
     <section className="rounded-2xl border border-violet-200 bg-violet-50/60 overflow-hidden">
       <header className="px-3 py-2.5 border-b border-violet-200/60 flex items-center justify-between gap-2">
         <h3 className="font-semibold text-sm text-violet-900">Profit từ doanh số</h3>
-        <span className="text-xs font-semibold text-violet-700 tabular-nums">
+        <span className="text-sm font-semibold text-violet-700 tabular-nums">
           +{Math.round(total).toLocaleString("en-US")} VND
         </span>
       </header>
