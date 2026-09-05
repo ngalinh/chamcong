@@ -27,7 +27,7 @@ export default async function SettingsPage({
     preview?: string;
     ds_month?: string; // dropship revenue month
     // profit params
-    edit_ch?: string; edit_rule?: string;
+    edit_ch?: string; edit_rule?: string; edit_total?: string;
     // logs params
     level?: string;
   }>;
@@ -67,7 +67,7 @@ export default async function SettingsPage({
           <OrdersTab ok={sp.ok} error={sp.error} preview={sp.preview} dsMonth={sp.ds_month} />
         )}
         {activeTab === "profit" && (
-          <ProfitTab ok={sp.ok} error={sp.error} editChannel={sp.edit_ch} editRule={sp.edit_rule} />
+          <ProfitTab ok={sp.ok} error={sp.error} editChannel={sp.edit_ch} editRule={sp.edit_rule} editTotalShare={sp.edit_total} />
         )}
         {activeTab === "branches" && (
           <BranchesTab ok={sp.ok} error={sp.error} showNew={sp.new === "1"} />

@@ -87,6 +87,39 @@ export async function deleteProfitChannel(formData: FormData) {
   ok("profit", "Đã xoá kênh Sale");
 }
 
+// ─── profit_total_shares ──────────────────────────────────────────────────
+
+export async function upsertProfitTotalShare(formData: FormData) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const employee_id = String(formData.get("employee_id") ?? "").trim();
+  const profit_pct = Number(formData.get("profit_pct") ?? 0) / 100;
+  const apply_from = String(formData.get("apply_from") ?? "").trim();
+
+  if (!employee_id) err("profit", "Chưa chọn tài khoản nhân viên");
+  if (!Number.isFinite(profit_pct) || profit_pct < 0 || profit_pct > 1) {
+    err("profit", "% profit không hợp lệ");
+  }
+
+  const { error } = await admin.from("profit_total_shares").upsert(
+    { employee_id, profit_pct, effective_from: apply_from },
+    { onConflict: "employee_id,effective_from" },
+  );
+  if (error) err("profit", error.message);
+  ok("profit", "Đã cập nhật % theo tổng profit");
+}
+
+export async function deleteProfitTotalShare(formData: FormData) {
+  await requireAdmin();
+  const employee_id = String(formData.get("employee_id") ?? "").trim();
+  const { error } = await createAdminClient()
+    .from("profit_total_shares")
+    .delete()
+    .eq("employee_id", employee_id);
+  if (error) err("profit", error.message);
+  ok("profit", "Đã xoá tài khoản khỏi tổng profit");
+}
+
 // ─── profit_rules ──────────────────────────────────────────────────────────
 
 export async function upsertProfitRule(formData: FormData) {
