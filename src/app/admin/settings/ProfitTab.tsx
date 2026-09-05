@@ -71,9 +71,11 @@ export async function ProfitTab({
   const allRules = (rules ?? []) as ProfitRule[];
   const empList = (employees ?? []) as Pick<Employee, "id" | "name">[];
 
-  // Tính tháng hiện tại và tháng sau
+  // Tính tháng trước, tháng hiện tại và tháng sau
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonth = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
   const nextMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, "0")}`;
 
@@ -153,7 +155,7 @@ export async function ProfitTab({
                     return (
                       <tr key={ch.id} className="bg-indigo-50/40">
                         <td colSpan={6} className="px-3 py-3">
-                          <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} currentMonth={currentMonth} nextMonth={nextMonth} />
+                          <ChannelForm channel={ch} employees={empList} action={upsertProfitChannel} previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
                         </td>
                       </tr>
                     );
@@ -213,7 +215,7 @@ export async function ProfitTab({
                       return (
                         <tr key={gKey} className="bg-indigo-50/40">
                           <td colSpan={4} className="px-3 py-3">
-                            <RuleGroupForm group={g} action={upsertProfitRuleGroup} currentMonth={currentMonth} nextMonth={nextMonth} />
+                            <RuleGroupForm group={g} action={upsertProfitRuleGroup} previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
                           </td>
                         </tr>
                       );
@@ -284,6 +286,7 @@ function ChannelForm({
   channel,
   employees,
   action,
+  previousMonth,
   currentMonth,
   nextMonth,
 }: {
@@ -291,6 +294,7 @@ function ChannelForm({
   employees: Pick<Employee, "id" | "name">[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
+  previousMonth: string;
   currentMonth: string;
   nextMonth: string;
 }) {
@@ -317,7 +321,7 @@ function ChannelForm({
       <NumberPctField label="% CSKH" name="cskh_pct" defaultValue={Math.round(channel.cskh_pct * 100)} />
 
       <div className="flex gap-1.5 col-span-2 sm:col-span-1">
-        <ApplyFromSubmit currentMonth={currentMonth} nextMonth={nextMonth} />
+        <ApplyFromSubmit previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
         <a
           href="/admin/settings?tab=profit"
           className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"
@@ -333,12 +337,14 @@ function ChannelForm({
 function RuleGroupForm({
   group,
   action,
+  previousMonth,
   currentMonth,
   nextMonth,
 }: {
   group: RuleGroup;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   action: (fd: FormData) => any;
+  previousMonth: string;
   currentMonth: string;
   nextMonth: string;
 }) {
@@ -359,7 +365,7 @@ function RuleGroupForm({
           ))}
         </SelectField>
         <div className="flex gap-1.5 col-span-2 sm:col-span-1">
-          <ApplyFromSubmit currentMonth={currentMonth} nextMonth={nextMonth} />
+          <ApplyFromSubmit previousMonth={previousMonth} currentMonth={currentMonth} nextMonth={nextMonth} />
           <a
             href="/admin/settings?tab=profit"
             className="h-9 px-2.5 rounded-lg border border-neutral-200 bg-white text-xs font-medium hover:bg-neutral-50 inline-flex items-center"

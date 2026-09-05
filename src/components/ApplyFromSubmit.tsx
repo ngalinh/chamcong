@@ -3,10 +3,12 @@ import { useRef, useState } from "react";
 
 export function ApplyFromSubmit({
   label = "Lưu",
+  previousMonth,
   currentMonth,
   nextMonth,
 }: {
   label?: string;
+  previousMonth: string; // YYYY-MM
   currentMonth: string; // YYYY-MM
   nextMonth: string;    // YYYY-MM
 }) {
@@ -28,8 +30,10 @@ export function ApplyFromSubmit({
     form.requestSubmit();
   }
 
-  const [m, y] = currentMonth.split("-");
-  const [nm, ny] = nextMonth.split("-");
+  function formatMonth(month: string) {
+    const [year, monthNumber] = month.split("-");
+    return `Tháng ${Number(monthNumber)}/${year}`;
+  }
 
   return (
     <>
@@ -54,19 +58,24 @@ export function ApplyFromSubmit({
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => submit(currentMonth)}
-                className="w-full h-11 rounded-xl border-2 border-indigo-500 bg-indigo-50 text-indigo-800 text-sm font-medium hover:bg-indigo-100 flex flex-col items-center justify-center"
+                onClick={() => submit(previousMonth)}
+                className="w-full h-11 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-sm font-medium hover:bg-neutral-50"
               >
-                <span>Tháng này</span>
-                <span className="text-xs font-normal text-indigo-500">tháng {Number(m)}/{y} trở đi</span>
+                Tháng trước: {formatMonth(previousMonth)}
+              </button>
+              <button
+                type="button"
+                onClick={() => submit(currentMonth)}
+                className="w-full h-11 rounded-xl border-2 border-indigo-500 bg-indigo-50 text-indigo-800 text-sm font-medium hover:bg-indigo-100"
+              >
+                Tháng này: {formatMonth(currentMonth)}
               </button>
               <button
                 type="button"
                 onClick={() => submit(nextMonth)}
-                className="w-full h-11 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-sm font-medium hover:bg-neutral-50 flex flex-col items-center justify-center"
+                className="w-full h-11 rounded-xl border border-neutral-200 bg-white text-neutral-700 text-sm font-medium hover:bg-neutral-50"
               >
-                <span>Tháng sau</span>
-                <span className="text-xs font-normal text-neutral-400">tháng {Number(nm)}/{ny} trở đi</span>
+                Tháng sau: {formatMonth(nextMonth)}
               </button>
             </div>
             <button
