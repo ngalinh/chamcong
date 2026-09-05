@@ -1089,7 +1089,7 @@ function ProfitSection({
         <h3 className="font-semibold text-sm text-violet-900">
           Profit từ doanh số
         </h3>
-        <span className="text-xs font-semibold text-violet-700 tabular-nums">
+        <span className="text-sm font-semibold text-violet-700 tabular-nums">
           +{Math.round(total).toLocaleString("en-US")} VND
         </span>
       </header>
