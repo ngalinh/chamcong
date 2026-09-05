@@ -1512,20 +1512,20 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
       <div className="divide-y divide-violet-100">
         {items.map((item, i) => (
           <div key={i} className="px-3 py-2.5 space-y-1.5">
-            <div className="flex items-center gap-2">
+            {item.role !== "total" && <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-violet-800">{item.channel_name}</span>
               <span className={cn(
                 "text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wider",
-                item.role === "sale" ? "bg-emerald-50 text-emerald-700" : item.role === "cskh" ? "bg-sky-50 text-sky-700" : "bg-violet-100 text-violet-700",
+                item.role === "sale" ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700",
               )}>
-                {item.role === "total" ? "TỔNG" : item.role.toUpperCase()}
+                {item.role.toUpperCase()}
               </span>
               <span className="ml-auto text-xs font-semibold text-violet-700 tabular-nums">
                 +{Math.round(item.total_employee_profit).toLocaleString("en-US")}
               </span>
-            </div>
+            </div>}
             {item.role === "total" && item.company_total_profit !== undefined && item.total_share_pct !== undefined && (
-              <div className="rounded-lg bg-white/60 px-2.5 py-2 text-[11px] text-neutral-600 flex flex-wrap items-center gap-x-1">
+              <div className="rounded-lg bg-white/60 px-3 py-2.5 text-sm text-neutral-600 flex flex-wrap items-center gap-x-1.5">
                 <span>Tổng profit tháng:</span>
                 <span className="font-semibold text-violet-800 tabular-nums">
                   {Math.round(item.company_total_profit).toLocaleString("en-US")} VND
