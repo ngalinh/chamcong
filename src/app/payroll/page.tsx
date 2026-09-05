@@ -475,7 +475,7 @@ function FulltimeView({
         <Section
           icon={Wifi}
           title="Làm online"
-          subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · ${ONLINE_WFH_FREE_DAYS} ngày WFH đầu free`}
+          subtitle={`${[...(leavesByCat.online_wfh ?? []), ...(leavesByCat.online_rain ?? [])].length} đơn · WFH miễn phí ${ONLINE_WFH_FREE_DAYS}d · Trời mưa miễn phí riêng`}
           empty=""
         >
           <LeaveList
@@ -937,6 +937,7 @@ function LeaveList({
           )}
           <div className="flex-1" />
           <LeaveLabel
+            category={it.category}
             label={it.label}
             phepUsed={it.phepUsed}
             wageDays={it.wageDays}
@@ -955,12 +956,14 @@ function LeaveList({
 }
 
 function LeaveLabel({
+  category,
   label,
   phepUsed,
   wageDays,
   wageHours,
   freeDays,
 }: {
+  category: LeaveCategory;
   label: "free" | "phep" | "wage" | "phep_wage";
   phepUsed: number;
   wageDays: number;
@@ -975,7 +978,8 @@ function LeaveLabel({
   if (label === "free")
     return (
       <Badge tone="neutral">
-        Miễn phí{freeDays > 0 ? ` (${f(freeDays)}d)` : ""}
+        {category === "online_rain" ? "Miễn phí trời mưa" : "Miễn phí"}
+        {freeDays > 0 ? ` (${f(freeDays)}d)` : ""}
       </Badge>
     );
   if (label === "phep")
