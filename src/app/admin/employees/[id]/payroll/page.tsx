@@ -1425,18 +1425,32 @@ function LeaveLabel({
   freeDays: number;
 }) {
   const f = (n: number) => Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+  const freeBadge = freeDays > 0
+    ? <Badge tone="neutral">Miễn phí ({f(freeDays)}d)</Badge>
+    : null;
   if (label === "free") {
     return <Badge tone="neutral">Miễn phí{freeDays > 0 ? ` (${f(freeDays)}d)` : ""}</Badge>;
   }
   if (label === "phep") {
-    return <Badge tone="amber">Trừ phép {f(phepUsed)}d</Badge>;
+    return (
+      <span className="inline-flex items-center gap-1">
+        {freeBadge}
+        <Badge tone="amber">Trừ phép {f(phepUsed)}d</Badge>
+      </span>
+    );
   }
   if (label === "wage") {
     if (wageHours > 0) return <Badge tone="rose">Trừ lương {f(wageHours)}h</Badge>;
-    return <Badge tone="rose">Trừ lương {f(wageDays)}d</Badge>;
+    return (
+      <span className="inline-flex items-center gap-1">
+        {freeBadge}
+        <Badge tone="rose">Trừ lương {f(wageDays)}d</Badge>
+      </span>
+    );
   }
   return (
     <span className="inline-flex items-center gap-1">
+      {freeBadge}
       <Badge tone="amber">Phép {f(phepUsed)}d</Badge>
       <Badge tone="rose">Lương {f(wageDays)}d</Badge>
     </span>
