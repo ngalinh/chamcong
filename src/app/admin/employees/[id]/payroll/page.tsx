@@ -1524,6 +1524,18 @@ function ProfitSection({ items, total }: { items: EmployeeProfit[]; total: numbe
                 +{Math.round(item.total_employee_profit).toLocaleString("en-US")}
               </span>
             </div>
+            {item.role === "total" && item.company_total_profit !== undefined && item.total_share_pct !== undefined && (
+              <div className="rounded-lg bg-white/60 px-2.5 py-2 text-[11px] text-neutral-600 flex flex-wrap items-center gap-x-1">
+                <span>Tổng profit tháng:</span>
+                <span className="font-semibold text-violet-800 tabular-nums">
+                  {Math.round(item.company_total_profit).toLocaleString("en-US")} VND
+                </span>
+                <span>× Nhân viên hưởng</span>
+                <span className="font-semibold text-violet-800 tabular-nums">
+                  {(item.total_share_pct * 100).toFixed(1).replace(/\.0$/, "")}%
+                </span>
+              </div>
+            )}
             {item.details.length > 0 && (
               <table className="w-full text-[11px] text-neutral-600">
                 <tbody>

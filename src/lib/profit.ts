@@ -24,6 +24,8 @@ function dedupeByEffectiveFrom<T extends Record<string, any>>(
 export type EmployeeProfit = {
   channel_name: string;
   role: "sale" | "cskh" | "total";
+  company_total_profit?: number;
+  total_share_pct?: number;
   details: {
     brand: string;
     customer_group: string;
@@ -285,6 +287,8 @@ export async function computeProfitForEmployee(
       {
         channel_name: "Tổng profit toàn công ty",
         role: "total",
+        company_total_profit: companyProfit,
+        total_share_pct: Number(effectiveShare.profit_pct),
         details: [],
         total_employee_profit: totalShare,
       },
