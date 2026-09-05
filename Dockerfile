@@ -46,6 +46,8 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+RUN apk add --no-cache postgresql-client
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -61,10 +63,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Copy public/ (face-api models, manifest, icons, sw.js)
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/supabase/migrations/20260905020000_profit_total_shares.sql ./migrations/20260905020000_profit_total_shares.sql
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/start-production.sh ./start-production.sh
+RUN chmod +x ./start-production.sh
 
 USER nextjs
 
 EXPOSE 3000
 
 # server.js do Next.js tự sinh trong .next/standalone/
-CMD ["node", "server.js"]
+CMD ["./start-production.sh"]
