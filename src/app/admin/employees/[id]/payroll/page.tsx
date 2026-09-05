@@ -237,10 +237,11 @@ async function setOpeningBalance(formData: FormData) {
 
   if (existingLog) {
     await admin.from("leave_balance_log").update({
-      // delta khác 1 đánh dấu đây là số dư mở sổ do admin nhập, không phải
-      // một lần cộng phép tháng tự động. Payroll dùng nó làm anchor bất biến.
+      // Lưu cả giá trị và marker rõ ràng. Không thể chỉ dùng `delta !== 1`
+      // làm marker vì admin hoàn toàn có thể nhập số dư đầu kỳ bằng 1.
       delta: balance,
       balance_after: balance,
+      note: `Số dư phép đầu kỳ ${monthStr} (admin nhập)`,
     }).eq("id", existingLog.id);
   } else {
     await admin.from("leave_balance_log").insert({
@@ -248,7 +249,7 @@ async function setOpeningBalance(formData: FormData) {
       delta: balance,
       balance_after: balance,
       event_type: "accrual",
-      note: `Cộng phép tháng ${monthStr} (tự động)`,
+      note: `Số dư phép đầu kỳ ${monthStr} (admin nhập)`,
     });
   }
 
