@@ -241,26 +241,24 @@ async function computeTotalProfitForMonth(month: string): Promise<number> {
     if (batch.length < batchSize) break;
   }
 
-  const { data: dropshipRows } = await admin
-    .from("dropship_revenue")
-    .select("channel_name, customer_group, amount")
-    .eq("month", month);
-
-  let totalProfit = 0;
+  // "Tổng profit tháng" phải khớp với Tổng profit ở phần Preview file đơn hàng.
+  // Doanh thu dropship được nhập và theo dõi riêng nên không cộng vào cơ sở chia tỷ lệ này.
+  const revenueByRule = new Map<string, number>();
   for (const order of orders) {
     const channel = resolveChannelName(order.sale_channel) ?? order.sale_channel ?? "";
     const brandGroupKey = `${order.brand ?? ""}||${order.customer_group ?? ""}`;
+    const key = `${channel}||${brandGroupKey}`;
+    revenueByRule.set(key, (revenueByRule.get(key) ?? 0) + Number(order.amount ?? 0));
+  }
+
+  let totalProfit = 0;
+  for (const [key, revenue] of revenueByRule) {
+    const [channel, brand, customerGroup] = key.split("||");
+    const brandGroupKey = `${brand}||${customerGroup}`;
     const profitPct = specificRules.get(`${channel}||${brandGroupKey}`)
       ?? globalRules.get(brandGroupKey)
       ?? fallbackRules.get(brandGroupKey);
-    if (profitPct !== undefined) totalProfit += Number(order.amount ?? 0) * profitPct;
-  }
-  for (const row of dropshipRows ?? []) {
-    const brandGroupKey = `Dropship||${row.customer_group ?? ""}`;
-    const profitPct = specificRules.get(`${row.channel_name}||${brandGroupKey}`)
-      ?? globalRules.get(brandGroupKey)
-      ?? fallbackRules.get(brandGroupKey);
-    if (profitPct !== undefined) totalProfit += Number(row.amount ?? 0) * profitPct;
+    if (profitPct !== undefined) totalProfit += Math.round(revenue * profitPct);
   }
   return totalProfit;
 }
