@@ -171,6 +171,8 @@ export function resolveCheckinMode(params: {
   isSaturday: boolean;
   nowMin: number;
   kind: "in" | "out";
+  /** Check-out: giờ (phút VN) của lần check-in đang mở ca. */
+  pairedInMin?: number | null;
 }): { online: boolean; window: { start: string; end: string } | null } {
   const segments = buildDaySegments({
     emp: params.emp,
@@ -186,23 +188,26 @@ export function resolveCheckinMode(params: {
     return { online: params.isRemoteOffice, window: null };
   }
 
-  // Check-in thuộc đoạn đang chứa thời điểm hiện tại. Riêng check-out phải ghép
-  // với giờ KẾT THÚC gần nhất: NV check-out ca online sáng lúc 13:34 để di chuyển
-  // lên văn phòng vẫn đang đóng ca sáng (12:30), không phải về sớm khỏi ca văn
-  // phòng chiều 13:30–17:30 chỉ vì 13:34 nằm trong đoạn chiều.
-  const contained = params.kind === "in"
-    ? segments.find(
-        (s) => params.nowMin >= timeToMinutes(s.start) && params.nowMin <= timeToMinutes(s.end),
-      )
-    : undefined;
-  const seg =
-    contained ??
+  // Check-in thuộc đoạn đang chứa thời điểm hiện tại (hoặc đoạn có giờ vào gần
+  // nhất). Check-out đóng đúng đoạn của lần check-in đang mở: check-in online
+  // 09:05 rồi check-out 13:34 để lên VP vẫn là đóng ca sáng (12:30); còn check-in
+  // VP 13:35 rồi ra 15:00 là về sớm khỏi ca VP chiều. Không biết check-in đang
+  // mở → ghép giờ KẾT THÚC gần nhất.
+  const segOf = (min: number, by: "start" | "end") =>
+    (by === "start"
+      ? segments.find((s) => min >= timeToMinutes(s.start) && min <= timeToMinutes(s.end))
+      : undefined) ??
     segments.reduce<{ s: DaySegment; d: number } | null>((best, s) => {
-      const b = timeToMinutes(params.kind === "in" ? s.start : s.end);
-      const d = circularDistance(params.nowMin, b);
+      const d = circularDistance(min, timeToMinutes(by === "start" ? s.start : s.end));
       if (!best || d < best.d) return { s, d };
       return best;
     }, null)!.s;
+  const seg =
+    params.kind === "in"
+      ? segOf(params.nowMin, "start")
+      : params.pairedInMin != null
+        ? segOf(params.pairedInMin, "start")
+        : segOf(params.nowMin, "end");
 
   return {
     online: params.isRemoteOffice || seg.online,

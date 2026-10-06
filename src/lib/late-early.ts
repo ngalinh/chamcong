@@ -1,6 +1,6 @@
 import type { WorkShift } from "@/types/db";
 import { effectiveWorkShifts } from "./workHours";
-import { timeToMinutes } from "./time";
+import { formatVN, timeToMinutes } from "./time";
 
 const DAY_MIN = 24 * 60;
 
@@ -55,6 +55,8 @@ export function computeLateEarly(opts: {
   hourlyLeaves?: Array<{ start_time: string; end_time: string; category?: string | null }> | null;
   kind: "in" | "out";
   timeMinutes: number;
+  /** Check-out: giờ (phút VN) của lần check-in mở ca này — xem pairedInMinutes(). */
+  pairedInMinutes?: number | null;
 }): { late_minutes: number | null; early_minutes: number | null } {
   const shifts = effectiveWorkShifts(
     opts.emp,
@@ -71,12 +73,10 @@ export function computeLateEarly(opts: {
 
   let effectiveStart = closest.shift.start;
   let effectiveEnd = closest.shift.end;
-  // Mốc vào/ra của ca WFH nửa ngày. Lần chấm gần mốc này hơn mốc ca văn phòng
-  // là đang mở/đóng ca online (vd check-out 12:50 sau WFH sáng 09:00-12:30) —
-  // khớp resolveCheckinMode, để recalc khi duyệt đơn / sửa giờ không tính về
-  // sớm so với 17:30.
-  const onlineStarts: string[] = [];
-  const onlineEnds: string[] = [];
+  // Ca WFH nửa ngày — để biết lần chấm đang mở/đóng ca online hay ca văn phòng
+  // (vd check-out 12:50 sau WFH sáng 09:00-12:30 là đóng ca online, không phải
+  // về sớm so với 17:30). Khớp resolveCheckinMode.
+  const onlineWindows: Array<{ start: string; end: string }> = [];
 
   // Áp dụng từng đơn nghỉ theo giờ — mỗi đơn có thể dịch effectiveStart hoặc effectiveEnd.
   // online_wfh / leave_paid nửa ngày dùng pattern WFH_SHIFTS (sáng 09:00-12:30,
@@ -101,8 +101,7 @@ export function computeLateEarly(opts: {
         effectiveEnd = HALF_DAY_MORNING_END;
       }
       if (hl.category === "online_wfh" && (isMorning || isAfternoon)) {
-        onlineStarts.push(hl.start_time);
-        onlineEnds.push(hl.end_time);
+        onlineWindows.push({ start: hl.start_time, end: hl.end_time });
       }
       continue;
     }
@@ -117,18 +116,50 @@ export function computeLateEarly(opts: {
     }
   }
 
-  const targets = opts.kind === "in"
-    ? [effectiveStart, ...onlineStarts]
-    : [effectiveEnd, ...onlineEnds];
-  const targetMin = targets
-    .map(timeToMinutes)
-    .reduce((best, t) =>
-      circularDistance(opts.timeMinutes, t) < circularDistance(opts.timeMinutes, best) ? t : best,
+  // Ca (VP hoặc online) mà 1 lần check-in thuộc về: nằm trong cửa sổ online →
+  // online; còn lại → mốc vào gần nhất.
+  const officeSeg = { start: effectiveStart, end: effectiveEnd };
+  const segOfCheckIn = (inMin: number) =>
+    onlineWindows.find((w) => inMin >= timeToMinutes(w.start) && inMin <= timeToMinutes(w.end)) ??
+    [officeSeg, ...onlineWindows].reduce((best, w) =>
+      circularDistance(inMin, timeToMinutes(w.start)) < circularDistance(inMin, timeToMinutes(best.start)) ? w : best,
     );
+
+  let targetMin: number;
+  if (opts.kind === "in") {
+    targetMin = timeToMinutes(segOfCheckIn(opts.timeMinutes).start);
+  } else if (opts.pairedInMinutes != null) {
+    // Check-out đóng đúng ca đã check-in: vào VP 13:35 (sau WFH sáng) rồi ra
+    // 15:00 → vẫn về sớm so với 17:30, dù 15:00 gần 12:30 hơn.
+    targetMin = timeToMinutes(segOfCheckIn(opts.pairedInMinutes).end);
+  } else {
+    targetMin = [officeSeg, ...onlineWindows]
+      .map((w) => timeToMinutes(w.end))
+      .reduce((best, t) =>
+        circularDistance(opts.timeMinutes, t) < circularDistance(opts.timeMinutes, best) ? t : best,
+      );
+  }
   const delta = signedCircularDelta(opts.timeMinutes, targetMin);
 
   if (opts.kind === "in") {
     return { late_minutes: delta > 0 ? delta : null, early_minutes: null };
   }
   return { late_minutes: null, early_minutes: delta < 0 ? -delta : null };
+}
+
+/**
+ * Giờ (phút VN) của lần check-in gần nhất TRƯỚC thời điểm `atIso` — tức lần
+ * check-in mà 1 check-out tại `atIso` đóng lại. Null nếu không có.
+ */
+export function pairedInMinutes(
+  checkIns: Array<{ id?: string; kind: string; checked_in_at: string }>,
+  atIso: string,
+  excludeId?: string,
+): number | null {
+  const at = new Date(atIso).getTime();
+  const prev = checkIns
+    .filter((c) => c.id !== excludeId && new Date(c.checked_in_at).getTime() < at)
+    .sort((a, b) => new Date(b.checked_in_at).getTime() - new Date(a.checked_in_at).getTime())[0];
+  if (!prev || prev.kind !== "in") return null;
+  return timeToMinutes(formatVN(prev.checked_in_at, "HH:mm"));
 }
