@@ -163,3 +163,13 @@ export function pairedInMinutes(
   if (!prev || prev.kind !== "in") return null;
   return timeToMinutes(formatVN(prev.checked_in_at, "HH:mm"));
 }
+
+/**
+ * Check-in admin thêm thủ công (NV quên chấm) không tính muộn / về sớm. Từ
+ * 01/09/2026 bỏ qua cả late/early cũ còn lưu trong DB (trước khi fix vẫn bị
+ * tính); tháng trước giữ nguyên để khớp lương đã trả.
+ */
+const MANUAL_CHECKIN_EXEMPT_FROM = new Date("2026-09-01T00:00:00+07:00").getTime();
+export function isExemptManualCheckIn(ci: { created_by_admin_email?: string | null; checked_in_at: string }): boolean {
+  return !!ci.created_by_admin_email && new Date(ci.checked_in_at).getTime() >= MANUAL_CHECKIN_EXEMPT_FROM;
+}

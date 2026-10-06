@@ -13,6 +13,7 @@ import {
 } from "@/lib/workdays";
 import { dateVN } from "@/lib/time";
 import { effectiveWorkShifts } from "@/lib/workHours";
+import { isExemptManualCheckIn } from "@/lib/late-early";
 import type { Employee, LeaveCategory, LeaveStatus } from "@/types/db";
 
 // Shape lưu trong payroll_snapshots.data jsonb. Đọc lại để render bảng lương
@@ -63,7 +64,7 @@ export async function computePayrollForMonth(
   ] = await Promise.all([
     admin
       .from("check_ins")
-      .select("id, kind, checked_in_at, late_minutes, early_minutes, offices(name)")
+      .select("id, kind, checked_in_at, late_minutes, early_minutes, created_by_admin_email, offices(name)")
       .eq("employee_id", employee.id)
       .gte("checked_in_at", startIso)
       .lt("checked_in_at", checkInEndIso)
@@ -143,16 +144,19 @@ export async function computePayrollForMonth(
     excusedDays.add((h as { holiday_date: string }).holiday_date);
   }
 
-  const checkInsForCalc = (checkIns ?? []).map((ci) => ({
-    id: ci.id as string,
-    kind: ((ci.kind ?? "in") as "in" | "out"),
-    checked_in_at: ci.checked_in_at as string,
-    dateVN: dateVN(ci.checked_in_at as string),
-    late_minutes: ci.late_minutes as number | null,
-    early_minutes: ci.early_minutes as number | null,
-    // @ts-expect-error supabase nested join
-    office: (ci.offices?.name ?? null) as string | null,
-  }));
+  const checkInsForCalc = (checkIns ?? []).map((ci) => {
+    const exempt = isExemptManualCheckIn(ci as { created_by_admin_email: string | null; checked_in_at: string });
+    return {
+      id: ci.id as string,
+      kind: ((ci.kind ?? "in") as "in" | "out"),
+      checked_in_at: ci.checked_in_at as string,
+      dateVN: dateVN(ci.checked_in_at as string),
+      late_minutes: exempt ? null : (ci.late_minutes as number | null),
+      early_minutes: exempt ? null : (ci.early_minutes as number | null),
+      // @ts-expect-error supabase nested join
+      office: (ci.offices?.name ?? null) as string | null,
+    };
+  });
 
   const selfViolationsInput = (violations ?? []).map((v) => ({
     id: v.id as string,
