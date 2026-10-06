@@ -19,7 +19,7 @@ export default async function LeavePage() {
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, name, email")
+    .select("id, name, email, leave_balance")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -54,7 +54,11 @@ export default async function LeavePage() {
         </div>
       </header>
 
-      <LeaveRequestForm employeeName={employee.name} employeeEmail={employee.email} />
+      <LeaveRequestForm
+        employeeName={employee.name}
+        employeeEmail={employee.email}
+        leaveBalance={Number(employee.leave_balance ?? 0)}
+      />
 
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400 mb-2">Lịch sử gần đây</h2>
