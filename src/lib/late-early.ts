@@ -71,6 +71,12 @@ export function computeLateEarly(opts: {
 
   let effectiveStart = closest.shift.start;
   let effectiveEnd = closest.shift.end;
+  // Mốc vào/ra của ca WFH nửa ngày. Lần chấm gần mốc này hơn mốc ca văn phòng
+  // là đang mở/đóng ca online (vd check-out 12:50 sau WFH sáng 09:00-12:30) —
+  // khớp resolveCheckinMode, để recalc khi duyệt đơn / sửa giờ không tính về
+  // sớm so với 17:30.
+  const onlineStarts: string[] = [];
+  const onlineEnds: string[] = [];
 
   // Áp dụng từng đơn nghỉ theo giờ — mỗi đơn có thể dịch effectiveStart hoặc effectiveEnd.
   // online_wfh / leave_paid nửa ngày dùng pattern WFH_SHIFTS (sáng 09:00-12:30,
@@ -87,10 +93,16 @@ export function computeLateEarly(opts: {
       // effectiveStart/End — nếu so với wStart thực tế (vd office bắt đầu
       // 08:30 < 09:00) thì điều kiện lStart<=wStart sẽ sai, khiến nửa ngày
       // nghỉ sáng không dời được effectiveStart sang chiều.
-      if (lEnd <= timeToMinutes(HALF_DAY_MORNING_END)) {
+      const isMorning = lEnd <= timeToMinutes(HALF_DAY_MORNING_END);
+      const isAfternoon = lStart >= timeToMinutes(HALF_DAY_AFTERNOON_START);
+      if (isMorning) {
         effectiveStart = HALF_DAY_AFTERNOON_START;
-      } else if (lStart >= timeToMinutes(HALF_DAY_AFTERNOON_START)) {
+      } else if (isAfternoon) {
         effectiveEnd = HALF_DAY_MORNING_END;
+      }
+      if (hl.category === "online_wfh" && (isMorning || isAfternoon)) {
+        onlineStarts.push(hl.start_time);
+        onlineEnds.push(hl.end_time);
       }
       continue;
     }
@@ -105,7 +117,14 @@ export function computeLateEarly(opts: {
     }
   }
 
-  const targetMin = timeToMinutes(opts.kind === "in" ? effectiveStart : effectiveEnd);
+  const targets = opts.kind === "in"
+    ? [effectiveStart, ...onlineStarts]
+    : [effectiveEnd, ...onlineEnds];
+  const targetMin = targets
+    .map(timeToMinutes)
+    .reduce((best, t) =>
+      circularDistance(opts.timeMinutes, t) < circularDistance(opts.timeMinutes, best) ? t : best,
+    );
   const delta = signedCircularDelta(opts.timeMinutes, targetMin);
 
   if (opts.kind === "in") {
