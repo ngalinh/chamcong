@@ -7,6 +7,9 @@ import { Empty } from "@/components/ui/Empty";
 import { LEAVE_CATEGORIES, type LeaveRequest } from "@/types/db";
 import { ArrowLeft, Calendar, Inbox } from "lucide-react";
 import { formatVN } from "@/lib/time";
+import { computePayrollForMonth } from "@/lib/payroll-snapshot";
+import { yearMonthVN } from "@/lib/workdays";
+import type { Employee } from "@/types/db";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +35,23 @@ export default async function LeavePage() {
   }
 
   const admin = createAdminClient();
-  const { data: history } = await admin
-    .from("leave_requests")
-    .select("*")
-    .eq("employee_id", employee.id)
-    .order("leave_date", { ascending: false })
-    .limit(30);
+  const [{ data: history }, { data: empFull }] = await Promise.all([
+    admin
+      .from("leave_requests")
+      .select("*")
+      .eq("employee_id", employee.id)
+      .order("leave_date", { ascending: false })
+      .limit(30),
+    admin.from("employees").select("*").eq("id", employee.id).maybeSingle<Employee>(),
+  ]);
+
+  // Phép còn lại real-time = "phép cuối kỳ" tháng hiện tại trên bảng lương (đã
+  // trừ các đơn đã duyệt trong tháng), không phải leave_balance lúc chốt lương.
+  let leaveBalance = Number(employee.leave_balance ?? 0);
+  if (empFull) {
+    const payload = await computePayrollForMonth(admin, empFull, yearMonthVN());
+    if (payload.kind === "fulltime") leaveBalance = payload.result.balanceEnd;
+  }
 
   return (
     <main className="mx-auto max-w-md min-h-dvh px-safe pt-safe pb-safe flex flex-col gap-6">
@@ -57,7 +71,7 @@ export default async function LeavePage() {
       <LeaveRequestForm
         employeeName={employee.name}
         employeeEmail={employee.email}
-        leaveBalance={Number(employee.leave_balance ?? 0)}
+        leaveBalance={leaveBalance}
       />
 
       <section>
