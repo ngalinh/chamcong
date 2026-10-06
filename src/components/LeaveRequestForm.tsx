@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { TimeInput } from "@/components/ui/TimeInput";
 import { LEAVE_CATEGORIES, ACTIVE_LEAVE_CATEGORIES, type LeaveCategory, type DurationUnit } from "@/types/db";
-import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2, Plus, X, Sun, Moon } from "lucide-react";
+import { Calendar, User, Tag, Clock, FileText, Loader2, CheckCircle2, Plus, X, Sun, Moon, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function diffHours(start: string, end: string): number {
@@ -24,12 +24,19 @@ const WFH_SHIFTS: Record<Exclude<WfhMode, "full_day">, { start: string; end: str
   afternoon: { start: "13:30", end: "17:30" },
 };
 
+function toMin(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 export default function LeaveRequestForm({
   employeeName,
   employeeEmail,
+  leaveBalance,
 }: {
   employeeName: string;
   employeeEmail: string;
+  leaveBalance: number;
 }) {
   const router = useRouter();
   const today = new Date().toISOString().slice(0, 10);
@@ -57,6 +64,20 @@ export default function LeaveRequestForm({
   const isLeavePaidHalf = dayOnly && leavePaidMode !== "full_day";
 
   const computedHours = useMemo(() => diffHours(startTime, endTime), [startTime, endTime]);
+
+  // Nghỉ theo giờ phủ trọn ca sáng / ca chiều trong khi còn phép → gợi ý chuyển
+  // sang "Nghỉ theo ngày" (trừ phép) thay vì bị trừ lương theo giờ.
+  const paidSuggestion = useMemo((): LeavePaidMode | null => {
+    if (!isHourly || !startTime || !endTime) return null;
+    const s = toMin(startTime);
+    const e = toMin(endTime);
+    const coversMorning = s <= toMin(WFH_SHIFTS.morning.start) && e >= toMin(WFH_SHIFTS.morning.end);
+    const coversAfternoon = s <= toMin(WFH_SHIFTS.afternoon.start) && e >= toMin(WFH_SHIFTS.afternoon.end);
+    const mode: LeavePaidMode | null =
+      coversMorning && coversAfternoon ? "full_day" : coversMorning ? "morning" : coversAfternoon ? "afternoon" : null;
+    if (!mode) return null;
+    return leaveBalance >= (mode === "full_day" ? 1 : 0.5) ? mode : null;
+  }, [isHourly, startTime, endTime, leaveBalance]);
   const validDateCount = useMemo(() => dates.filter((d) => d.trim()).length, [dates]);
 
   // Sync time + force single-date khi chuyển mode/category
@@ -299,6 +320,28 @@ export default function LeaveRequestForm({
               {computedHours > 0 ? `${computedHours} giờ` : "—"}
             </div>
           </Row>
+          {paidSuggestion && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 space-y-2">
+              <p className="flex gap-2">
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  Nghỉ theo giờ <b>luôn bị trừ lương</b>, không trừ phép. Bạn còn <b>{leaveBalance}</b> ngày phép —
+                  nên chọn <b>Nghỉ theo ngày · {paidSuggestion === "full_day" ? "Cả ngày" : paidSuggestion === "morning" ? "Ca sáng" : "Ca chiều"}</b> để
+                  trừ {paidSuggestion === "full_day" ? "1" : "0.5"} ngày phép thay vì trừ lương.
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory("leave_paid");
+                  setLeavePaidMode(paidSuggestion);
+                }}
+                className="h-8 w-full rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700"
+              >
+                Chuyển sang Nghỉ theo ngày
+              </button>
+            </div>
+          )}
         </>
       )}
 
