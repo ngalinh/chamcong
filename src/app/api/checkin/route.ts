@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
       .select("start_time, end_time, category")
       .eq("employee_id", emp.id)
       .eq("leave_date", dayStr)
-      .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+      .in("category", ["leave_hourly", "online_wfh", "online_rain", "leave_paid"])
       .not("start_time", "is", null)
       .eq("status", "approved");
 

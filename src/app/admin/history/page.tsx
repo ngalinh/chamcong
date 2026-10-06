@@ -174,7 +174,7 @@ async function updateCheckIn(formData: FormData) {
     .select("start_time, end_time, category")
     .eq("employee_id", ci.employee_id)
     .eq("leave_date", dateStr)
-    .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+    .in("category", ["leave_hourly", "online_wfh", "online_rain", "leave_paid"])
     .not("start_time", "is", null)
     .eq("status", "approved");
 
@@ -349,7 +349,7 @@ async function decideLeave(formData: FormData) {
   const needsBalanceLog = leave.category === "leave_paid" || leave.category === "online_wfh";
   const needsRecalc =
     decision === "approved" &&
-    (leave.category === "leave_hourly" || leave.category === "online_wfh" || leave.category === "leave_paid") &&
+    (leave.category === "leave_hourly" || leave.category === "online_wfh" || leave.category === "online_rain" || leave.category === "leave_paid") &&
     !!leave.start_time && !!leave.end_time;
 
   const dayStart = needsRecalc ? new Date(`${leave.leave_date}T00:00:00+07:00`).toISOString() : "";
@@ -380,7 +380,7 @@ async function decideLeave(formData: FormData) {
         .select("start_time, end_time, category")
         .eq("employee_id", leave.employee_id)
         .eq("leave_date", leave.leave_date)
-        .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
+        .in("category", ["leave_hourly", "online_wfh", "online_rain", "leave_paid"])
         .not("start_time", "is", null)
         .eq("status", "approved")
     : { data: null };
@@ -850,8 +850,8 @@ export default async function HistoryPage({
         .eq("status", "approved")
         .neq("category", "leave_hourly"); // hourly không auto-excuse
       for (const c of covers ?? []) {
-        // online_wfh ca sáng/chiều + leave_paid nửa ngày (start_time có) cũng không cover full day
-        if ((c.category === "online_wfh" || c.category === "leave_paid") && c.start_time) continue;
+        // online_wfh/online_rain ca sáng/chiều + leave_paid nửa ngày (start_time có) cũng không cover full day
+        if ((c.category === "online_wfh" || c.category === "online_rain" || c.category === "leave_paid") && c.start_time) continue;
         leaveCoverSet.add(`${c.employee_id}|${c.leave_date}`);
       }
     }
