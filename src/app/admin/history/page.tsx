@@ -34,6 +34,7 @@ import Image from "next/image";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { formatVN, dateVN as dateVnFn } from "@/lib/time";
+import { isExemptManualCheckIn } from "@/lib/late-early";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -712,8 +713,8 @@ export default async function HistoryPage({
         office: r.offices?.name ?? null,
         distance_m: r.distance_m,
         face_match_score: r.face_match_score,
-        late_minutes: r.late_minutes,
-        early_minutes: r.early_minutes,
+        late_minutes: isExemptManualCheckIn(r) ? null : r.late_minutes,
+        early_minutes: isExemptManualCheckIn(r) ? null : r.early_minutes,
         selfie_path: r.selfie_path ?? "",
         signedUrl: r.selfie_path ? signedMap.get(r.selfie_path) ?? "" : "",
         dateVN: dateInVN(at),
