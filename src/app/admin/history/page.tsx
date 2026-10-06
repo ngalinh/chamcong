@@ -159,7 +159,7 @@ async function updateCheckIn(formData: FormData) {
   // Lấy thông tin check-in để biết employee + office
   const { data: ci } = await admin
     .from("check_ins")
-    .select("id, employee_id, office_id, employees(email, work_start_time, work_end_time, work_shifts), offices(work_start_time, work_end_time)")
+    .select("id, employee_id, office_id, created_by_admin_email, employees(email, work_start_time, work_end_time, work_shifts), offices(work_start_time, work_end_time)")
     .eq("id", id)
     .maybeSingle();
   if (!ci) throw new Error("Không tìm thấy check-in");
@@ -192,14 +192,17 @@ async function updateCheckIn(formData: FormData) {
     : { data: null };
 
   const [h, m] = timeStr.split(":").map(Number);
-  const { late_minutes, early_minutes } = computeLateEarly({
-    emp: empJoin ?? {},
-    office: officeJoin,
-    hourlyLeaves: hourlyLeavesRaw ?? [],
-    kind: kind as "in" | "out",
-    timeMinutes: (h || 0) * 60 + (m || 0),
-    pairedInMinutes: dayCheckIns ? pairedInMinutes(dayCheckIns, checkedInAt, id) : null,
-  });
+  // Check-in admin thêm thủ công → không tính muộn/về sớm (xem createManualCheckIn).
+  const { late_minutes, early_minutes } = ci.created_by_admin_email
+    ? { late_minutes: null, early_minutes: null }
+    : computeLateEarly({
+        emp: empJoin ?? {},
+        office: officeJoin,
+        hourlyLeaves: hourlyLeavesRaw ?? [],
+        kind: kind as "in" | "out",
+        timeMinutes: (h || 0) * 60 + (m || 0),
+        pairedInMinutes: dayCheckIns ? pairedInMinutes(dayCheckIns, checkedInAt, id) : null,
+      });
   void timeToMinutes; // satisfy import
 
   const { error } = await admin
@@ -231,8 +234,6 @@ async function updateCheckIn(formData: FormData) {
 /** Tạo 1 check-in thủ công (NV quên chấm). */
 async function createManualCheckIn(formData: FormData) {
   "use server";
-  const { computeLateEarly, pairedInMinutes } = await import("@/lib/late-early");
-
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) throw new Error("Unauthorized");
@@ -255,46 +256,16 @@ async function createManualCheckIn(formData: FormData) {
 
   const admin = createAdminClient();
   const [{ data: emp }, { data: office }] = await Promise.all([
-    admin.from("employees").select("id, email, work_start_time, work_end_time, work_shifts").eq("id", employeeId).maybeSingle(),
-    admin.from("offices").select("id, work_start_time, work_end_time").eq("id", officeId).maybeSingle(),
+    admin.from("employees").select("id").eq("id", employeeId).maybeSingle(),
+    admin.from("offices").select("id").eq("id", officeId).maybeSingle(),
   ]);
   if (!emp) throw new Error("Không tìm thấy nhân viên");
   if (!office) throw new Error("Không tìm thấy chi nhánh");
 
   const checkedInAt = new Date(`${dateStr}T${timeStr.length === 5 ? timeStr + ":00" : timeStr}+07:00`).toISOString();
 
-  const { data: hourlyLeavesRaw } = await admin
-    .from("leave_requests")
-    .select("start_time, end_time, category")
-    .eq("employee_id", employeeId)
-    .eq("leave_date", dateStr)
-    .in("category", ["leave_hourly", "online_wfh", "leave_paid"])
-    .not("start_time", "is", null)
-    .eq("status", "approved");
-
-  const { data: dayCheckIns } = kind === "out"
-    ? await admin.from("check_ins")
-        .select("id, kind, checked_in_at")
-        .eq("employee_id", employeeId)
-        .gte("checked_in_at", new Date(`${dateStr}T00:00:00+07:00`).toISOString())
-        .lte("checked_in_at", new Date(`${dateStr}T23:59:59.999+07:00`).toISOString())
-    : { data: null };
-
-  const [h, m] = timeStr.split(":").map(Number);
-  const { late_minutes, early_minutes } = computeLateEarly({
-    emp: {
-      email: emp.email,
-      work_start_time: emp.work_start_time,
-      work_end_time: emp.work_end_time,
-      work_shifts: (emp.work_shifts ?? null) as { start: string; end: string }[] | null,
-    },
-    office: { work_start_time: office.work_start_time, work_end_time: office.work_end_time },
-    hourlyLeaves: hourlyLeavesRaw ?? [],
-    kind: kind as "in" | "out",
-    timeMinutes: (h || 0) * 60 + (m || 0),
-    pairedInMinutes: dayCheckIns ? pairedInMinutes(dayCheckIns, checkedInAt) : null,
-  });
-
+  // Admin thêm thủ công (NV quên chấm, đã xác nhận đi làm) → không tính muộn /
+  // về sớm, kể cả khi duyệt đơn sau đó (decideLeave bỏ qua check-in thủ công).
   const { error } = await admin.from("check_ins").insert({
     employee_id: employeeId,
     office_id: officeId,
@@ -306,8 +277,8 @@ async function createManualCheckIn(formData: FormData) {
     distance_m: null,
     face_match_score: null,
     liveness_passed: null,
-    late_minutes,
-    early_minutes,
+    late_minutes: null,
+    early_minutes: null,
     user_agent: null,
     created_by_admin_email: user.email,
     edit_reason: reason,
@@ -395,7 +366,7 @@ async function decideLeave(formData: FormData) {
       : Promise.resolve({ data: null }),
     needsRecalc
       ? admin.from("check_ins")
-          .select("id, kind, checked_in_at, offices(work_start_time, work_end_time)")
+          .select("id, kind, checked_in_at, created_by_admin_email, offices(work_start_time, work_end_time)")
           .eq("employee_id", leave.employee_id)
           .gte("checked_in_at", dayStart)
           .lte("checked_in_at", dayEnd)
@@ -460,7 +431,7 @@ async function decideLeave(formData: FormData) {
       Promise.all((dayCheckInsRes.data ?? []).map(async (ci) => {
         // @ts-expect-error — supabase join
         const office = ci.offices as { work_start_time: string; work_end_time: string } | null;
-        if (!office) return;
+        if (!office || ci.created_by_admin_email) return;
         const ciMin = timeToMinutes(formatVN(ci.checked_in_at as string, "HH:mm"));
         const { late_minutes, early_minutes } = computeLateEarly({
           emp: empForHours,
