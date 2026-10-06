@@ -101,7 +101,11 @@ export function computeLateEarly(opts: {
         effectiveEnd = HALF_DAY_MORNING_END;
       }
       if (hl.category !== "leave_paid" && (isMorning || isAfternoon)) {
-        onlineWindows.push({ start: hl.start_time, end: hl.end_time });
+        // Mốc 09:00 / 17:30 của form là ca chuẩn; NV có giờ riêng (vd vào 09:30)
+        // thì ca online sáng vào theo giờ NV, ca online chiều ra theo giờ NV.
+        onlineWindows.push(isMorning
+          ? { start: closest.shift.start, end: hl.end_time }
+          : { start: hl.start_time, end: closest.shift.end });
       }
       continue;
     }

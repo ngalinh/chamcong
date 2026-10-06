@@ -133,9 +133,18 @@ export function buildDaySegments(params: {
   }
 
   // Đơn online NỬA NGÀY: online = cửa sổ đơn; office = phần ca còn lại (nghỉ trưa ngầm).
+  // Mốc 09:00 / 17:30 của form là ca chuẩn; NV có giờ riêng (vd vào 09:30) thì
+  // ca online sáng vào theo giờ NV, ca online chiều ra theo giờ NV.
   const windows = online
     .filter((l) => l.start_time && l.end_time)
-    .map((l) => ({ start: l.start_time as string, end: l.end_time as string }));
+    .map((l) => {
+      const ws = timeToMinutes(l.start_time as string);
+      const we = timeToMinutes(l.end_time as string);
+      const shift = shifts.find((s) => timeToMinutes(s.start) < we && timeToMinutes(s.end) > ws);
+      if (shift && we <= timeToMinutes(HALF_DAY_MORNING_END)) return { start: shift.start, end: l.end_time as string };
+      if (shift && ws >= timeToMinutes(HALF_DAY_AFTERNOON_START)) return { start: l.start_time as string, end: shift.end };
+      return { start: l.start_time as string, end: l.end_time as string };
+    });
 
   let officeSegs = shifts.map((s) => ({ start: s.start, end: s.end }));
   for (const w of windows) {
