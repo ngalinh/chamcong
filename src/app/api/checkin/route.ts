@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { haversine } from "@/lib/geo";
-import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
+import { currentTimeVN, dateVN, formatVN, timeToMinutes } from "@/lib/time";
 import { computeLateEarly } from "@/lib/late-early";
 import {
   forgiveOnlineLateAfterOfficeCheckIn,
@@ -87,6 +87,9 @@ export async function POST(request: NextRequest) {
     .in("category", ["online_rain", "online_wfh", "online_paid"]);
 
   const nowMin = timeToMinutes(currentTimeVN());
+  // Check-out đóng ca của lần check-in gần nhất (lastCi) → biết đang ra ca online hay ca VP.
+  const pairedInMin =
+    kind === "out" && lastCi ? timeToMinutes(formatVN(lastCi.checked_in_at as string, "HH:mm")) : null;
   const mode = resolveCheckinMode({
     emp: {
       email: emp.email,
@@ -102,6 +105,7 @@ export async function POST(request: NextRequest) {
     isSaturday: vnDayOfWeek() === 6,
     nowMin,
     kind,
+    pairedInMin,
   });
 
   // Chấm online: office remote HOẶC ca hiện tại là ca online (đơn/T7 SG) → bỏ face/geo.
@@ -202,6 +206,7 @@ export async function POST(request: NextRequest) {
       hourlyLeaves: hourlyLeavesRaw ?? [],
       kind,
       timeMinutes: nowMin,
+      pairedInMinutes: pairedInMin,
     }));
   }
 

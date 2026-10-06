@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import CheckInFlow from "@/components/CheckInFlow";
 import RemoteCheckInFlow from "@/components/RemoteCheckInFlow";
-import { currentTimeVN, dateVN, timeToMinutes } from "@/lib/time";
+import { currentTimeVN, dateVN, formatVN, timeToMinutes } from "@/lib/time";
 import { resolveCheckinMode, vnDayOfWeek } from "@/lib/onlineCheckin";
 
 // Kết quả phụ thuộc đơn online trong ngày + thứ trong tuần → không được cache route.
@@ -79,6 +79,8 @@ export default async function CheckInPage() {
         isSaturday: vnDayOfWeek() === 6,
         nowMin: timeToMinutes(currentTimeVN()),
         kind,
+        pairedInMin:
+          kind === "out" && lastCi ? timeToMinutes(formatVN(lastCi.checked_in_at as string, "HH:mm")) : null,
       });
 
       if (mode.online) {

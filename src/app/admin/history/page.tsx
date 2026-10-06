@@ -134,7 +134,7 @@ async function deleteCheckIn(formData: FormData) {
 async function updateCheckIn(formData: FormData) {
   "use server";
   const { timeToMinutes } = await import("@/lib/time");
-  const { computeLateEarly } = await import("@/lib/late-early");
+  const { computeLateEarly, pairedInMinutes } = await import("@/lib/late-early");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -183,6 +183,14 @@ async function updateCheckIn(formData: FormData) {
   const officeJoin = ci.offices as { work_start_time: string; work_end_time: string } | null;
   if (!officeJoin) throw new Error("Check-in không có chi nhánh");
 
+  const { data: dayCheckIns } = kind === "out"
+    ? await admin.from("check_ins")
+        .select("id, kind, checked_in_at")
+        .eq("employee_id", ci.employee_id)
+        .gte("checked_in_at", new Date(`${dateStr}T00:00:00+07:00`).toISOString())
+        .lte("checked_in_at", new Date(`${dateStr}T23:59:59.999+07:00`).toISOString())
+    : { data: null };
+
   const [h, m] = timeStr.split(":").map(Number);
   const { late_minutes, early_minutes } = computeLateEarly({
     emp: empJoin ?? {},
@@ -190,6 +198,7 @@ async function updateCheckIn(formData: FormData) {
     hourlyLeaves: hourlyLeavesRaw ?? [],
     kind: kind as "in" | "out",
     timeMinutes: (h || 0) * 60 + (m || 0),
+    pairedInMinutes: dayCheckIns ? pairedInMinutes(dayCheckIns, checkedInAt, id) : null,
   });
   void timeToMinutes; // satisfy import
 
@@ -222,7 +231,7 @@ async function updateCheckIn(formData: FormData) {
 /** Tạo 1 check-in thủ công (NV quên chấm). */
 async function createManualCheckIn(formData: FormData) {
   "use server";
-  const { computeLateEarly } = await import("@/lib/late-early");
+  const { computeLateEarly, pairedInMinutes } = await import("@/lib/late-early");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -263,6 +272,14 @@ async function createManualCheckIn(formData: FormData) {
     .not("start_time", "is", null)
     .eq("status", "approved");
 
+  const { data: dayCheckIns } = kind === "out"
+    ? await admin.from("check_ins")
+        .select("id, kind, checked_in_at")
+        .eq("employee_id", employeeId)
+        .gte("checked_in_at", new Date(`${dateStr}T00:00:00+07:00`).toISOString())
+        .lte("checked_in_at", new Date(`${dateStr}T23:59:59.999+07:00`).toISOString())
+    : { data: null };
+
   const [h, m] = timeStr.split(":").map(Number);
   const { late_minutes, early_minutes } = computeLateEarly({
     emp: {
@@ -275,6 +292,7 @@ async function createManualCheckIn(formData: FormData) {
     hourlyLeaves: hourlyLeavesRaw ?? [],
     kind: kind as "in" | "out",
     timeMinutes: (h || 0) * 60 + (m || 0),
+    pairedInMinutes: dayCheckIns ? pairedInMinutes(dayCheckIns, checkedInAt) : null,
   });
 
   const { error } = await admin.from("check_ins").insert({
@@ -422,7 +440,7 @@ async function decideLeave(formData: FormData) {
   // Recalc late/early cho check-in trong ngày khi duyệt đơn nghỉ theo giờ
   if (needsRecalc && dayCheckInsRes.data) {
     const { timeToMinutes, formatVN } = await import("@/lib/time");
-    const { computeLateEarly } = await import("@/lib/late-early");
+    const { computeLateEarly, pairedInMinutes } = await import("@/lib/late-early");
 
     const empJoin = leave.employees as unknown as {
       email: string | null;
@@ -450,6 +468,9 @@ async function decideLeave(formData: FormData) {
           hourlyLeaves,
           kind: ci.kind as "in" | "out",
           timeMinutes: ciMin,
+          pairedInMinutes: ci.kind === "out"
+            ? pairedInMinutes(dayCheckInsRes.data ?? [], ci.checked_in_at as string, ci.id as string)
+            : null,
         });
         await admin.from("check_ins").update({ late_minutes, early_minutes }).eq("id", ci.id);
       }))
