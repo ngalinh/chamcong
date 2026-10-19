@@ -448,7 +448,7 @@ export default function CheckInFlow({
             type="button"
             onClick={close}
             aria-label="Đóng"
-            className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center active:bg-white/20"
+            className="h-10 w-10 rounded-full bg-black/35 flex items-center justify-center active:bg-black/50"
           >
             <X size={20} />
           </button>
@@ -484,12 +484,12 @@ export default function CheckInFlow({
             />
           )}
           {lateEarly && (
-            <div className="rounded-2xl bg-amber-500/20 backdrop-blur border border-amber-400/40 p-4 text-sm text-amber-100 mb-4 font-medium">
+            <div className="rounded-2xl bg-amber-500/35 border border-amber-400/40 p-4 text-sm text-amber-100 mb-4 font-medium">
               {lateEarly}
             </div>
           )}
           {error && (
-            <div className="rounded-2xl bg-rose-500/15 backdrop-blur border border-rose-400/30 p-4 text-sm text-rose-100 mb-4">
+            <div className="rounded-2xl bg-rose-500/30 border border-rose-400/30 p-4 text-sm text-rose-100 mb-4">
               {error}
             </div>
           )}
@@ -502,11 +502,11 @@ export default function CheckInFlow({
               {step === "error" ? "Thử lại" : "Bắt đầu chấm công"}
             </button>
           ) : step === "done" ? (
-            <Button size="lg" variant="secondary" className="w-full bg-white/15 backdrop-blur border-white/30 text-white hover:bg-white/25" onClick={() => router.push("/")}>
+            <Button size="lg" variant="secondary" className="w-full bg-white/25 border-white/30 text-white hover:bg-white/35" onClick={() => router.push("/")}>
               Về trang chủ
             </Button>
           ) : (
-            <div className="h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center gap-2 text-white/80">
+            <div className="h-16 rounded-2xl bg-white/25 flex items-center justify-center gap-2 text-white/80">
               <Loader2 size={18} className="animate-spin" /> Đang xử lý...
             </div>
           )}
@@ -518,18 +518,18 @@ export default function CheckInFlow({
 
 function StatusPill({ step, message }: { step: Step; message: string }) {
   const map: Record<Step, { icon: React.ComponentType<{ size?: number; className?: string }>; cls: string }> = {
-    idle:      { icon: Camera,       cls: "bg-white/15 text-white" },
-    geo:       { icon: MapPin,       cls: "bg-white/15 text-white" },
-    camera:    { icon: Camera,       cls: "bg-white/15 text-white" },
-    match:     { icon: ScanFace,     cls: "bg-white/15 text-white" },
-    uploading: { icon: Loader2,      cls: "bg-white/15 text-white" },
+    idle:      { icon: Camera,       cls: "bg-black/40 text-white" },
+    geo:       { icon: MapPin,       cls: "bg-black/40 text-white" },
+    camera:    { icon: Camera,       cls: "bg-black/40 text-white" },
+    match:     { icon: ScanFace,     cls: "bg-black/40 text-white" },
+    uploading: { icon: Loader2,      cls: "bg-black/40 text-white" },
     done:      { icon: CheckCircle2, cls: "bg-emerald-500 text-white" },
     error:     { icon: XCircle,      cls: "bg-rose-500 text-white" },
   };
   const { icon: Icon, cls } = map[step];
   const spinning = step === "uploading" || step === "match" || step === "geo";
   return (
-    <div className={cn("rounded-full backdrop-blur px-4 py-2 flex items-center gap-2 text-sm font-medium shadow-lg", cls)}>
+    <div className={cn("rounded-full px-4 py-2 flex items-center gap-2 text-sm font-medium shadow-lg", cls)}>
       <Icon size={16} className={spinning ? "animate-spin" : ""} />
       {message}
     </div>
@@ -550,7 +550,7 @@ function InfoRow({
   const toneCls = tone === "ok" ? "text-white/90" : "text-amber-300";
   return (
     <div className="flex items-center gap-3 text-sm text-white/80 mb-2">
-      <div className="h-8 w-8 rounded-full bg-white/10 backdrop-blur flex items-center justify-center">
+      <div className="h-8 w-8 rounded-full bg-black/35 flex items-center justify-center">
         <Icon size={14} />
       </div>
       <div className="flex-1 min-w-0 truncate">{label}</div>

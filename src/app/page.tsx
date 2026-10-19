@@ -300,7 +300,7 @@ export default async function Home() {
               <div className="relative h-full flex flex-col items-center justify-center gap-4 text-white">
                 <div className="relative h-20 w-20 flex items-center justify-center">
                   <span className="absolute inset-0 rounded-full bg-white/30 animate-ping-slow" />
-                  <span className="relative h-20 w-20 rounded-full bg-white/15 backdrop-blur ring-1 ring-white/30 flex items-center justify-center">
+                  <span className="relative h-20 w-20 rounded-full bg-white/25 ring-1 ring-white/30 flex items-center justify-center">
                     <Fingerprint size={40} strokeWidth={1.5} />
                   </span>
                 </div>
@@ -392,7 +392,7 @@ export default async function Home() {
       {isAdmin && (
         <div className="relative py-6 max-w-md w-full mx-auto">
           <Link href="/admin">
-            <Button variant="secondary" size="lg" className="w-full bg-white/70 backdrop-blur">
+            <Button variant="secondary" size="lg" className="w-full bg-white/80">
               <Shield size={18} /> Vào trang quản trị
               <ArrowRight size={16} className="ml-auto" />
             </Button>

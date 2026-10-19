@@ -52,7 +52,7 @@ export default function RemoteCheckInFlow({
 
       <div className="relative pt-safe px-safe">
         <div className="flex items-center justify-between py-3">
-          <Link href="/" className="h-10 w-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center">
+          <Link href="/" className="h-10 w-10 rounded-full bg-white/20 flex items-center justify-center">
             <X size={20} />
           </Link>
           <p className="text-sm font-medium">{employeeName}</p>
@@ -61,7 +61,7 @@ export default function RemoteCheckInFlow({
       </div>
 
       <div className="relative flex-1 flex flex-col items-center justify-center px-6 gap-8">
-        <div className="h-32 w-32 rounded-full bg-white/10 backdrop-blur ring-1 ring-white/30 flex items-center justify-center">
+        <div className="h-32 w-32 rounded-full bg-white/20 ring-1 ring-white/30 flex items-center justify-center">
           <Wifi size={56} strokeWidth={1.5} className="text-white" />
         </div>
 
@@ -76,12 +76,12 @@ export default function RemoteCheckInFlow({
         <StatusPill step={step} />
 
         {error && (
-          <div className="w-full max-w-sm rounded-2xl bg-rose-500/15 backdrop-blur border border-rose-400/30 p-4 text-sm text-rose-100">
+          <div className="w-full max-w-sm rounded-2xl bg-rose-500/30 border border-rose-400/30 p-4 text-sm text-rose-100">
             {error}
           </div>
         )}
         {resultLabel && step === "done" && (
-          <div className="w-full max-w-sm rounded-2xl bg-emerald-500/15 backdrop-blur border border-emerald-400/30 p-4 text-sm text-emerald-100 text-center">
+          <div className="w-full max-w-sm rounded-2xl bg-emerald-500/30 border border-emerald-400/30 p-4 text-sm text-emerald-100 text-center">
             {resultLabel}
           </div>
         )}
@@ -99,12 +99,12 @@ export default function RemoteCheckInFlow({
           ) : step === "done" ? (
             <button
               onClick={() => router.push("/")}
-              className="w-full h-16 rounded-2xl bg-white/15 backdrop-blur border border-white/30 text-white font-semibold flex items-center justify-center gap-2"
+              className="w-full h-16 rounded-2xl bg-white/25 border border-white/30 text-white font-semibold flex items-center justify-center gap-2"
             >
               <LogOut size={20} /> Về trang chủ
             </button>
           ) : (
-            <div className="h-16 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center gap-2 text-white/80">
+            <div className="h-16 rounded-2xl bg-white/25 flex items-center justify-center gap-2 text-white/80">
               <Loader2 size={18} className="animate-spin" /> Đang gửi...
             </div>
           )}
@@ -117,13 +117,13 @@ export default function RemoteCheckInFlow({
 function StatusPill({ step }: { step: Step }) {
   if (step === "idle") return null;
   const map = {
-    uploading: { Icon: Loader2,      cls: "bg-white/15 text-white",    label: "Đang xử lý..."    , spin: true },
+    uploading: { Icon: Loader2,      cls: "bg-black/40 text-white",    label: "Đang xử lý..."    , spin: true },
     done:      { Icon: CheckCircle2, cls: "bg-emerald-500 text-white", label: "Đã ghi nhận",       spin: false },
     error:     { Icon: XCircle,      cls: "bg-rose-500 text-white",    label: "Có lỗi xảy ra",     spin: false },
   } as const;
   const m = map[step as keyof typeof map];
   return (
-    <div className={cn("rounded-full backdrop-blur px-4 py-2 flex items-center gap-2 text-sm font-medium shadow-lg", m.cls)}>
+    <div className={cn("rounded-full px-4 py-2 flex items-center gap-2 text-sm font-medium shadow-lg", m.cls)}>
       <m.Icon size={16} className={m.spin ? "animate-spin" : ""} />
       {m.label}
     </div>

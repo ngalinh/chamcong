@@ -171,7 +171,7 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
             ? (e.work_shifts as { start: string; end: string }[])
             : null;
           return (
-            <div key={e.id} className="bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl shadow-sm overflow-hidden">
+            <div key={e.id} className="bg-white/85 border border-neutral-200/70 rounded-2xl shadow-sm overflow-hidden">
               {/* Card header: avatar + identity */}
               <div className="flex items-start gap-3 px-4 pt-4 pb-3">
                 <Avatar name={e.name} />
@@ -346,7 +346,7 @@ export function EmployeesTable({ employees, offices, meEmail, actions }: Props) 
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block bg-white/85 backdrop-blur-sm border border-neutral-200/70 rounded-2xl shadow-sm overflow-x-auto">
+      <div className="hidden md:block bg-white/85 border border-neutral-200/70 rounded-2xl shadow-sm overflow-x-auto">
         <table className="w-full min-w-[1080px] border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-neutral-100">
@@ -580,7 +580,7 @@ function StatChip({
   children: import("react").ReactNode;
 }) {
   return (
-    <div className="bg-white/80 backdrop-blur-sm border border-neutral-200/70 rounded-2xl px-4 py-3 min-w-[120px] shadow-sm">
+    <div className="bg-white/80 border border-neutral-200/70 rounded-2xl px-4 py-3 min-w-[120px] shadow-sm">
       <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 flex items-center gap-1.5 mb-1">
         {icon}
         {label}

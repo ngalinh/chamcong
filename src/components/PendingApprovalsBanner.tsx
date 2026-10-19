@@ -55,7 +55,7 @@ export async function PendingApprovalsBanner() {
   return (
     <Link
       href="/admin/history?status=pending"
-      className="block rounded-2xl border border-amber-200 bg-amber-50/90 backdrop-blur p-4 hover:bg-amber-100/80 transition group"
+      className="block rounded-2xl border border-amber-200 bg-amber-50/90 p-4 hover:bg-amber-100/80 transition group"
     >
       <div className="flex items-center gap-3">
         <div className="relative h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">

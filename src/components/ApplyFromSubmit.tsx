@@ -47,7 +47,7 @@ export function ApplyFromSubmit({
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-2xl shadow-xl border border-neutral-200 p-5 w-80 space-y-4">
             <div>
               <p className="font-semibold text-neutral-900 text-sm">Áp dụng thay đổi từ khi nào?</p>

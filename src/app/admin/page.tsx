@@ -135,7 +135,7 @@ export default async function AdminHome() {
               trên tổng <b className="text-white">{empCount ?? 0}</b> nhân viên
             </p>
           </div>
-          <div className="h-14 w-14 rounded-2xl bg-white/15 backdrop-blur ring-1 ring-white/30 hidden sm:flex items-center justify-center">
+          <div className="h-14 w-14 rounded-2xl bg-white/20 ring-1 ring-white/30 hidden sm:flex items-center justify-center">
             <Users size={26} />
           </div>
         </div>

@@ -18,11 +18,13 @@
   .pr-safe { padding-right: max(env(safe-area-inset-right), 1rem); }
   .px-safe { padding-left: max(env(safe-area-inset-left), 1rem); padding-right: max(env(safe-area-inset-right), 1rem); }
 
-  /* Glass card — tinted backdrop */
+  /* Tinted card — KHÔNG dùng backdrop-filter: class này nằm trên header sticky,
+     bottom nav fixed, và lặp theo từng dòng trong các list (history/payroll/...).
+     backdrop-filter bắt trình duyệt blur-sample lại nội dung bên dưới mỗi frame
+     khi cuộn → nguyên nhân chính gây giật trên cả web và PWA (đã audit 2026-10-19).
+     Không thêm lại backdrop-filter vào class này. */
   .glass {
-    background: color-mix(in oklch, white 78%, transparent);
-    backdrop-filter: saturate(140%) blur(10px);
-    -webkit-backdrop-filter: saturate(140%) blur(10px);
+    background: color-mix(in oklch, white 88%, transparent);
   }
 
   /* Dotted grid background */
