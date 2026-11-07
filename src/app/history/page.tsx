@@ -132,17 +132,59 @@ export default async function MyHistoryPage({
   let leaveCount = 0;
   let violationCount = 0;
 
-  if (type === "all" || type === "checkin") {
-    const { data } = await admin
-      .from("check_ins")
-      .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, edited_at, created_by_admin_email, offices(name, is_remote)")
-      .eq("employee_id", employee.id)
-      .gte("checked_in_at", fromIso)
-      .lte("checked_in_at", toIso)
-      .order("checked_in_at", { ascending: false })
-      .range(rangeFrom, rangeTo);
+  const needCheckin = type === "all" || type === "checkin";
+  const needLeave = type === "all" || type === "leave";
+  const needViolation = type === "all" || type === "violation";
 
-    const checkIns = data ?? [];
+  // 4 nguồn độc lập — chạy song song thay vì await tuần tự để giảm độ trễ
+  // trang history (mỗi await thêm 1 round-trip Supabase, cộng dồn gây cảm giác
+  // "đứng hình rồi nhảy" trên mobile network, đặc biệt NV remote không có ảnh
+  // để che độ trễ).
+  const [checkInsRes, otsRes, leaveRes, violationRes] = await Promise.all([
+    needCheckin
+      ? admin
+          .from("check_ins")
+          .select("id, kind, checked_in_at, distance_m, face_match_score, selfie_path, edited_at, created_by_admin_email, offices(name, is_remote)")
+          .eq("employee_id", employee.id)
+          .gte("checked_in_at", fromIso)
+          .lte("checked_in_at", toIso)
+          .order("checked_in_at", { ascending: false })
+          .range(rangeFrom, rangeTo)
+      : Promise.resolve({ data: null }),
+    needCheckin
+      ? admin
+          .from("overtime_requests")
+          .select("id, created_at, ot_date, start_time, end_time, hours, reason, status")
+          .eq("employee_id", employee.id)
+          .gte("created_at", fromIso)
+          .lte("created_at", toIso)
+          .order("created_at", { ascending: false })
+          .range(rangeFrom, rangeTo)
+      : Promise.resolve({ data: null }),
+    needLeave
+      ? admin
+          .from("leave_requests")
+          .select("id, created_at, leave_date, category, duration, duration_unit, start_time, end_time, reason, status")
+          .eq("employee_id", employee.id)
+          .gte("created_at", fromIso)
+          .lte("created_at", toIso)
+          .order("created_at", { ascending: false })
+          .range(rangeFrom, rangeTo)
+      : Promise.resolve({ data: null }),
+    needViolation
+      ? admin
+          .from("violation_reports")
+          .select("id, created_at, report_date, total_amount, reason, status, kind, violation_items(id)")
+          .eq("employee_id", employee.id)
+          .gte("created_at", fromIso)
+          .lte("created_at", toIso)
+          .order("created_at", { ascending: false })
+          .range(rangeFrom, rangeTo)
+      : Promise.resolve({ data: null }),
+  ]);
+
+  if (needCheckin) {
+    const checkIns = checkInsRes.data ?? [];
     checkInsCount = checkIns.length;
     const paths = checkIns.map((r) => r.selfie_path).filter(Boolean) as string[];
     const signedMap = new Map<string, string>();
@@ -172,14 +214,7 @@ export default async function MyHistoryPage({
       });
     }
 
-    const { data: ots } = await admin
-      .from("overtime_requests")
-      .select("id, created_at, ot_date, start_time, end_time, hours, reason, status")
-      .eq("employee_id", employee.id)
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .order("created_at", { ascending: false })
-      .range(rangeFrom, rangeTo);
+    const ots = otsRes.data;
     overtimeCount = (ots ?? []).length;
     for (const r of ots ?? []) {
       rows.push({
@@ -196,15 +231,8 @@ export default async function MyHistoryPage({
     }
   }
 
-  if (type === "all" || type === "leave") {
-    const { data } = await admin
-      .from("leave_requests")
-      .select("id, created_at, leave_date, category, duration, duration_unit, start_time, end_time, reason, status")
-      .eq("employee_id", employee.id)
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .order("created_at", { ascending: false })
-      .range(rangeFrom, rangeTo);
+  if (needLeave) {
+    const data = leaveRes.data;
     leaveCount = (data ?? []).length;
     for (const r of data ?? []) {
       rows.push({
@@ -223,15 +251,8 @@ export default async function MyHistoryPage({
     }
   }
 
-  if (type === "all" || type === "violation") {
-    const { data } = await admin
-      .from("violation_reports")
-      .select("id, created_at, report_date, total_amount, reason, status, kind, violation_items(id)")
-      .eq("employee_id", employee.id)
-      .gte("created_at", fromIso)
-      .lte("created_at", toIso)
-      .order("created_at", { ascending: false })
-      .range(rangeFrom, rangeTo);
+  if (needViolation) {
+    const data = violationRes.data;
     violationCount = (data ?? []).length;
     for (const r of data ?? []) {
       const items = (r as { violation_items?: unknown[] }).violation_items ?? [];
