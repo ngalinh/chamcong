@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { isAdminEmail } from "@/lib/utils";
+import { yearMonthVN } from "@/lib/workdays";
 import { revalidatePath } from "next/cache";
 import { Empty } from "@/components/ui/Empty";
 import { Users, CalendarOff, Trash2, Wallet } from "lucide-react";
@@ -54,9 +55,22 @@ async function updateEmploymentType(formData: FormData) {
     throw new Error("Loại nhân viên không hợp lệ");
 
   const admin = createAdminClient();
+  const { data: current } = await admin
+    .from("employees")
+    .select("employment_type, employment_type_from_month")
+    .eq("id", id)
+    .maybeSingle();
+  if (current?.employment_type === employmentType) {
+    revalidatePath("/admin/employees");
+    return;
+  }
+  // Đổi loại NV áp dụng từ tháng hiện tại — các tháng trước vẫn tính lương theo loại cũ.
+  // Đổi qua lại trong cùng tháng → coi như huỷ lần đổi trước (về null = mọi tháng).
+  const thisMonth = yearMonthVN();
+  const fromMonth = current?.employment_type_from_month === thisMonth ? null : thisMonth;
   const { error } = await admin
     .from("employees")
-    .update({ employment_type: employmentType })
+    .update({ employment_type: employmentType, employment_type_from_month: fromMonth })
     .eq("id", id);
   if (error) throw new Error(error.message);
 

@@ -69,6 +69,7 @@ export default async function EmployeePayrollPage({
     ? (snapshotRow.data as PayrollSnapshotPayload)
     : await computePayrollForMonth(admin, emp, monthStr);
   const fromSnapshot = !!snapshotRow?.data;
+  const isParttime = payload.kind === "parttime";
 
   const otFixedSalary = Number(emp.ot_fixed_salary ?? 0);
   // Profit luôn tính live: cleanup-history không xoá profit_channels/profit_rules/order_data,
@@ -95,7 +96,6 @@ export default async function EmployeePayrollPage({
   const prevHref = `/payroll?month=${prev.y}-${String(prev.m).padStart(2, "0")}`;
   const nextHref = `/payroll?month=${next.y}-${String(next.m).padStart(2, "0")}`;
 
-  const isParttime = emp.employment_type === "parttime";
 
   const header = (
     <>

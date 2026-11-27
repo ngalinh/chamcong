@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/utils";
-import { computePayrollForMonth } from "@/lib/payroll-snapshot";
+import { computePayrollForMonth, employmentTypeForMonth } from "@/lib/payroll-snapshot";
 import { computeProfitForEmployee } from "@/lib/profit";
 import { yearMonthVN, parseYearMonth } from "@/lib/workdays";
 import { formatVN } from "@/lib/time";
@@ -276,12 +276,12 @@ export default async function PayrollSummaryPage({
             const typeBadge = (
               <span
                 className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                  emp.employment_type === "parttime"
+                  employmentTypeForMonth(emp, monthStr) === "parttime"
                     ? "bg-violet-50 text-violet-700"
                     : "bg-sky-50 text-sky-700"
                 }`}
               >
-                {emp.employment_type === "parttime" ? "PT" : "FT"}
+                {employmentTypeForMonth(emp, monthStr) === "parttime" ? "PT" : "FT"}
               </span>
             );
             const deletedBadge = emp.is_active === false && (
