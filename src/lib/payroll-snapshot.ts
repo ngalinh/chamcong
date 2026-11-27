@@ -14,7 +14,7 @@ import {
 import { dateVN } from "@/lib/time";
 import { effectiveWorkShifts } from "@/lib/workHours";
 import { isExemptManualCheckIn } from "@/lib/late-early";
-import type { Employee, LeaveCategory, LeaveStatus } from "@/types/db";
+import type { Employee, EmploymentType, LeaveCategory, LeaveStatus } from "@/types/db";
 
 // Shape lưu trong payroll_snapshots.data jsonb. Đọc lại để render bảng lương
 // tháng cũ khi data đã bị cleanup xoá.
@@ -25,6 +25,20 @@ export type PayrollSnapshotPayload =
       result: ParttimePayrollResult;
       workShifts: { start: string; end: string }[];
     };
+
+// employment_type có hiệu lực từ employment_type_from_month; các tháng trước
+// đó NV thuộc loại còn lại (vd chuyển fulltime → parttime từ 2026-11 thì
+// tháng 10 trở về trước vẫn tính lương fulltime).
+export function employmentTypeForMonth(
+  employee: Pick<Employee, "employment_type" | "employment_type_from_month">,
+  monthStr: string,
+): EmploymentType {
+  const from = employee.employment_type_from_month;
+  if (from && monthStr < from) {
+    return employee.employment_type === "parttime" ? "fulltime" : "parttime";
+  }
+  return employee.employment_type;
+}
 
 function monthEndDate(year: number, month: number): string {
   const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
@@ -47,7 +61,7 @@ export async function computePayrollForMonth(
   const { startIso, endIso } = monthRangeVN(ym.year, ym.month);
   const dayStart = `${ym.year}-${String(ym.month).padStart(2, "0")}-01`;
   const dayEnd = monthEndDate(ym.year, ym.month);
-  const isParttime = employee.employment_type === "parttime";
+  const isParttime = employmentTypeForMonth(employee, monthStr) === "parttime";
   // Parttime có ca đêm (vd 20:00–00:00): check-out đúng 00:00 đầu tháng sau
   // sẽ bị .lt(endIso) loại ra. Mở rộng thêm 2h để bắt các check-out trễ này.
   const checkInEndIso = isParttime

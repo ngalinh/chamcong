@@ -435,7 +435,6 @@ export default async function PayrollPage({
     .maybeSingle<Employee>();
   if (!emp) notFound();
 
-  const isParttime = emp.employment_type === "parttime";
 
   // Tháng cũ có thể đã bị cleanup-history xoá raw data → đọc snapshot trước.
   // Tháng hiện tại / chưa snapshot → compute live như cũ.
@@ -449,6 +448,7 @@ export default async function PayrollPage({
     ? (snapshotRow.data as PayrollSnapshotPayload)
     : await computePayrollForMonth(admin, emp, monthStr);
   const fromSnapshot = !!snapshotRow?.data;
+  const isParttime = payload.kind === "parttime";
 
   const otFixedSalary =
     emp.ot_fixed_salary_pending_month && emp.ot_fixed_salary_pending_month <= monthStr

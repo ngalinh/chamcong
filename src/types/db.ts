@@ -29,6 +29,7 @@ export type Employee = {
   is_admin: boolean;
   is_active: boolean;
   employment_type: EmploymentType;
+  employment_type_from_month: string | null; // YYYY-MM — employment_type áp dụng từ tháng này; tháng trước dùng loại còn lại. null = mọi tháng
   salary: number;
   hourly_rate: number;
   overtime_rate: number;
